@@ -1635,6 +1635,41 @@ section('٢٠. لوحة المالك: المزايا والنمو والامتث
     token: S.owner, body: { saas_enabled: false, signup_enabled: false } });
 });
 
+/* ═════════ ٢١. حدود بيئة التشغيل ═════════ */
+section('٢١. حدود بيئة Cloudflare المفروضة على الشيفرة', async () => {
+  const { readFileSync } = await import('node:fs');
+  const crypto = readFileSync('server/core/crypto.js', 'utf8');
+
+  /*
+   * سقف Workers لتكرارات PBKDF2 هو ١٠٠٬٠٠٠، ولا تفرضه بيئة التطوير المحلية
+   * ولا Node — فتمرّ كل الفحوص محلياً ثم تسقط التهيئة على الإنتاج.
+   * هذا الفحص يقرأ المصدر فيكشف التجاوز قبل النشر لا بعده.
+   */
+  const cap = Number((crypto.match(/PBKDF2_MAX_ITERATIONS\s*=\s*([\d_]+)/) || [])[1]?.replace(/_/g, ''));
+  ok('سقف تكرارات PBKDF2 معرّف صراحةً', cap === 100000, `القيمة ${cap}`);
+
+  const literals = [...crypto.matchAll(/iterations\s*=\s*([\d_]+)/g)]
+    .map(m => Number(m[1].replace(/_/g, ''))).filter(Number.isFinite);
+  ok('لا عدد تكرارات يتجاوز سقف Workers',
+    literals.every(n => n <= 100000), `القيم: ${literals.join('، ')}`);
+
+  /* التجزئة المولَّدة فعلاً يجب أن تلتزم السقف */
+  const { hashPassword, needsRehash } = await import('../server/core/crypto.js');
+  const h = await hashPassword('Verify@2026');
+  const used = Number(h.split('$')[2]);
+  ok('التجزئة المولَّدة تلتزم السقف', used <= 100000, `استُعملت ${used}`);
+  ok('صيغة التجزئة تحمل عدد تكراراتها', /^pbkdf2\$sha256\$\d+\$/.test(h));
+  ok('تجزئة تتجاوز السقف تُعلَّم للترقية',
+    needsRehash('pbkdf2$sha256$150000$c2FsdA$aGFzaA') === true);
+  ok('تجزئة ملتزمة بالسقف لا تُعلَّم', needsRehash(h) === false);
+  ok('تجزئة bcrypt القديمة تُعلَّم للترقية',
+    needsRehash('$2b$10$abcdefghijklmnopqrstuv') === true);
+
+  /* الدخول الحقيقي يثبت أن السلسلة كلها تعمل على بيئة التشغيل الجارية */
+  ok('الدخول يعمل بالتجزئة الملتزمة بالسقف',
+    (await login('admin@riyadh-qu.sa', 'Admin@123')).status === 200);
+});
+
 /* ═════════ التشغيل ═════════ */
 (async () => {
   console.log(`\n╔═══════════════════════════════════════════════════════════╗`);

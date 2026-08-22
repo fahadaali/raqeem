@@ -95,7 +95,16 @@ export async function verifyJWT(token, secret, { issuer = 'raqeem-erp' } = {}) {
 }
 
 /* ═══════════════ كلمات المرور ═══════════════ */
-const PBKDF2_ITERATIONS = 150_000;
+
+/*
+ * سقف Cloudflare Workers لتكرارات PBKDF2 هو ١٠٠٬٠٠٠، وتجاوزه يرفع
+ * "iteration counts above 100000 are not supported" على بيئة الإنتاج.
+ * والسقف لا تفرضه بيئة التطوير المحلية (workerd) ولا Node، فيظهر الخلل
+ * أول مرة على الإنتاج وحده — لذلك هذا الثابت مقيَّد بالسقف ويُدقَّق آلياً.
+ * لا ترفعه: الرفع لا يعمل، لا يزيد المتانة.
+ */
+export const PBKDF2_MAX_ITERATIONS = 100_000;
+const PBKDF2_ITERATIONS = PBKDF2_MAX_ITERATIONS;
 
 /** ينتج: pbkdf2$sha256$<iterations>$<salt>$<hash> */
 export async function hashPassword(password, iterations = PBKDF2_ITERATIONS) {
@@ -127,8 +136,16 @@ export async function verifyPassword(password, stored) {
   return false;
 }
 
-/** هل تحتاج التجزئة ترقية إلى الصيغة الحديثة؟ */
-export const needsRehash = (stored) => !String(stored || '').startsWith('pbkdf2$');
+/**
+ * هل تحتاج التجزئة ترقية؟ نعم إن كانت بصيغة قديمة (bcrypt)، أو بعدد تكرارات
+ * يتجاوز سقف Workers — فتجزئة وُلّدت على Node بعدد أعلى لا يمكن التحقّق منها
+ * بعد الترحيل إلى Cloudflare، فتُرقَّى عند أول دخول ناجح قبل الترحيل.
+ */
+export const needsRehash = (stored) => {
+  const s = String(stored || '');
+  if (!s.startsWith('pbkdf2$')) return true;
+  return Number(s.split('$')[2]) > PBKDF2_MAX_ITERATIONS;
+};
 
 export default {
   b64uEncode, b64uDecode, randomBytes, randomToken, uuid, timingSafeEqual, sha256Hex,
