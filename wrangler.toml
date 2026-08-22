@@ -10,7 +10,7 @@
 #  راجع docs/CLOUDFLARE.md لخطوات النشر بالتفصيل.
 # ════════════════════════════════════════════════════════════════════════
 
-name = "raqeem-erp"
+name = "raqeem"
 main = "server/worker/index.js"
 compatibility_date = "2025-05-01"
 compatibility_flags = ["nodejs_compat"]
@@ -67,7 +67,7 @@ fallthrough = true
 # ─── الإعدادات غير السرّية ───
 [vars]
 NODE_ENV = "production"
-APP_URL = ""
+APP_URL = "https://raqeem.fahad2ao.workers.dev"
 VAPID_SUBJECT = "mailto:admin@riyadh-qu.sa"
 GEOFENCE_DEFAULT_RADIUS = "50"
 UPLOAD_MAX_MB = "15"
