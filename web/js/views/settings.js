@@ -277,7 +277,7 @@ async function backupTab() {
             text: '⬇ تنزيل',
             onclick: () => api.downloadGet(`/api/org/backups/${encodeURIComponent(r.name)}/download`, r.name)
           }) }
-      ], rows) : empty('لا توجد نسخ بعد', 'أنشئ نسخة يدوية أو انتظر النسخ التلقائي اليومي.', '💾')),
+      ], rows) : empty('💾', 'لا توجد نسخ بعد', 'أنشئ نسخة يدوية أو انتظر النسخ التلقائي اليومي.')),
       el('p.hint', { text: 'تُخزَّن كل نسخة داخل مجلّد الجهة المعزول، وهي ملف SQL مضغوط يمكن استعادته مباشرةً على قاعدة البيانات.' })
     );
   };

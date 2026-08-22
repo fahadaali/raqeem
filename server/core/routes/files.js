@@ -4,6 +4,7 @@ import { badRequest, notFound, forbidden } from '../errors.js';
 import { audit } from '../middleware/audit.js';
 import { findScoped } from '../scope.js';
 import { buildKey } from '../storage.js';
+import { assertQuota } from '../billing.js';
 
 const router = new Hono();
 
@@ -25,6 +26,11 @@ router.post('/', h(async (req) => {
   if (files.length > 10) throw badRequest('يمكن رفع ١٠ ملفات كحد أقصى في المرة الواحدة');
   const context = String(req.body?.context || 'general');
   const maxBytes = app.cfg.uploadMaxMb * 1024 * 1024;
+
+  /* حدّ مساحة التخزين في خطة الاشتراك يُفحص قبل الكتابة لا بعدها */
+  const incomingMb = files.reduce((sum, f) => sum + (f.size || 0), 0) / 1048576;
+  await assertQuota(app, req.ctx.tenantId, 'storage_mb', incomingMb);
+
   const out = [];
 
   for (const f of files) {

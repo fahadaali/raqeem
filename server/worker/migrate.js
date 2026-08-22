@@ -1,4 +1,5 @@
 import schema from '../core/schema.sql';
+import { upgradeSchema } from '../core/upgrade.js';
 
 /**
  * تطبيق مخطط قاعدة البيانات على D1 من المصدر نفسه المستخدَم في Node
@@ -6,9 +7,10 @@ import schema from '../core/schema.sql';
  */
 export async function migrate(app) {
   await app.db.exec(schema);
-  await app.db.run(`INSERT INTO schema_meta(key,value) VALUES('version','1')
+  const added = await upgradeSchema(app);
+  await app.db.run(`INSERT INTO schema_meta(key,value) VALUES('version','2')
     ON CONFLICT(key) DO UPDATE SET value=excluded.value`);
-  return true;
+  return { ok: true, added };
 }
 
 /** هل المخطط مطبَّق أصلاً؟ */

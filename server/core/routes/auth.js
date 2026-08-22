@@ -8,12 +8,15 @@ import { rateLimit, recordFailure, clearFailures, failureCount } from '../middle
 import { audit } from '../middleware/audit.js';
 import { currentTerm } from '../scope.js';
 import { pushEnabled, publicKey } from '../push.js';
+import { platformSettings, tenantSubscription, subscriptionWritable, subscriptionBlockReason, STATUS_AR } from '../billing.js';
 
 const router = new Hono();
 const LOCK_WINDOW = 15 * 60_000;
 
 /** ملخّص الجلسة الذي تعتمد عليه الواجهة المرنة (البند ١) */
 export async function sessionPayload(app, ctx) {
+  const settings = await platformSettings(app);
+  const sub = await tenantSubscription(app, ctx.tenantId);
   const branches = ctx.branchIds.length
     ? await app.db.all(`SELECT id,code,name,address,lat,lng,geofence_radius FROM branches
         WHERE tenant_id=? AND id IN (${ctx.branchIds.map(() => '?').join(',')}) AND is_active=1 ORDER BY code`,
@@ -42,7 +45,22 @@ export async function sessionPayload(app, ctx) {
     all_branches: ctx.allBranches,
     terms,
     current_term: await currentTerm(app, ctx.tenantId),
-    push: { enabled: pushEnabled(app.cfg), publicKey: publicKey(app.cfg) }
+    push: { enabled: pushEnabled(app.cfg), publicKey: publicKey(app.cfg) },
+    /* المرحلة الثانية: هوية المنصة وحالة اشتراك الجهة */
+    platform: {
+      name: settings.platform_name,
+      saas_enabled: !!settings.saas_enabled,
+      is_platform_admin: !!ctx.isPlatformAdmin
+    },
+    subscription: sub ? {
+      plan: sub.plan?.code, plan_name: sub.plan?.name,
+      status: sub.status, status_label: STATUS_AR[sub.status] || sub.status,
+      trial_ends_at: sub.trial_ends_at,
+      current_period_end: sub.current_period_end,
+      cancel_at_period_end: !!sub.cancel_at_period_end,
+      writable: subscriptionWritable(sub),
+      block_reason: subscriptionBlockReason(sub)
+    } : null
   };
 }
 

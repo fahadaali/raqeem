@@ -61,7 +61,9 @@ export const PERMISSIONS = [
   ['audit.view',                'التدقيق',     'عرض سجل النشاطات'],
   ['settings.view',             'الإعدادات',   'عرض الإعدادات'],
   ['settings.manage',           'الإعدادات',   'إدارة إعدادات الجهة'],
-  ['notifications.broadcast',   'الإشعارات',   'إرسال إشعارات عامة']
+  ['notifications.broadcast',   'الإشعارات',   'إرسال إشعارات عامة'],
+  ['billing.view',              'الاشتراك',    'عرض الاشتراك والفواتير'],
+  ['billing.manage',            'الاشتراك',    'إدارة الاشتراك والسداد']
 ].map(([key, module, name]) => ({ key, module, name }));
 
 export const ALL_KEYS = PERMISSIONS.map(p => p.key);
@@ -103,7 +105,7 @@ export const DEFAULT_ROLES = [
       'finance.view', 'finance.approve_finance', 'finance.manage', 'budgets.view',
       'budgets.manage', 'invoices.view', 'invoices.manage', 'workflows.view',
       'hr.payroll.view', 'hr.payroll.manage', 'hr.employees.view', 'reports.view',
-      'reports.export', 'imports.manage']
+      'reports.export', 'imports.manage', 'billing.view', 'billing.manage']
   },
   {
     key: 'hr', name: 'الموارد البشرية', level: 3, is_system: 1,

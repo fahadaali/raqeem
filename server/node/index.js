@@ -63,6 +63,7 @@ const safe = (name, fn) => async () => {
 const slaJob = safe('sla', periodic.sla);
 const kpiJob = safe('kpi', periodic.kpi);
 const dueJob = safe('deadlines', periodic.deadlines);
+const subsJob = safe('subscriptions', periodic.subscriptions);
 const backupJob = safe('backup', async () => (cfg.backup.enabled
   ? { snapshot: await runBackup(container), logical: await periodic.backup(container) }
   : null));
@@ -78,6 +79,7 @@ setInterval(() => {
   const today = now.toISOString().slice(0, 10);
   if (now.getUTCHours() === 6 && lastDaily !== today + 'd') { lastDaily = today + 'd'; dueJob(); }
   if (now.getUTCHours() === cfg.backup.hour && lastDaily !== today + 'b') { lastDaily = today + 'b'; backupJob(); }
+  if (now.getUTCHours() === 4 && lastDaily !== today + 's') { lastDaily = today + 's'; subsJob(); }
 }, 5 * 60_000).unref?.();
 
 console.log('✔ تم تشغيل مجدول الوظائف الخلفية (الترحيل، الاستيراد، المؤشرات، مستوى الخدمة، النسخ الاحتياطي)');

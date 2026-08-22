@@ -19,6 +19,11 @@ CREATE TABLE IF NOT EXISTS tenants (
   status          TEXT NOT NULL DEFAULT 'active',   
   plan            TEXT NOT NULL DEFAULT 'phase1',
   settings        TEXT NOT NULL DEFAULT '{}',
+  
+  custom_domain   TEXT UNIQUE,                      
+  owner_email     TEXT,
+  suspended_at    TEXT,
+  suspend_reason  TEXT,
   created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
@@ -84,6 +89,7 @@ CREATE TABLE IF NOT EXISTS users (
   theme_pref        TEXT NOT NULL DEFAULT 'light',
   notify_prefs      TEXT NOT NULL DEFAULT '{"push":true,"inapp":true,"tasks":true,"finance":true,"chat":true,"tickets":true,"hr":true}',
   must_change_pw    INTEGER NOT NULL DEFAULT 0,
+  is_platform_admin INTEGER NOT NULL DEFAULT 0,     
   last_login_at     TEXT,
   created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   UNIQUE (tenant_id, email)
@@ -591,6 +597,7 @@ CREATE TRIGGER IF NOT EXISTS trg_audit_no_update BEFORE UPDATE ON audit_logs
 BEGIN SELECT RAISE(ABORT, 'AUDIT_APPEND_ONLY: سجلات التدقيق غير قابلة للتعديل'); END;
 
 CREATE TRIGGER IF NOT EXISTS trg_audit_no_delete BEFORE DELETE ON audit_logs
+WHEN (SELECT COUNT(*) FROM tenants WHERE id = OLD.tenant_id) > 0
 BEGIN SELECT RAISE(ABORT, 'AUDIT_APPEND_ONLY: سجلات التدقيق غير قابلة للحذف'); END;
 
 CREATE TABLE IF NOT EXISTS import_batches (
@@ -684,3 +691,161 @@ CREATE TRIGGER IF NOT EXISTS trg_inv_term_lock_i BEFORE INSERT ON invoices
 WHEN NEW.term_id IS NOT NULL
  AND (SELECT status FROM terms WHERE id = NEW.term_id) IN ('closed','archived')
 BEGIN SELECT RAISE(ABORT, 'TERM_CLOSED'); END;
+
+CREATE TABLE IF NOT EXISTS plans (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  code           TEXT NOT NULL UNIQUE,
+  name           TEXT NOT NULL,
+  name_en        TEXT,
+  tagline        TEXT,
+  description    TEXT,
+  price_monthly  REAL NOT NULL DEFAULT 0,
+  price_yearly   REAL NOT NULL DEFAULT 0,
+  currency       TEXT NOT NULL DEFAULT 'SAR',
+  trial_days     INTEGER NOT NULL DEFAULT 14,
+  max_branches   INTEGER,          
+  max_users      INTEGER,
+  max_storage_mb INTEGER,
+  features       TEXT NOT NULL DEFAULT '[]',   
+  perks          TEXT NOT NULL DEFAULT '[]',   
+  is_public      INTEGER NOT NULL DEFAULT 1,   
+  is_active      INTEGER NOT NULL DEFAULT 1,
+  highlight      INTEGER NOT NULL DEFAULT 0,   
+  sort           INTEGER NOT NULL DEFAULT 0,
+  created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+CREATE TABLE IF NOT EXISTS subscriptions (
+  id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+  tenant_id            INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  plan_id              INTEGER NOT NULL REFERENCES plans(id),
+  status               TEXT NOT NULL DEFAULT 'trialing',  
+  cycle                TEXT NOT NULL DEFAULT 'monthly',   
+  trial_ends_at        TEXT,
+  current_period_start TEXT NOT NULL,
+  current_period_end   TEXT NOT NULL,
+  cancel_at_period_end INTEGER NOT NULL DEFAULT 0,
+  canceled_at          TEXT,
+  grace_until          TEXT,        
+  notes                TEXT,
+  created_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  UNIQUE (tenant_id)
+);
+
+CREATE INDEX IF NOT EXISTS ix_subs_status ON subscriptions(status, current_period_end);
+
+CREATE TABLE IF NOT EXISTS subscription_invoices (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  tenant_id       INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  subscription_id INTEGER REFERENCES subscriptions(id) ON DELETE SET NULL,
+  number          TEXT NOT NULL UNIQUE,
+  status          TEXT NOT NULL DEFAULT 'open',   
+  plan_code       TEXT,
+  plan_name       TEXT,
+  cycle           TEXT,
+  period_start    TEXT,
+  period_end      TEXT,
+  subtotal        REAL NOT NULL DEFAULT 0,
+  discount        REAL NOT NULL DEFAULT 0,
+  vat_rate        REAL NOT NULL DEFAULT 15,
+  vat_amount      REAL NOT NULL DEFAULT 0,
+  total           REAL NOT NULL DEFAULT 0,
+  currency        TEXT NOT NULL DEFAULT 'SAR',
+  issued_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  due_at          TEXT,
+  paid_at         TEXT,
+  void_reason     TEXT,
+  notes           TEXT
+);
+
+CREATE INDEX IF NOT EXISTS ix_subinv_tenant ON subscription_invoices(tenant_id, issued_at);
+
+CREATE INDEX IF NOT EXISTS ix_subinv_status ON subscription_invoices(status, due_at);
+
+CREATE TABLE IF NOT EXISTS subscription_payments (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  tenant_id    INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  invoice_id   INTEGER NOT NULL REFERENCES subscription_invoices(id) ON DELETE CASCADE,
+  amount       REAL NOT NULL,
+  currency     TEXT NOT NULL DEFAULT 'SAR',
+  method       TEXT NOT NULL DEFAULT 'bank_transfer',  
+  reference    TEXT,
+  status       TEXT NOT NULL DEFAULT 'pending',        
+  file_id      INTEGER REFERENCES files(id) ON DELETE SET NULL,   
+  declared_by  INTEGER REFERENCES users(id),
+  confirmed_by INTEGER REFERENCES users(id),
+  confirmed_at TEXT,
+  note         TEXT,
+  created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+CREATE INDEX IF NOT EXISTS ix_subpay_invoice ON subscription_payments(invoice_id);
+
+CREATE TABLE IF NOT EXISTS signups (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  code           TEXT NOT NULL,                  
+  tenant_name    TEXT NOT NULL,
+  admin_name     TEXT NOT NULL,
+  email          TEXT NOT NULL,
+  phone          TEXT,
+  plan_code      TEXT NOT NULL,
+  cycle          TEXT NOT NULL DEFAULT 'monthly',
+  status         TEXT NOT NULL DEFAULT 'pending', 
+  verify_hash    TEXT,
+  password_hash  TEXT NOT NULL,
+  tenant_id      INTEGER REFERENCES tenants(id) ON DELETE SET NULL,
+  reject_reason  TEXT,
+  ip             TEXT,
+  user_agent     TEXT,
+  created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  verified_at    TEXT,
+  provisioned_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS ix_signups_status ON signups(status, created_at);
+
+CREATE TABLE IF NOT EXISTS platform_settings (
+  id                 INTEGER PRIMARY KEY CHECK (id = 1),
+  platform_name      TEXT NOT NULL DEFAULT 'منصة نور',
+  platform_name_en   TEXT DEFAULT 'Noor Platform',
+  tagline            TEXT DEFAULT 'منصة الإدارة المتكاملة لمجمعات تحفيظ القرآن الكريم',
+  support_email      TEXT DEFAULT 'support@noor.sa',
+  support_phone      TEXT,
+  saas_enabled       INTEGER NOT NULL DEFAULT 0,   
+  signup_enabled     INTEGER NOT NULL DEFAULT 0,   
+  signup_needs_review INTEGER NOT NULL DEFAULT 0,  
+  default_plan_code  TEXT NOT NULL DEFAULT 'growth',
+  trial_days         INTEGER NOT NULL DEFAULT 14,
+  grace_days         INTEGER NOT NULL DEFAULT 7,   
+  vat_rate           REAL NOT NULL DEFAULT 15,
+  currency           TEXT NOT NULL DEFAULT 'SAR',
+  vat_number         TEXT,
+  cr_number          TEXT,
+  bank_details       TEXT NOT NULL DEFAULT '{}',   
+  invoice_prefix     TEXT NOT NULL DEFAULT 'NOOR',
+  invoice_seq        INTEGER NOT NULL DEFAULT 0,
+  updated_at         TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+CREATE TABLE IF NOT EXISTS platform_logs (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  actor_id   INTEGER REFERENCES users(id),
+  actor_name TEXT,
+  tenant_id  INTEGER,
+  action     TEXT NOT NULL,
+  entity     TEXT NOT NULL,
+  entity_id  TEXT,
+  summary    TEXT,
+  meta       TEXT,
+  ip         TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+CREATE INDEX IF NOT EXISTS ix_platform_logs ON platform_logs(created_at);
+
+CREATE TRIGGER IF NOT EXISTS trg_plog_no_update BEFORE UPDATE ON platform_logs
+BEGIN SELECT RAISE(ABORT, 'AUDIT_APPEND_ONLY: سجل المنصة غير قابل للتعديل'); END;
+
+CREATE TRIGGER IF NOT EXISTS trg_plog_no_delete BEFORE DELETE ON platform_logs
+BEGIN SELECT RAISE(ABORT, 'AUDIT_APPEND_ONLY: سجل المنصة غير قابل للحذف'); END;

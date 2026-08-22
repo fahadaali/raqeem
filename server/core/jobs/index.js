@@ -4,6 +4,7 @@ import { runRollover } from './rollover.js';
 import { recomputeAll } from './kpi.js';
 import { checkSLA, checkTaskDeadlines } from './sla.js';
 import { runDailyBackup } from './backup.js';
+import { runSubscriptionCycle } from './subscriptions.js';
 
 /** تسجيل معالجات الطابور (مشتركة بين البيئتين) */
 export function registerAllJobs() {
@@ -16,5 +17,6 @@ export const periodic = {
   async sla(app) { return { escalated: await checkSLA(app) }; },
   async kpi(app) { return { updated: await recomputeAll(app) }; },
   async deadlines(app) { return checkTaskDeadlines(app); },
-  async backup(app) { return runDailyBackup(app); }
+  async backup(app) { return runDailyBackup(app); },
+  async subscriptions(app) { return runSubscriptionCycle(app); }
 };

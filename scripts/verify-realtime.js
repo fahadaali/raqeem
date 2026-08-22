@@ -103,7 +103,7 @@ await wait(300);
 
 /* ── ٨. الوظائف المجدولة (Cron) — متاحة في wrangler dev فقط ── */
 if (process.env.BASE) {
-  const crons = ['*/5 * * * *', '*/15 * * * *', '0 * * * *', '0 3 * * *', '0 2 * * *'];
+  const crons = ['*/5 * * * *', '*/15 * * * *', '0 * * * *', '0 3 * * *', '0 2 * * *', '0 1 * * *'];
   for (const cron of crons) {
     const res = await fetch(`${BASE}/cdn-cgi/handler/scheduled?cron=${encodeURIComponent(cron)}`);
     ok(`تنفيذ الوظيفة المجدولة «${cron}»`, res.status === 200, `status ${res.status}`);

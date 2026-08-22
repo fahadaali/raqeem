@@ -9,6 +9,7 @@ import { PERMISSIONS } from '../permissions.js';
 import { hashPassword } from '../crypto.js';
 import { notifyUsers } from '../notify.js';
 import { runLogicalBackup } from '../jobs/backup.js';
+import { assertQuota } from '../billing.js';
 
 const router = new Hono();
 
@@ -50,6 +51,7 @@ router.post('/branches', can('branches.manage'), h(async (req) => {
   if (!code || !name) throw badRequest('رمز الفرع واسمه حقلان إلزاميان');
   if (await app.db.get('SELECT 1 AS x FROM branches WHERE tenant_id=? AND code=?', req.ctx.tenantId, code))
     throw conflict('يوجد فرع بنفس الرمز');
+  await assertQuota(app, req.ctx.tenantId, 'branches');
   const r = await app.db.run(
     `INSERT INTO branches(tenant_id,code,name,address,lat,lng,geofence_radius,phone,manager_user_id)
      VALUES(?,?,?,?,?,?,?,?,?)`, req.ctx.tenantId, String(code).trim(), String(name).trim(), address || null,
@@ -172,6 +174,7 @@ router.post('/users', can('users.manage'), h(async (req) => {
   if (!password || String(password).length < 8) throw badRequest('كلمة المرور يجب أن تكون ٨ أحرف فأكثر');
   if (await app.db.get('SELECT 1 AS x FROM users WHERE tenant_id=? AND lower(email)=lower(?)', req.ctx.tenantId, email))
     throw conflict('البريد الإلكتروني مستخدم مسبقاً');
+  await assertQuota(app, req.ctx.tenantId, 'users');
   const role = await findScoped(app, req.ctx, 'roles', role_id);
   if (!role) throw badRequest('الدور غير صالح');
   if (role.level < req.ctx.roleLevel) throw forbidden('لا يمكنك إنشاء مستخدم بصلاحية أعلى من صلاحيتك');

@@ -74,6 +74,70 @@ img{max-width:100%}
 .demo-btn:hover{border-color:var(--brand);color:var(--brand);background:var(--brand-50)}
 .demo-btn b{display:block;color:var(--text);font-size:12px;font-weight:600}
 
+
+/* ── المرحلة الثانية: الأسعار والتسجيل والاشتراك ─────────── */
+.login-card.wide{max-width:640px}
+.public-wrap{min-height:100dvh;background:linear-gradient(150deg,var(--brand) 0%,var(--brand-600) 62%,#072518 100%);
+  padding:28px 18px calc(28px + var(--safe-b));display:flex;flex-direction:column;align-items:center;gap:22px}
+.public-head{text-align:center;color:#fff;max-width:680px}
+.public-head img{border-radius:20px;box-shadow:var(--shadow)}
+.public-head h1{font-size:26px;margin:12px 0 4px}
+.public-head p{opacity:.82;font-size:13.5px;margin:0 0 10px}
+.public-body{width:100%;max-width:1080px;background:var(--surface);border-radius:var(--r-xl);
+  padding:26px 22px;box-shadow:var(--shadow-lg)}
+.public-body h2{font-size:19px;margin:0 0 4px;text-align:center}
+.public-body>.hint{text-align:center;margin-bottom:16px}
+.public-foot{display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:center;
+  color:#fff;font-size:12.5px}
+.public-foot .hint{color:rgba(255,255,255,.75)}
+.public-foot a.hint{text-decoration:underline}
+
+.cycle-toggle{display:flex;gap:6px;justify-content:center;margin-bottom:18px;flex-wrap:wrap}
+.cycle-toggle .btn.active{background:var(--brand);color:#fff;border-color:var(--brand)}
+
+.plan-grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(248px,1fr))}
+.plan-grid.compact{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.plan-card{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
+  padding:20px 18px;display:flex;flex-direction:column;gap:10px;transition:.18s}
+.plan-card:hover{box-shadow:var(--shadow);transform:translateY(-2px)}
+.plan-card.featured{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold-100) inset}
+.plan-card.current{border-color:var(--brand);background:var(--brand-50)}
+.plan-tag{position:absolute;top:-10px;inset-inline-start:16px;background:var(--gold);color:#3A2E06;
+  font-size:11px;font-weight:700;padding:3px 10px;border-radius:99px}
+.plan-card h3{font-size:17px;margin:4px 0 0}
+.plan-tagline{color:var(--text-2);font-size:12.5px;margin:0;line-height:1.7}
+.plan-price{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
+.plan-price b{font-size:24px;color:var(--brand)}
+.plan-price span{color:var(--text-3);font-size:12px}
+.plan-save{color:var(--ok);font-size:12px;font-weight:600}
+.plan-perks{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:6px;flex:1}
+.plan-perks li{font-size:12.5px;color:var(--text-2);padding-inline-start:20px;position:relative;line-height:1.7}
+.plan-perks li::before{content:'✓';position:absolute;inset-inline-start:0;color:var(--ok);font-weight:700}
+.plan-card .btn{margin-top:6px}
+
+.usage-row{display:flex;flex-direction:column;gap:6px}
+.alert{border-radius:var(--r);padding:11px 14px;font-size:13px;line-height:1.8;border:1px solid transparent}
+.alert.info{background:var(--info-bg);border-color:var(--info);color:var(--info)}
+.alert.ok{background:var(--ok-bg);border-color:var(--ok);color:var(--ok)}
+.alert.warn{background:var(--warn-bg);border-color:var(--warn);color:var(--warn)}
+.alert.danger{background:var(--danger-bg);border-color:var(--danger);color:var(--danger)}
+.alert code{display:block;margin-top:5px;font-size:12px;opacity:.9}
+
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13px;align-items:baseline}
+.kv .k{color:var(--text-3);font-size:12px}
+.kv .v{color:var(--text);word-break:break-word}
+.grid-2{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+.stat-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(178px,1fr))}
+.form-sec{margin:16px 0 2px;font-size:12.5px;color:var(--brand);font-weight:700;
+  border-top:1px dashed var(--border-2);padding-top:14px}
+.form-sec:first-child{border-top:0;padding-top:0;margin-top:0}
+
+@media (max-width:640px){
+  .public-body{padding:20px 14px}
+  .public-head h1{font-size:21px}
+  .plan-grid{grid-template-columns:1fr}
+}
+
 /* ── الهيكل العام ─────────────────────────────────────────── */
 .shell{display:grid;grid-template-columns:var(--side) 1fr;min-height:100dvh}
 .sidebar{background:var(--brand-600);color:#fff;display:flex;flex-direction:column;

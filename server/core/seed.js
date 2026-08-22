@@ -1,6 +1,7 @@
 import { nowUTC } from './sql.js';
 import { hashPassword } from './crypto.js';
 import { PERMISSIONS, DEFAULT_ROLES } from './permissions.js';
+import { seedSaaS } from './seed-saas.js';
 
 /**
  * تعبئة البيانات التجريبية للمستأجر رقم ١ — تعمل على Node و D1 بالشيفرة نفسها.
@@ -33,7 +34,11 @@ export async function seed(app, { force = false } = {}) {
   const T = tenant.id;
 
   const already = await db.get('SELECT COUNT(*) AS c FROM users WHERE tenant_id=?', T);
-  if (already.c > 0 && !force) return null;
+  if (already.c > 0 && !force) {
+    /* قاعدة معبّأة مسبقاً: نكتفي بتحديث طبقة الـ SaaS فهي عمليات تكرارية آمنة */
+    await seedSaaS(app, { tenantOneOwnerEmail: 'admin@riyadh-qu.sa' });
+    return null;
+  }
 
   /* ── الأدوار والصلاحيات ── */
   const roles = {};
@@ -364,6 +369,9 @@ export async function seed(app, { force = false } = {}) {
   /* ── إغلاق الفصل السابق (يفعّل مُشغّلات التجميد) ── */
   await db.run(`UPDATE terms SET status='closed', closed_at=?, closed_by=? WHERE id=? AND tenant_id=?`,
     nowUTC(), users['admin@riyadh-qu.sa'], PREV, T);
+
+  /* ── طبقة الـ SaaS: الخطط وإعدادات المنصة ومالكها (المرحلة الثانية) ── */
+  await seedSaaS(app, { tenantOneOwnerEmail: 'admin@riyadh-qu.sa' });
 
   return T;
 }

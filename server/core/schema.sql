@@ -22,6 +22,11 @@ CREATE TABLE IF NOT EXISTS tenants (
   status          TEXT NOT NULL DEFAULT 'active',   -- active | suspended
   plan            TEXT NOT NULL DEFAULT 'phase1',
   settings        TEXT NOT NULL DEFAULT '{}',
+  -- المرحلة الثانية (SaaS)
+  custom_domain   TEXT UNIQUE,                      -- نطاق الجهة الخاص (White-labeling)
+  owner_email     TEXT,
+  suspended_at    TEXT,
+  suspend_reason  TEXT,
   created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
@@ -88,6 +93,7 @@ CREATE TABLE IF NOT EXISTS users (
   theme_pref        TEXT NOT NULL DEFAULT 'light',
   notify_prefs      TEXT NOT NULL DEFAULT '{"push":true,"inapp":true,"tasks":true,"finance":true,"chat":true,"tickets":true,"hr":true}',
   must_change_pw    INTEGER NOT NULL DEFAULT 0,
+  is_platform_admin INTEGER NOT NULL DEFAULT 0,     -- مالك المنصة (المرحلة الثانية)
   last_login_at     TEXT,
   created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   UNIQUE (tenant_id, email)
@@ -587,7 +593,11 @@ CREATE INDEX IF NOT EXISTS ix_audit_scope ON audit_logs(tenant_id, created_at);
 -- سجلات التدقيق غير قابلة للتعديل أو الحذف إطلاقاً (البند ١٤)
 CREATE TRIGGER IF NOT EXISTS trg_audit_no_update BEFORE UPDATE ON audit_logs
 BEGIN SELECT RAISE(ABORT, 'AUDIT_APPEND_ONLY: سجلات التدقيق غير قابلة للتعديل'); END;
+-- الحذف ممنوع ما دامت الجهة قائمة. الاستثناء الوحيد هو محو الجهة بالكامل
+-- (حق المحو في نظام حماية البيانات الشخصية) حيث تُحذف السجلات تبعاً لجهتها،
+-- ويبقى أثر المحو نفسه مسجّلاً في platform_logs غير القابل للتعديل.
 CREATE TRIGGER IF NOT EXISTS trg_audit_no_delete BEFORE DELETE ON audit_logs
+WHEN (SELECT COUNT(*) FROM tenants WHERE id = OLD.tenant_id) > 0
 BEGIN SELECT RAISE(ABORT, 'AUDIT_APPEND_ONLY: سجلات التدقيق غير قابلة للحذف'); END;
 
 -- ─────────────────────────── ١٥. الاستيراد وطوابير المعالجة ─────────────────
@@ -686,3 +696,164 @@ CREATE TRIGGER IF NOT EXISTS trg_inv_term_lock_i BEFORE INSERT ON invoices
 WHEN NEW.term_id IS NOT NULL
  AND (SELECT status FROM terms WHERE id = NEW.term_id) IN ('closed','archived')
 BEGIN SELECT RAISE(ABORT, 'TERM_CLOSED'); END;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+--  المرحلة الثانية (Phase 2) — طبقة الـ SaaS
+--  التسجيل الآلي · خطط الأسعار والاشتراكات · نظام الفوترة · لوحة مالك المنصة
+--  كل ما سبق كان مؤجَّلاً عمداً في المرحلة الأولى حسب المقدمة الاستراتيجية.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- ─────────────────────── ١٦. خطط الأسعار والاشتراكات ───────────────────────
+CREATE TABLE IF NOT EXISTS plans (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  code           TEXT NOT NULL UNIQUE,
+  name           TEXT NOT NULL,
+  name_en        TEXT,
+  tagline        TEXT,
+  description    TEXT,
+  price_monthly  REAL NOT NULL DEFAULT 0,
+  price_yearly   REAL NOT NULL DEFAULT 0,
+  currency       TEXT NOT NULL DEFAULT 'SAR',
+  trial_days     INTEGER NOT NULL DEFAULT 14,
+  max_branches   INTEGER,          -- NULL = بلا حد
+  max_users      INTEGER,
+  max_storage_mb INTEGER,
+  features       TEXT NOT NULL DEFAULT '[]',   -- JSON: مفاتيح المزايا المفعّلة
+  perks          TEXT NOT NULL DEFAULT '[]',   -- JSON: نقاط تسويقية تُعرض في صفحة الأسعار
+  is_public      INTEGER NOT NULL DEFAULT 1,   -- تظهر في صفحة الأسعار العامة
+  is_active      INTEGER NOT NULL DEFAULT 1,
+  highlight      INTEGER NOT NULL DEFAULT 0,   -- «الأكثر اختياراً»
+  sort           INTEGER NOT NULL DEFAULT 0,
+  created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+CREATE TABLE IF NOT EXISTS subscriptions (
+  id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+  tenant_id            INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  plan_id              INTEGER NOT NULL REFERENCES plans(id),
+  status               TEXT NOT NULL DEFAULT 'trialing',  -- trialing|active|past_due|canceled|expired
+  cycle                TEXT NOT NULL DEFAULT 'monthly',   -- monthly|yearly
+  trial_ends_at        TEXT,
+  current_period_start TEXT NOT NULL,
+  current_period_end   TEXT NOT NULL,
+  cancel_at_period_end INTEGER NOT NULL DEFAULT 0,
+  canceled_at          TEXT,
+  grace_until          TEXT,        -- مهلة السداد قبل الإيقاف
+  notes                TEXT,
+  created_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  UNIQUE (tenant_id)
+);
+CREATE INDEX IF NOT EXISTS ix_subs_status ON subscriptions(status, current_period_end);
+
+CREATE TABLE IF NOT EXISTS subscription_invoices (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  tenant_id       INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  subscription_id INTEGER REFERENCES subscriptions(id) ON DELETE SET NULL,
+  number          TEXT NOT NULL UNIQUE,
+  status          TEXT NOT NULL DEFAULT 'open',   -- open|paid|void|uncollectible
+  plan_code       TEXT,
+  plan_name       TEXT,
+  cycle           TEXT,
+  period_start    TEXT,
+  period_end      TEXT,
+  subtotal        REAL NOT NULL DEFAULT 0,
+  discount        REAL NOT NULL DEFAULT 0,
+  vat_rate        REAL NOT NULL DEFAULT 15,
+  vat_amount      REAL NOT NULL DEFAULT 0,
+  total           REAL NOT NULL DEFAULT 0,
+  currency        TEXT NOT NULL DEFAULT 'SAR',
+  issued_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  due_at          TEXT,
+  paid_at         TEXT,
+  void_reason     TEXT,
+  notes           TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_subinv_tenant ON subscription_invoices(tenant_id, issued_at);
+CREATE INDEX IF NOT EXISTS ix_subinv_status ON subscription_invoices(status, due_at);
+
+CREATE TABLE IF NOT EXISTS subscription_payments (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  tenant_id    INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  invoice_id   INTEGER NOT NULL REFERENCES subscription_invoices(id) ON DELETE CASCADE,
+  amount       REAL NOT NULL,
+  currency     TEXT NOT NULL DEFAULT 'SAR',
+  method       TEXT NOT NULL DEFAULT 'bank_transfer',  -- bank_transfer|card|cash|manual
+  reference    TEXT,
+  status       TEXT NOT NULL DEFAULT 'pending',        -- pending|confirmed|rejected
+  file_id      INTEGER REFERENCES files(id) ON DELETE SET NULL,   -- إيصال التحويل
+  declared_by  INTEGER REFERENCES users(id),
+  confirmed_by INTEGER REFERENCES users(id),
+  confirmed_at TEXT,
+  note         TEXT,
+  created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS ix_subpay_invoice ON subscription_payments(invoice_id);
+
+-- ─────────────────── ١٧. التسجيل الآلي للجهات الجديدة ───────────────────
+CREATE TABLE IF NOT EXISTS signups (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  code           TEXT NOT NULL,                  -- الرمز المطلوب للجهة (يصبح tenants.code)
+  tenant_name    TEXT NOT NULL,
+  admin_name     TEXT NOT NULL,
+  email          TEXT NOT NULL,
+  phone          TEXT,
+  plan_code      TEXT NOT NULL,
+  cycle          TEXT NOT NULL DEFAULT 'monthly',
+  status         TEXT NOT NULL DEFAULT 'pending', -- pending|verified|provisioned|rejected
+  verify_hash    TEXT,
+  password_hash  TEXT NOT NULL,
+  tenant_id      INTEGER REFERENCES tenants(id) ON DELETE SET NULL,
+  reject_reason  TEXT,
+  ip             TEXT,
+  user_agent     TEXT,
+  created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  verified_at    TEXT,
+  provisioned_at TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_signups_status ON signups(status, created_at);
+
+-- ──────────────────── ١٨. إعدادات المنصة وسجلّ مالكها ────────────────────
+CREATE TABLE IF NOT EXISTS platform_settings (
+  id                 INTEGER PRIMARY KEY CHECK (id = 1),
+  platform_name      TEXT NOT NULL DEFAULT 'منصة نور',
+  platform_name_en   TEXT DEFAULT 'Noor Platform',
+  tagline            TEXT DEFAULT 'منصة الإدارة المتكاملة لمجمعات تحفيظ القرآن الكريم',
+  support_email      TEXT DEFAULT 'support@noor.sa',
+  support_phone      TEXT,
+  saas_enabled       INTEGER NOT NULL DEFAULT 0,   -- تفعيل طبقة SaaS في الواجهات العامة
+  signup_enabled     INTEGER NOT NULL DEFAULT 0,   -- فتح التسجيل الآلي
+  signup_needs_review INTEGER NOT NULL DEFAULT 0,  -- مراجعة يدوية قبل التفعيل
+  default_plan_code  TEXT NOT NULL DEFAULT 'growth',
+  trial_days         INTEGER NOT NULL DEFAULT 14,
+  grace_days         INTEGER NOT NULL DEFAULT 7,   -- مهلة السداد بعد الاستحقاق
+  vat_rate           REAL NOT NULL DEFAULT 15,
+  currency           TEXT NOT NULL DEFAULT 'SAR',
+  vat_number         TEXT,
+  cr_number          TEXT,
+  bank_details       TEXT NOT NULL DEFAULT '{}',   -- JSON: اسم البنك، الآيبان، المستفيد
+  invoice_prefix     TEXT NOT NULL DEFAULT 'NOOR',
+  invoice_seq        INTEGER NOT NULL DEFAULT 0,
+  updated_at         TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+-- سجلّ عمليات مالك المنصة — مقفل ومنفصل عن سجلات الجهات (Append-only)
+CREATE TABLE IF NOT EXISTS platform_logs (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  actor_id   INTEGER REFERENCES users(id),
+  actor_name TEXT,
+  tenant_id  INTEGER,
+  action     TEXT NOT NULL,
+  entity     TEXT NOT NULL,
+  entity_id  TEXT,
+  summary    TEXT,
+  meta       TEXT,
+  ip         TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS ix_platform_logs ON platform_logs(created_at);
+
+CREATE TRIGGER IF NOT EXISTS trg_plog_no_update BEFORE UPDATE ON platform_logs
+BEGIN SELECT RAISE(ABORT, 'AUDIT_APPEND_ONLY: سجل المنصة غير قابل للتعديل'); END;
+CREATE TRIGGER IF NOT EXISTS trg_plog_no_delete BEFORE DELETE ON platform_logs
+BEGIN SELECT RAISE(ABORT, 'AUDIT_APPEND_ONLY: سجل المنصة غير قابل للحذف'); END;

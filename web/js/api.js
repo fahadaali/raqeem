@@ -49,8 +49,10 @@ async function request(method, url, { body, raw, retry = true, silent = false } 
       body: isForm ? body : (body !== undefined ? JSON.stringify(body) : undefined)
     });
   } catch (e) {
-    if (!silent) toast('تعذّر الاتصال بالخادم — تحقق من اتصالك بالإنترنت', 'err');
-    throw new ApiError('offline', 0, 'OFFLINE');
+    /* طلب أُلغي لأن المستخدم انتقل لشاشة أخرى ليس انقطاعاً في الشبكة */
+    const aborted = e?.name === 'AbortError' || /aborted|cancell?ed/i.test(String(e?.message || ''));
+    if (!silent && !aborted) toast('تعذّر الاتصال بالخادم — تحقق من اتصالك بالإنترنت', 'err');
+    throw new ApiError(aborted ? 'aborted' : 'offline', 0, aborted ? 'ABORTED' : 'OFFLINE');
   }
 
   if (res.status === 401 && retry && state.refreshToken) {
@@ -123,6 +125,14 @@ export const api = {
     const objUrl = URL.createObjectURL(new Blob([blob], { type: 'text/html;charset=utf-8' }));
     const w = window.open(objUrl, '_blank');
     if (!w) toast('يرجى السماح بالنوافذ المنبثقة لعرض التقرير', 'warn');
+    setTimeout(() => URL.revokeObjectURL(objUrl), 60000);
+  },
+  /** فتح مستند طباعة عبر GET */
+  async openPrintGet(url) {
+    const { blob } = await request('GET', url, { raw: true });
+    const objUrl = URL.createObjectURL(new Blob([blob], { type: 'text/html;charset=utf-8' }));
+    const w = window.open(objUrl, '_blank');
+    if (!w) toast('يرجى السماح بالنوافذ المنبثقة لعرض المستند', 'warn');
     setTimeout(() => URL.revokeObjectURL(objUrl), 60000);
   },
   qs(obj) {

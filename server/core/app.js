@@ -17,6 +17,10 @@ import fileRoutes from './routes/files.js';
 import notificationRoutes from './routes/notifications.js';
 import { importsRouter, reportsRouter, auditRouter, dashboardRouter } from './routes/data.js';
 import { keysRouter, publicRouter } from './routes/integration.js';
+import publicSaasRoutes from './routes/public.js';
+import billingRoutes from './routes/billing.js';
+import platformRoutes from './routes/platform.js';
+import { subscriptionGate } from './middleware/saas.js';
 
 registerAllJobs();
 
@@ -56,15 +60,20 @@ export function createApi(container) {
   /* الواجهة البرمجية العامة للأنظمة الخارجية */
   api.route('/v1', publicRouter);
 
+  /* الواجهات العامة للمرحلة الثانية: الأسعار والتسجيل الآلي وهوية النطاق */
+  api.route('/public', publicSaasRoutes);
+
   /* المصادقة */
   api.route('/auth', authRoutes);
 
   /* المسارات المحمية — كل مجموعة تُغلَّف بحارسها الخاص داخل بادئتها فقط،
      حتى لا تتسرَّب مصادقة الجلسة إلى الواجهة العامة /api/v1 */
-  const guard = (routes) => {
+  const guard = (routes, { gate = true } = {}) => {
     const g = new Hono();
     g.use('*', authenticate());
     g.use('*', rateLimit({ key: (r) => `u:${r.ctx?.userId || r.ip}` }));
+    /* بوابة الاشتراك: تمنع الكتابة عند توقف الاشتراك وتُبقي القراءة والسداد */
+    if (gate) g.use('*', subscriptionGate());
     g.route('/', routes);
     return g;
   };
@@ -83,6 +92,10 @@ export function createApi(container) {
   api.route('/reports', guard(reportsRouter));
   api.route('/audit', guard(auditRouter));
   api.route('/dashboard', guard(dashboardRouter));
+
+  /* المرحلة الثانية: اشتراك الجهة، ولوحة مالك المنصة */
+  api.route('/billing', guard(billingRoutes, { gate: false }));
+  api.route('/platform', guard(platformRoutes, { gate: false }));
 
   return api;
 }

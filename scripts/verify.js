@@ -55,8 +55,8 @@ section('١. المصادقة والصلاحيات (RBAC)', async () => {
     ok(`دخول الدور «${roleKey}»`, r.status === 200 && r.data.user.role.key === roleKey, `status ${r.status}`);
   }
 
-  ok('الجلسة تحمل كتالوج الصلاحيات', S.s_owner.permissions.length >= 58);
-  ok('مدير الجهة يملك كل الصلاحيات', S.s_owner.permissions.length === 58);
+  ok('الجلسة تحمل كتالوج الصلاحيات', S.s_owner.permissions.length >= 60);
+  ok('مدير الجهة يملك كل الصلاحيات', S.s_owner.permissions.length === 60);
   ok('المعلم لا يرى صلاحيات مالية', !S.s_teacher.permissions.some(p => p.startsWith('finance.')));
   ok('المحاسب لا يرى نتائج تقييم المعلمين', !S.s_finance.permissions.includes('forms.results'));
   ok('المدقق للاطلاع فقط (لا صلاحيات إنشاء)',
@@ -730,7 +730,7 @@ section('١٧. لوحة التحكم والتخصيص الديناميكي', asy
   await call('PATCH', '/api/org/tenant', { token: S.owner, body: { primary_color: '#0F5132', settings: { late_after_minutes: 15 } } });
 
   const perms = (await call('GET', '/api/org/permissions', { token: S.owner })).data;
-  ok('كتالوج الصلاحيات مُجمَّع حسب الوحدة', perms.list.length === 58 && Object.keys(perms.grouped).length > 10);
+  ok('كتالوج الصلاحيات مُجمَّع حسب الوحدة', perms.list.length === 60 && Object.keys(perms.grouped).length > 10);
 
   const roles = (await call('GET', '/api/org/roles', { token: S.owner })).data;
   const teacherRole = roles.find(r => r.key === 'teacher');
@@ -816,6 +816,308 @@ section('١٨. الواجهة وتطبيق PWA', async () => {
   ok('منع تخمين نوع المحتوى', idx.res.headers.get('x-content-type-options') === 'nosniff');
   ok('إذن الموقع الجغرافي مسموح للمنصة',
     (idx.res.headers.get('permissions-policy') || '').includes('geolocation=(self)'));
+});
+
+/* ═════════ ١٩. المرحلة الثانية: التسجيل الآلي والخطط والفوترة ولوحة المالك ═════════ */
+section('١٩. طبقة الـ SaaS (المرحلة الثانية)', async () => {
+  /* ── لوحة مالك المنصة محصورة بمالكها ── */
+  ok('لوحة المالك محجوبة عن المعلم',
+    (await call('GET', '/api/platform/overview', { token: S.teacher })).status === 403);
+  ok('لوحة المالك محجوبة عن مدير الفرع',
+    (await call('GET', '/api/platform/tenants', { token: S.branch_manager })).status === 403);
+
+  const ov = await call('GET', '/api/platform/overview', { token: S.owner });
+  ok('مالك المنصة يرى لوحته', ov.status === 200 && ov.data.tenants_total >= 1);
+  ok('اللوحة تحسب الإيراد الشهري المتكرر', typeof ov.data.mrr === 'number');
+  ok('اللوحة تُظهر تعطُّل طبقة الـ SaaS ابتدائياً', ov.data.platform.saas_enabled === false);
+
+  /* ── التسجيل الذاتي مغلق ما لم يُفتح ── */
+  ok('التسجيل الذاتي مرفوض والطبقة معطّلة',
+    (await call('POST', '/api/public/signup', { body: { code: 'ZZ1', tenant_name: 'x', admin_name: 'y',
+      email: 'z@z.sa', password: 'Abcd@1234' } })).status === 403);
+
+  const settings = await call('PUT', '/api/platform/settings', {
+    token: S.owner, body: { saas_enabled: true, signup_enabled: true } });
+  ok('تفعيل طبقة الـ SaaS من لوحة المالك', settings.status === 200 && settings.data.saas_enabled === 1);
+
+  /* ── صفحة الأسعار العامة ── */
+  const pub = await call('GET', '/api/public/platform');
+  ok('هوية المنصة متاحة للعموم', pub.status === 200 && !!pub.data.name && pub.data.signup_enabled === true);
+  const plans = await call('GET', '/api/public/plans');
+  ok('صفحة الأسعار تعرض الخطط', plans.status === 200 && plans.data.plans.length >= 3);
+  ok('كل خطة تحمل حدودها ومزاياها',
+    plans.data.plans.every(p => p.limits && Array.isArray(p.perks) && p.perks.length));
+  ok('الخطة السنوية توفّر عن الشهرية',
+    plans.data.plans.some(p => p.yearly_savings > 0));
+  ok('الأسعار تُقرأ من قاعدة البيانات لا من الكود',
+    plans.data.plans.find(p => p.code === 'growth')?.price_monthly === 499);
+  ok('صفحة الأسعار لا تسرّب خططاً مخفية', plans.data.plans.every(p => p.code !== 'internal'));
+
+  /* ── هوية النطاق (White-labeling) ── */
+  const brand = await call('GET', '/api/public/brand');
+  ok('هوية النطاق تُرجع بيانات المنصة', brand.status === 200 && !!brand.data.platform.name);
+
+  /* ── التحقق من توفر الرمز والبريد ── */
+  const avail = await call('GET', '/api/public/signup/availability?code=RQ&email=admin@riyadh-qu.sa');
+  ok('رمز الجهة المستخدم غير متاح', avail.data.code.available === false);
+  ok('البريد المسجّل غير متاح', avail.data.email.available === false);
+  const avail2 = await call('GET', '/api/public/signup/availability?code=ADMIN&email=bad-mail');
+  ok('الرموز المحجوزة مرفوضة', avail2.data.code.reserved === true);
+  ok('البريد غير الصحيح مرفوض', avail2.data.email.invalid === true);
+
+  /* ── التسجيل الآلي لجهة جديدة ── */
+  const bad = await call('POST', '/api/public/signup', { body: {
+    code: 'QV1', tenant_name: 'جهة', admin_name: 'مدير', email: 'v@v.sa', password: '123' } });
+  ok('رفض كلمة مرور قصيرة في التسجيل', bad.status === 400);
+
+  const stamp = Date.now().toString().slice(-5);
+  const CODE = 'V' + stamp;
+  const MAIL = `owner${stamp}@verify.sa`;
+  const signup = await call('POST', '/api/public/signup', { body: {
+    code: CODE, tenant_name: 'مجمّع التدقيق لتحفيظ القرآن', admin_name: 'مدير التدقيق',
+    email: MAIL, password: 'Verify@2026', plan_code: 'growth', cycle: 'monthly' } });
+  ok('التسجيل الآلي ينشئ الجهة فوراً', signup.status === 201 && signup.data.status === 'active', JSON.stringify(signup.data));
+  ok('الجهة الجديدة تبدأ بفترة تجريبية', signup.data.subscription?.status === 'trialing');
+  S.newTenantId = signup.data.tenant.id;
+
+  ok('رفض تكرار رمز الجهة',
+    (await call('POST', '/api/public/signup', { body: { code: CODE, tenant_name: 'x', admin_name: 'y',
+      email: 'other' + MAIL, password: 'Verify@2026', plan_code: 'growth' } })).status === 409);
+
+  /* ── الجهة الجديدة جاهزة للعمل فوراً ── */
+  const nlog = await login(MAIL, 'Verify@2026');
+  ok('مدير الجهة الجديدة يدخل مباشرةً', nlog.status === 200);
+  S.newOwner = nlog.data.accessToken;
+  ok('الجهة الجديدة مجهّزة بأدوارها كاملة', nlog.data.permissions.length === 60);
+  ok('الجهة الجديدة لها فرع وفصل جاريان',
+    nlog.data.branches.length === 1 && !!nlog.data.current_term);
+  ok('الجهة الجديدة معزولة عن بيانات الجهة الأولى',
+    (await call('GET', '/api/tasks', { token: S.newOwner })).data.length === 0);
+  ok('الجهة الأولى لا ترى الجهة الجديدة',
+    !(await call('GET', '/api/org/users', { token: S.owner })).data.some(u => u.email === MAIL));
+
+  /* ── الاشتراك والاستهلاك ── */
+  const bill = await call('GET', '/api/billing', { token: S.newOwner });
+  ok('شاشة الاشتراك تُظهر الخطة', bill.status === 200 && bill.data.subscription.plan.code === 'growth');
+  ok('الاستهلاك يُقاس مقابل حدود الخطة',
+    bill.data.usage.users.limit === 120 && bill.data.usage.users.used === 1);
+  ok('نسبة الاستهلاك محسوبة', bill.data.usage.branches.percent !== null);
+  ok('الاشتراك التجريبي يسمح بالكتابة', bill.data.subscription.writable === true);
+  ok('شاشة الاشتراك محجوبة عن غير أصحاب الصلاحية',
+    (await call('GET', '/api/billing', { token: S.teacher })).status === 403);
+
+  /* ── حدّ الخطة يُطبَّق فعلياً ── */
+  const starter = await call('POST', '/api/billing/subscribe', {
+    token: S.newOwner, body: { plan_code: 'starter', cycle: 'monthly' } });
+  ok('التحويل إلى الخطة المجانية', starter.status === 201);
+  const b2 = await call('POST', '/api/org/branches', {
+    token: S.newOwner, body: { code: 'B02', name: 'فرع ثانٍ' } });
+  ok('حدّ الفروع في الخطة يمنع الإضافة', b2.status === 403 && b2.data.error.code === 'QUOTA_EXCEEDED',
+    JSON.stringify(b2.data));
+  ok('رسالة الحدّ توضّح الحدّ والاستهلاك',
+    b2.data.error.details?.limit === 1 && b2.data.error.details?.resource === 'branches');
+
+  /* ── الترقية تُصدر فاتورة بالضريبة ── */
+  const up = await call('POST', '/api/billing/subscribe', {
+    token: S.newOwner, body: { plan_code: 'growth', cycle: 'yearly' } });
+  ok('الترقية تُصدر فاتورة', up.status === 201 && !!up.data.invoice);
+  const inv = up.data.invoice;
+  ok('الفاتورة تحمل رقماً متسلسلاً', /^NOOR-\d{4}-\d{5}$/.test(inv.number), inv.number);
+  eq('قيمة الاشتراك السنوي', inv.subtotal, 4990);
+  eq('ضريبة القيمة المضافة ١٥٪', inv.vat_amount, 748.5);
+  eq('الإجمالي شامل الضريبة', inv.total, 5738.5);
+  ok('الفاتورة غير مسددة عند الإصدار', inv.status === 'open' && !inv.paid_at);
+  ok('الفاتورة لها تاريخ استحقاق', !!inv.due_at);
+
+  const b3 = await call('POST', '/api/org/branches', {
+    token: S.newOwner, body: { code: 'B02', name: 'فرع ثانٍ' } });
+  ok('الترقية ترفع الحدّ فوراً', b3.status === 201);
+
+  /* ── دورة السداد ── */
+  const invoices = await call('GET', '/api/billing/invoices', { token: S.newOwner });
+  ok('قائمة الفواتير تعرض الرصيد المستحق', invoices.data.balance.due === inv.total);
+  const print = await call('GET', `/api/billing/invoices/${inv.id}/print`, { token: S.newOwner, raw: true });
+  ok('الفاتورة تُطبع بترويسة رسمية',
+    print.status === 200 && print.buf.toString().includes(inv.number));
+
+  const declare = await call('POST', `/api/billing/invoices/${inv.id}/declare-payment`, {
+    token: S.newOwner, body: { reference: 'TRX-VERIFY', method: 'bank_transfer' } });
+  ok('إشعار السداد يُسجَّل معلّقاً', declare.status === 201 && declare.data.status === 'pending');
+  ok('الفاتورة تبقى غير مسددة قبل الاعتماد',
+    (await call('GET', `/api/billing/invoices/${inv.id}`, { token: S.newOwner })).data.status === 'open');
+
+  const pending = await call('GET', '/api/platform/payments?status=pending', { token: S.owner });
+  ok('إشعار السداد يظهر لمالك المنصة', pending.data.some(p => p.reference === 'TRX-VERIFY'));
+  const payId = pending.data.find(p => p.reference === 'TRX-VERIFY').id;
+  const confirm = await call('POST', `/api/platform/payments/${payId}/confirm`, { token: S.owner });
+  ok('اعتماد السداد يسدّد الفاتورة', confirm.status === 200 && confirm.data.invoice.status === 'paid');
+  ok('لا يمكن اعتماد الإشعار مرتين',
+    (await call('POST', `/api/platform/payments/${payId}/confirm`, { token: S.owner })).status === 400);
+  ok('الرصيد المستحق صفر بعد السداد',
+    (await call('GET', '/api/billing/invoices', { token: S.newOwner })).data.balance.due === 0);
+
+  /* ── إيقاف التجديد واستئنافه ── */
+  ok('إيقاف التجديد التلقائي',
+    (await call('POST', '/api/billing/cancel', { token: S.newOwner })).data.subscription.cancel_at_period_end === true);
+  ok('استئناف التجديد التلقائي',
+    (await call('POST', '/api/billing/resume', { token: S.newOwner })).data.subscription.cancel_at_period_end === false);
+
+  /* ── إيقاف الجهة إدارياً ── */
+  const susp = await call('PATCH', `/api/platform/tenants/${S.newTenantId}`, {
+    token: S.owner, body: { status: 'suspended', suspend_reason: 'تدقيق' } });
+  ok('إيقاف الجهة من لوحة المالك', susp.status === 200 && susp.data.status === 'suspended');
+  const blocked = await call('POST', '/api/tasks', { token: S.newOwner, body: { title: 'مهمة أثناء الإيقاف' } });
+  ok('الجهة الموقوفة لا تستطيع الكتابة',
+    blocked.status === 402 && blocked.data.error.code === 'SUBSCRIPTION_INACTIVE', JSON.stringify(blocked.data));
+  ok('الجهة الموقوفة تبقى قادرة على القراءة',
+    (await call('GET', '/api/tasks', { token: S.newOwner })).status === 200);
+  ok('الجهة الموقوفة تصل لشاشة السداد',
+    (await call('GET', '/api/billing', { token: S.newOwner })).status === 200);
+  ok('لا يمكن إيقاف الجهة رقم ١',
+    (await call('PATCH', '/api/platform/tenants/1', { token: S.owner, body: { status: 'suspended' } })).status === 400);
+  ok('إعادة تفعيل الجهة',
+    (await call('PATCH', `/api/platform/tenants/${S.newTenantId}`, { token: S.owner, body: { status: 'active' } })).data.status === 'active');
+  ok('الكتابة تعود بعد التفعيل',
+    (await call('POST', '/api/tasks', { token: S.newOwner, body: { title: 'مهمة بعد التفعيل' } })).status === 201);
+
+  /* ── إدارة الخطط ── */
+  const newPlan = await call('POST', '/api/platform/plans', { token: S.owner, body: {
+    code: 'verify-plan', name: 'خطة التدقيق', price_monthly: 99, price_yearly: 990,
+    max_branches: 2, max_users: 20, max_storage_mb: 1024, is_public: false,
+    perks: ['ميزة أولى', 'ميزة ثانية'] } });
+  ok('إنشاء خطة جديدة', newPlan.status === 201);
+  ok('الخطة غير المعروضة لا تظهر للعموم',
+    !(await call('GET', '/api/public/plans')).data.plans.some(p => p.code === 'verify-plan'));
+  ok('تحرير الخطة',
+    (await call('PATCH', `/api/platform/plans/${newPlan.data.id}`, { token: S.owner, body: { price_monthly: 149 } })).data.price_monthly === 149);
+  ok('رفض تكرار رمز الخطة',
+    (await call('POST', '/api/platform/plans', { token: S.owner, body: { code: 'verify-plan', name: 'x' } })).status === 409);
+  ok('حذف خطة بلا مشتركين',
+    (await call('DELETE', `/api/platform/plans/${newPlan.data.id}`, { token: S.owner })).status === 200);
+  const growthPlan = (await call('GET', '/api/platform/plans', { token: S.owner })).data.find(p => p.code === 'growth');
+  ok('منع حذف خطة مرتبطة بجهات',
+    (await call('DELETE', `/api/platform/plans/${growthPlan.id}`, { token: S.owner })).status === 409);
+
+  /* ── الدخول الإداري للمساندة ── */
+  const imp = await call('POST', `/api/platform/tenants/${S.newTenantId}/impersonate`, { token: S.owner });
+  ok('الدخول الإداري يصدر جلسة للجهة', imp.status === 200 && !!imp.accessToken === false && !!imp.data.accessToken);
+  const impSession = await call('GET', '/api/auth/me', { token: imp.data.accessToken });
+  ok('جلسة المساندة داخل نطاق الجهة المستهدفة', impSession.data.tenant.id === S.newTenantId);
+  ok('الدخول الإداري مسجَّل في سجل الجهة',
+    (await call('GET', '/api/audit', { token: imp.data.accessToken })).data.items
+      .some(a => String(a.summary).includes('دخول إداري')));
+
+  /* ── سجل المنصة مقفل ── */
+  const logs = await call('GET', '/api/platform/logs', { token: S.owner });
+  ok('سجل المنصة يسجّل عمليات المالك', logs.data.total > 0);
+  ok('السجل يوثّق الإيقاف والتفعيل',
+    logs.data.items.some(l => l.action === 'suspend') && logs.data.items.some(l => l.action === 'resume'));
+  ok('السجل يوثّق الدخول الإداري', logs.data.items.some(l => l.action === 'impersonate'));
+  ok('سجل المنصة محجوب عن غير المالك',
+    (await call('GET', '/api/platform/logs', { token: S.newOwner })).status === 403);
+
+  /* ── طلبات التسجيل بالمراجعة اليدوية ── */
+  await call('PUT', '/api/platform/settings', { token: S.owner, body: { signup_needs_review: true } });
+  const review = await call('POST', '/api/public/signup', { body: {
+    code: 'R' + stamp, tenant_name: 'جهة بانتظار المراجعة', admin_name: 'مدير',
+    email: `review${stamp}@verify.sa`, password: 'Verify@2026', plan_code: 'starter' } });
+  ok('طلب التسجيل ينتظر المراجعة', review.status === 201 && review.data.status === 'pending_review');
+  ok('الجهة لا تُنشأ قبل الاعتماد',
+    (await login(`review${stamp}@verify.sa`, 'Verify@2026')).status === 401);
+  const reqs = await call('GET', '/api/platform/signups?status=pending', { token: S.owner });
+  ok('الطلب يظهر لمالك المنصة', reqs.data.some(r => r.id === review.data.request_id));
+  const approved = await call('POST', `/api/platform/signups/${review.data.request_id}/approve`, { token: S.owner });
+  ok('اعتماد الطلب يجهّز الجهة', approved.status === 201 && !!approved.data.tenant.id);
+  ok('الجهة المعتمَدة تستطيع الدخول',
+    (await login(`review${stamp}@verify.sa`, 'Verify@2026')).status === 200);
+  await call('PUT', '/api/platform/settings', { token: S.owner, body: { signup_needs_review: false } });
+
+  /* ── مالكو المنصة ── */
+  const admins = await call('GET', '/api/platform/admins', { token: S.owner });
+  ok('قائمة مالكي المنصة', admins.data.length >= 1);
+  ok('لا يمكن سحب صلاحية المالك الوحيد',
+    (await call('DELETE', `/api/platform/admins/${S.u_owner.id}`, { token: S.owner })).status === 400);
+
+  /* ── دورة الاشتراكات: انتهاء التجربة ← فاتورة ← مهلة ← إيقاف الكتابة ── */
+  await call('PUT', '/api/platform/settings', { token: S.owner, body: { grace_days: 0 } });
+  const LC = 'L' + stamp;
+  const LMAIL = `cycle${stamp}@verify.sa`;
+  const lifeTenant = await call('POST', '/api/platform/tenants', { token: S.owner, body: {
+    code: LC, name: 'جهة دورة الاشتراك', admin_name: 'مدير الدورة', email: LMAIL,
+    password: 'Verify@2026', plan_code: 'growth', cycle: 'monthly' } });
+  ok('إنشاء جهة من لوحة المالك', lifeTenant.status === 201);
+  const LT = lifeTenant.data.tenant.id;
+  const lifeOwner = (await login(LMAIL, 'Verify@2026')).data.accessToken;
+
+  /* تجربة تنتهي اليوم — سيناريو إداري مشروع، لا باب خلفي */
+  await call('POST', `/api/platform/tenants/${LT}/plan`, {
+    token: S.owner, body: { plan_code: 'growth', cycle: 'monthly', status: 'trialing', trial_days: 0 } });
+  ok('التجربة المنتهية اليوم قبل التشغيل',
+    (await call('GET', '/api/billing', { token: lifeOwner })).data.subscription.status === 'trialing');
+
+  const cycle1 = await call('POST', '/api/platform/jobs/subscriptions/run', { token: S.owner });
+  ok('تشغيل دورة الاشتراكات يدوياً', cycle1.status === 200);
+  ok('الدورة حوّلت التجربة المنتهية', cycle1.data.result.trials.converted >= 1, JSON.stringify(cycle1.data.result));
+
+  const afterTrial = (await call('GET', '/api/billing', { token: lifeOwner })).data;
+  ok('انتهاء التجربة يحوّل الاشتراك لمتأخر السداد', afterTrial.subscription.status === 'past_due');
+  ok('انتهاء التجربة يُصدر فاتورة تلقائياً', afterTrial.balance.invoices === 1 && afterTrial.balance.due > 0);
+  ok('المنصة تبقى قابلة للكتابة داخل مهلة السداد أو تمنعها بوضوح',
+    [201, 402].includes((await call('POST', '/api/tasks', { token: lifeOwner, body: { title: 'مهمة أثناء المهلة' } })).status));
+
+  const cycle2 = await call('POST', '/api/platform/jobs/subscriptions/run', { token: S.owner });
+  ok('الدورة الثانية ترصد تجاوز مهلة السداد',
+    cycle2.data.result.reminders.blocked >= 1 || cycle2.data.result.reminders.overdue >= 1,
+    JSON.stringify(cycle2.data.result.reminders));
+
+  const lateWrite = await call('POST', '/api/tasks', { token: lifeOwner, body: { title: 'مهمة بعد المهلة' } });
+  ok('انتهاء مهلة السداد يوقف الكتابة',
+    lateWrite.status === 402 && lateWrite.data.error.code === 'SUBSCRIPTION_INACTIVE', JSON.stringify(lateWrite.data));
+  ok('القراءة تبقى متاحة رغم توقف السداد',
+    (await call('GET', '/api/tasks', { token: lifeOwner })).status === 200);
+  ok('إشعار توقف الاشتراك يصل لصاحب الصلاحية',
+    (await call('GET', '/api/notifications', { token: lifeOwner })).data.items
+      .some(n => String(n.type).startsWith('billing.')));
+
+  const lateInv = (await call('GET', '/api/billing/invoices', { token: lifeOwner })).data.items[0];
+  const settle = await call('POST', `/api/platform/invoices/${lateInv.id}/mark-paid`, { token: S.owner });
+  ok('اعتماد السداد من لوحة المالك', settle.status === 200 && settle.data.status === 'paid');
+  ok('السداد يعيد الاشتراك للعمل',
+    (await call('GET', '/api/billing', { token: lifeOwner })).data.subscription.status === 'active');
+  ok('الكتابة تعود بعد السداد',
+    (await call('POST', '/api/tasks', { token: lifeOwner, body: { title: 'مهمة بعد السداد' } })).status === 201);
+
+  ok('إلغاء فاتورة مسددة ممنوع',
+    (await call('POST', `/api/platform/invoices/${lateInv.id}/void`, { token: S.owner })).status === 400);
+  await call('PUT', '/api/platform/settings', { token: S.owner, body: { grace_days: 7 } });
+  await call('DELETE', `/api/platform/tenants/${LT}?confirm=${LC}`, { token: S.owner });
+
+  /* ── محو جهة بالكامل ── */
+  ok('المحو يتطلّب تأكيد الرمز',
+    (await call('DELETE', `/api/platform/tenants/${S.newTenantId}`, { token: S.owner })).status === 400);
+  const purge = await call('DELETE', `/api/platform/tenants/${S.newTenantId}?confirm=${CODE}`, { token: S.owner });
+  ok('محو الجهة ينجح بالتأكيد الصحيح', purge.status === 200 && purge.data.purged.users >= 1);
+  ok('المحو يشمل سجل تدقيق الجهة', purge.data.purged.audit_logs > 0);
+  ok('الجهة الممحوّة لم تعد موجودة',
+    (await call('GET', `/api/platform/tenants/${S.newTenantId}`, { token: S.owner })).status === 404);
+  ok('مستخدمو الجهة الممحوّة لم يعودوا يدخلون', (await login(MAIL, 'Verify@2026')).status === 401);
+  ok('أثر المحو محفوظ في سجل المنصة',
+    (await call('GET', '/api/platform/logs', { token: S.owner })).data.items
+      .some(l => l.action === 'delete' && l.entity === 'tenant'));
+  ok('لا يمكن محو الجهة رقم ١',
+    (await call('DELETE', '/api/platform/tenants/1?confirm=RQ', { token: S.owner })).status === 400);
+
+  /* ── سجل التدقيق يبقى مقفلاً بعد كل ذلك ── */
+  ok('سجل تدقيق الجهة الأولى ما زال محمياً',
+    (await call('GET', '/api/audit', { token: S.owner })).data.total > 0);
+
+  /* ── إعادة الطبقة إلى وضع المرحلة الأولى ── */
+  const off = await call('PUT', '/api/platform/settings', {
+    token: S.owner, body: { saas_enabled: false, signup_enabled: false } });
+  ok('إمكان إعادة المنصة لوضع المستأجر الواحد', off.data.saas_enabled === 0);
+  ok('التسجيل الذاتي يُغلق فوراً',
+    (await call('POST', '/api/public/signup', { body: { code: 'ZZ9', tenant_name: 'x', admin_name: 'y',
+      email: 'zz9@z.sa', password: 'Abcd@1234' } })).status === 403);
 });
 
 /* ═════════ التشغيل ═════════ */

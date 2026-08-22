@@ -30,7 +30,11 @@ const NAV = [
   { path: '/imports', label: 'استيراد البيانات', icon: '📥', view: 'imports', perm: ['imports.manage'] },
   { path: '/org', label: 'المستخدمون والفروع', icon: '🏢', view: 'org', perm: ['users.view', 'branches.view'] },
   { path: '/audit', label: 'سجل النشاطات', icon: '🛡️', view: 'audit', perm: ['audit.view'] },
-  { path: '/settings', label: 'الإعدادات', icon: '⚙️', view: 'settings' }
+  { path: '/billing', label: 'الاشتراك والفوترة', icon: '💳', view: 'billing', perm: ['billing.view'], saas: true },
+  { path: '/settings', label: 'الإعدادات', icon: '⚙️', view: 'settings' },
+
+  { group: 'المنصة' },
+  { path: '/platform', label: 'لوحة مالك المنصة', icon: '🛰️', view: 'platform', platformOnly: true }
 ];
 
 const BOTTOM = [
@@ -56,10 +60,23 @@ const VIEWS = {
   audit: () => import('./views/audit.js'),
   org: () => import('./views/org.js'),
   settings: () => import('./views/settings.js'),
-  notifications: () => import('./views/notifications.js')
+  notifications: () => import('./views/notifications.js'),
+  billing: () => import('./views/billing.js'),
+  platform: () => import('./views/platform.js')
 };
 
-const allowed = (item) => !item.perm || can(...item.perm);
+/* شاشات عامة لا تتطلّب تسجيل دخول (المرحلة الثانية) */
+const PUBLIC_VIEWS = {
+  '/pricing': () => import('./views/pricing.js'),
+  '/signup': () => import('./views/signup.js')
+};
+
+const allowed = (item) => {
+  if (item.platformOnly) return !!state.session?.platform?.is_platform_admin;
+  /* شاشة الاشتراك تظهر فقط عندما تكون طبقة الـ SaaS مفعّلة */
+  if (item.saas && !state.session?.platform?.saas_enabled) return false;
+  return !item.perm || can(...item.perm);
+};
 
 /* ═══════════════ التوجيه ═══════════════ */
 export function navigate(url, replace = false) {
@@ -303,6 +320,8 @@ async function refreshView() {
     content.scrollTop = 0;
     window.scrollTo(0, 0);
   } catch (e) {
+    /* الانتقال لشاشة أخرى أثناء التحميل يُلغي الطلب — ليس خطأً يُعرض */
+    if (e?.code === 'ABORTED' || route.path !== parseRoute().path) return;
     console.error(e);
     clear(content).append(el('div.empty', {}, [
       el('span.ic', { text: '⚠️' }), el('h4', { text: 'تعذّر تحميل الشاشة' }),
@@ -315,8 +334,18 @@ async function refreshView() {
 async function render() {
   const app = qs('#app');
   if (!state.session) {
+    const path = location.pathname.replace(/\/+$/, '') || '/';
+    const pub = PUBLIC_VIEWS[path];
+    if (pub) {
+      try {
+        const { render: view } = await pub();
+        clear(app).append(await view({ navigate, onSuccess: boot }));
+        app.hidden = false; hideBoot();
+        return;
+      } catch (e) { console.error(e); }
+    }
     const { render: loginView } = await import('./views/login.js');
-    clear(app).append(await loginView({ onSuccess: boot }));
+    clear(app).append(await loginView({ onSuccess: boot, navigate }));
     app.hidden = false;
     hideBoot();
     return;

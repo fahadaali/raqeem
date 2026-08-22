@@ -9,7 +9,8 @@ export async function buildContext(app, userId) {
   const user = await db.get(`
     SELECT u.*, r.key AS role_key, r.name AS role_name, r.level AS role_level,
            t.name AS tenant_name, t.code AS tenant_code, t.logo_url AS tenant_logo,
-           t.primary_color, t.accent_color, t.calendar_default, t.settings AS tenant_settings
+           t.primary_color, t.accent_color, t.calendar_default, t.settings AS tenant_settings,
+           t.status AS tenant_status, t.suspend_reason AS tenant_suspend_reason
     FROM users u
     JOIN roles r   ON r.id = u.role_id
     JOIN tenants t ON t.id = u.tenant_id
@@ -30,6 +31,8 @@ export async function buildContext(app, userId) {
   return {
     tenantId: user.tenant_id, tenantName: user.tenant_name, tenantCode: user.tenant_code,
     tenantLogo: user.tenant_logo,
+    tenantStatus: user.tenant_status, tenantSuspendReason: user.tenant_suspend_reason,
+    isPlatformAdmin: !!user.is_platform_admin,
     tenantColors: { primary: user.primary_color, accent: user.accent_color },
     tenantSettings: j(user.tenant_settings, {}) || {},
     userId: user.id, userName: user.name, email: user.email,

@@ -14,7 +14,18 @@ const DEMO = [
   ['المدقق', 'auditor@riyadh-qu.sa', 'Audit@123']
 ];
 
-export async function render({ onSuccess }) {
+export async function render({ onSuccess, navigate }) {
+  /* هوية النطاق وحالة طبقة الـ SaaS — تُقرأ من قاعدة البيانات لا من الكود */
+  const brand = await api.get('/api/public/brand', { silent: true }).catch(() => null);
+  const platform = await api.get('/api/public/platform', { silent: true }).catch(() => null);
+  const tenant = brand?.tenant || null;
+  const saas = !!brand?.platform?.saas_enabled;
+
+  if (tenant?.colors?.primary) {
+    document.documentElement.style.setProperty('--brand', tenant.colors.primary);
+    if (tenant.colors.accent) document.documentElement.style.setProperty('--gold', tenant.colors.accent);
+  }
+
   const email = input({ type: 'email', name: 'email', placeholder: 'name@riyadh-qu.sa', autocomplete: 'username', required: true, dir: 'ltr' });
   const pass = input({ type: 'password', name: 'password', placeholder: '••••••••', autocomplete: 'current-password', required: true });
   const btn = el('button.btn.lg.block', { type: 'submit', text: 'تسجيل الدخول' });
@@ -53,15 +64,24 @@ export async function render({ onSuccess }) {
   return el('div.login-wrap', {}, [
     el('div.login-card', {}, [
       el('div.login-brand', {}, [
-        el('img', { src: '/assets/icons/icon-192.png', alt: 'منصة نور' }),
-        el('h1', { text: 'منصة نور' }),
-        el('p', { text: 'الإدارة المتكاملة لمجمعات تحفيظ القرآن الكريم' })
+        el('img', { src: tenant?.logo_url || '/assets/icons/icon-192.png', alt: '' }),
+        el('h1', { text: tenant?.name || brand?.platform?.name || 'منصة نور' }),
+        el('p', { text: tenant
+          ? (brand?.platform?.tagline || 'الإدارة المتكاملة لمجمعات تحفيظ القرآن الكريم')
+          : (brand?.platform?.tagline || 'الإدارة المتكاملة لمجمعات تحفيظ القرآن الكريم') })
       ]),
       form,
-      el('div.login-demo', {}, [
+      saas ? el('div.row', { style: { justifyContent: 'center', gap: '10px', marginTop: '14px' } }, [
+        el('button.btn.sm.ghost', { type: 'button', text: 'عرض خطط الاشتراك',
+          onclick: () => navigate?.('/pricing') }),
+        platform?.signup_enabled
+          ? el('button.btn.sm', { type: 'button', text: 'إنشاء جهة جديدة',
+              onclick: () => navigate?.('/signup') }) : null
+      ]) : null,
+      !saas ? el('div.login-demo', {}, [
         el('h4', { text: 'حسابات تجريبية — اختر دوراً لتجربة صلاحياته' }),
         demoGrid
-      ])
+      ]) : null
     ])
   ]);
 }
