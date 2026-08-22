@@ -4,29 +4,42 @@
   "private": true,
   "description": "منصة نور — منصة الإدارة المتكاملة (ERP) لمجمعات تحفيظ القرآن الكريم. بنية متعددة المستأجرين جاهزة للتحول إلى SaaS.",
   "type": "module",
-  "main": "server/index.js",
-  "engines": { "node": ">=20" },
+  "main": "server/node/index.js",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-    "start": "node server/index.js",
-    "dev": "node --watch server/index.js",
-    "migrate": "node server/db/migrate.js",
-    "seed": "node server/db/seed.js",
-    "reset": "node server/db/reset.js",
+    "start": "node server/node/index.js",
+    "dev": "node --watch server/node/index.js",
+    "migrate": "node -e \"import('./server/node/container.js').then(async m=>{const a=m.createNodeContainer();const {migrate}=await import('./server/node/migrate.js');await migrate(a);console.log('✔ تم إنشاء/تحديث مخطط قاعدة البيانات');await a.db.close();})\"",
+    "seed": "node server/node/seed.js",
+    "reset": "node server/node/reset.js",
     "gen:vapid": "node scripts/gen-vapid.js",
     "gen:icons": "node scripts/gen-icons.js",
     "backup": "node scripts/backup.js",
-    "smoke": "node scripts/smoke-test.js",
-    "setup": "npm run migrate && npm run seed && npm run gen:icons"
+    "setup": "npm run migrate && npm run seed && npm run gen:icons",
+    "verify": "node scripts/verify.js",
+    "cf:dev": "wrangler dev",
+    "cf:deploy": "npm run cf:build && wrangler deploy",
+    "cf:migrate": "wrangler d1 migrations apply noor-db --remote",
+    "cf:migrate:local": "wrangler d1 migrations apply noor-db --local",
+    "cf:tail": "wrangler tail",
+    "cf:build:migrations": "node scripts/build-migrations.js",
+    "cf:bootstrap": "node scripts/cf-bootstrap.js",
+    "cf:secrets": "node scripts/cf-secrets.js",
+    "cf:build:headers": "node scripts/build-headers.js",
+    "cf:build": "npm run cf:build:migrations && npm run cf:build:headers",
+    "verify:realtime": "node scripts/verify-realtime.js",
+    "verify:all": "npm run verify && npm run verify:realtime"
   },
   "dependencies": {
+    "@hono/node-server": "^1.13.0",
     "bcryptjs": "^3.0.2",
     "better-sqlite3": "^12.4.1",
-    "compression": "^1.8.1",
-    "cookie-parser": "^1.4.7",
-    "express": "^4.21.2",
-    "jsonwebtoken": "^9.0.2",
-    "multer": "^2.0.2",
-    "web-push": "^3.6.7",
+    "hono": "^4.6.0",
     "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
   }
 }

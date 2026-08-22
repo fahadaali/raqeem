@@ -321,13 +321,27 @@ export async function chatBox(contextType, contextId) {
       el('span.ic', { text: '💬' }), el('h4', { text: 'لا توجد رسائل بعد' }), el('p', { text: 'ابدأ المحادثة مع فريق العمل.' })]));
     for (const m of data.messages) list.append(bubble(m));
     setTimeout(() => { list.scrollTop = list.scrollHeight; }, 30);
+    const seen = new Set(data.messages.map(m => m.id));
     const onMsg = (e) => {
       if (e.detail?.message && e.detail.conversationId === data.conversation.id) {
+        seen.add(e.detail.message.id);
         list.append(bubble({ ...e.detail.message, mine: false }));
         list.scrollTop = list.scrollHeight;
       }
     };
     window.addEventListener('noor:chat', onMsg);
+
+    /* في وضع الاستطلاع الدوري (بلا قناة دائمة) نجلب الجديد بأنفسنا */
+    const onPoll = async () => {
+      if (!box.isConnected) return window.removeEventListener('noor:poll', onPoll);
+      try {
+        const fresh = await api.get(`/api/comms/conversations/${contextType}/${contextId}/messages`, { silent: true });
+        let added = false;
+        for (const m of fresh.messages) if (!seen.has(m.id)) { seen.add(m.id); list.append(bubble(m)); added = true; }
+        if (added) list.scrollTop = list.scrollHeight;
+      } catch { /* دون اتصال */ }
+    };
+    window.addEventListener('noor:poll', onPoll);
   } catch (e) {
     clear(list).append(el('div.empty', { style: { padding: '22px' } }, [el('p', { text: e.message })]));
     box.querySelector('.chat-input')?.remove();

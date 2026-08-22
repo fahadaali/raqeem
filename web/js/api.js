@@ -108,6 +108,15 @@ export const api = {
     const { download } = await import('./util.js');
     download(blob, name);
   },
+  /** تنزيل ملف عبر GET (مع ترويسة المصادقة) */
+  async downloadGet(url, filename) {
+    const { blob, res } = await request('GET', url, { raw: true });
+    const disp = res.headers.get('content-disposition') || '';
+    const m = disp.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/);
+    const name = filename || (m ? decodeURIComponent(m[1]) : 'noor-file');
+    const { download } = await import('./util.js');
+    download(blob, name);
+  },
   /** فتح مستند طباعة رسمي في تبويب جديد */
   async openPrint(url, body) {
     const { blob } = await request('POST', url, { body, raw: true });

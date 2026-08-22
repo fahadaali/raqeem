@@ -1,0 +1,6 @@
+# انسخه إلى .dev.vars لتشغيل  npm run cf:dev  محلياً
+JWT_SECRET=سلسلة-عشوائية-طويلة
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+BOOTSTRAP_TOKEN=رمز-سرّي-لتهيئة-قاعدة-البيانات
+NODE_ENV=development

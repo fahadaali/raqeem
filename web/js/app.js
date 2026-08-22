@@ -370,6 +370,9 @@ rt.on('notification', ({ notification }) => {
 rt.on('chat.message', (m) => window.dispatchEvent(new CustomEvent('noor:chat', { detail: m })));
 rt.on('task.updated', (m) => window.dispatchEvent(new CustomEvent('noor:task', { detail: m })));
 
+/* وضع التراجع: إن تعذّرت القناة الدائمة تُحدَّث البيانات بالاستطلاع الدوري */
+rt.on('poll', () => { loadNotifications(); window.dispatchEvent(new CustomEvent('noor:poll')); });
+
 window.addEventListener('popstate', () => refreshView());
 window.addEventListener('noor:signout', async () => { clearSession(); rt.disconnect(); clear(qs('#app')); await render(); });
 window.addEventListener('noor:navigate', (e) => navigate(e.detail));

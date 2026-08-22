@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
-import { ROOT } from '../server/config.js';
+import { ROOT } from '../server/node/env.js';
 
 const OUT = path.join(ROOT, 'web/assets/icons');
 fs.mkdirSync(OUT, { recursive: true });

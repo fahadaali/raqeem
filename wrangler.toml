@@ -1,0 +1,103 @@
+# ════════════════════════════════════════════════════════════════════════
+#  منصة نور — إعداد النشر على Cloudflare
+#  كل المزوّدات على كلاود فلير:
+#    • الاستضافة والتشغيل : Cloudflare Workers + Static Assets
+#    • قاعدة البيانات      : Cloudflare D1
+#    • تخزين الملفات       : Cloudflare R2
+#    • البثّ اللحظي        : Durable Objects
+#    • الوظائف المجدولة    : Cron Triggers
+#    • المعالجة الخلفية    : Cloudflare Queues (اختياري — خطة مدفوعة)
+#  راجع docs/CLOUDFLARE.md لخطوات النشر بالتفصيل.
+# ════════════════════════════════════════════════════════════════════════
+
+name = "noor-erp"
+main = "server/worker/index.js"
+compatibility_date = "2025-05-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+# ─── واجهة المستخدم (ملفات ثابتة تُقدَّم من حافة الشبكة) ───
+[assets]
+directory = "./web"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*", "/ws", "/__bootstrap"]
+
+# ─── قاعدة البيانات D1 ───
+# أنشئها بـ:  npx wrangler d1 create noor-db     ثم ضع المعرّف هنا
+[[d1_databases]]
+binding = "DB"
+database_name = "noor-db"
+database_id = "00000000-0000-0000-0000-000000000000"   # ← استبدله بمعرّف قاعدتك بعد إنشائها
+migrations_dir = "migrations"
+
+# ─── تخزين الملفات R2 (الفواتير والمرفقات — البند ٦) ───
+# أنشئه بـ:  npx wrangler r2 bucket create noor-files
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "noor-files"
+
+# ─── البثّ اللحظي: كائن دائم واحد لكل جهة تعليمية (البند ٨) ───
+[[durable_objects.bindings]]
+name = "HUB"
+class_name = "RealtimeHub"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RealtimeHub"]
+
+# ─── الوظائف الدورية (البنود ٧ و٨ و١٢) ───
+[triggers]
+crons = [
+  "*/5 * * * *",    # تصريف طابور المعالجة الخلفية
+  "*/15 * * * *",   # تصعيد تذاكر الدعم المتجاوزة لمستوى الخدمة
+  "0 * * * *",      # إعادة احتساب مؤشرات الأداء
+  "0 3 * * *",      # تذكير المهام المستحقة (٦ صباحاً بتوقيت الرياض)
+  "0 2 * * *"       # النسخ الاحتياطي اليومي إلى R2 (٥ صباحاً بتوقيت الرياض)
+]
+
+# ─── تحميل ملف المخطط كنص داخل الحزمة ───
+[[rules]]
+type = "Text"
+globs = ["**/*.sql"]
+fallthrough = true
+
+# ─── الإعدادات غير السرّية ───
+[vars]
+NODE_ENV = "production"
+APP_URL = ""
+VAPID_SUBJECT = "mailto:admin@riyadh-qu.sa"
+GEOFENCE_DEFAULT_RADIUS = "50"
+UPLOAD_MAX_MB = "15"
+RATE_LIMIT_MAX = "300"
+PUBLIC_API_RATE_LIMIT_MAX = "120"
+LOGIN_IP_MAX = "120"
+LOGIN_ACCOUNT_MAX = "8"
+BACKUP_ENABLED = "true"         # نسخة SQL يومية إلى R2 (إضافةً إلى Time Travel المدمج في D1)
+BACKUP_KEEP = "14"
+
+# ─── الأسرار (لا تُكتب هنا) ───
+#   npx wrangler secret put JWT_SECRET
+#   npx wrangler secret put VAPID_PUBLIC_KEY
+#   npx wrangler secret put VAPID_PRIVATE_KEY
+#   npx wrangler secret put BOOTSTRAP_TOKEN
+
+# ─── الطابور (اختياري — يتطلّب خطة Workers Paid) ───
+# لتفعيله: أزل التعليق، ثم:  npx wrangler queues create noor-jobs
+# [[queues.producers]]
+# binding = "JOBS"
+# queue = "noor-jobs"
+#
+# [[queues.consumers]]
+# queue = "noor-jobs"
+# max_batch_size = 10
+# max_batch_timeout = 5
+# max_retries = 3
+
+[observability]
+enabled = true
+
+# ─── بيئة التجربة ───
+[env.staging]
+name = "noor-erp-staging"
+vars = { NODE_ENV = "staging", VAPID_SUBJECT = "mailto:admin@riyadh-qu.sa" }

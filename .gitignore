@@ -11,3 +11,5 @@ storage/tenants/
 npm-debug.log*
 !data/.gitkeep
 !storage/.gitkeep
+.dev.vars
+.wrangler/

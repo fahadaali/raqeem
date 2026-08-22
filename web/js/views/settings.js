@@ -14,6 +14,7 @@ export async function render({ navigate }) {
     { label: '📱 التطبيق', build: appTab }
   ];
   if (can('settings.manage')) items.push({ label: '🏛 هوية الجهة', build: tenantTab });
+  if (can('settings.manage')) items.push({ label: '💾 النسخ الاحتياطي', build: backupTab });
   if (can('api.keys.manage')) items.push({ label: '🔗 مفاتيح الربط', build: apiTab });
   const t = tabs(items, (it) => { const n = el('div'); Promise.resolve(it.build(navigate)).then(x => n.replaceChildren(x)); return n; });
   return t.node;
@@ -252,6 +253,49 @@ async function tenantTab() {
         ]);
       })()
     ]) : null
+  ]);
+}
+
+/* ═══════════ النسخ الاحتياطي (البند ١٠) ═══════════ */
+async function backupTab() {
+  const body = el('div');
+
+  const load = async () => {
+    clear(body).append(skeleton(3));
+    const data = await api.get('/api/org/backups');
+    const rows = data.items || [];
+    clear(body).append(
+      el('div.row.wrap', { style: { gap: '10px', marginBottom: '14px' } }, [
+        chip(`التخزين: ${data.driver === 'r2' ? 'Cloudflare R2' : 'قرص محلي'}`, 'ok'),
+        chip(data.automatic ? 'النسخ اليومي التلقائي مفعّل' : 'النسخ التلقائي معطّل', data.automatic ? 'ok' : 'warn'),
+        chip(`يُحتفظ بآخر ${AR_NUM(data.keep || 0)} نسخة`)
+      ]),
+      card('النسخ المحفوظة', rows.length ? table([
+        { header: 'الملف', key: 'name', render: r => el('code', { text: r.name, style: { direction: 'ltr', fontSize: '11px' } }) },
+        { header: 'التاريخ', key: 'created_at', render: r => (r.created_at ? fmtDateTime(r.created_at) : '—') },
+        { header: '', key: 'a', render: r => el('button.btn.sm.ghost', {
+            text: '⬇ تنزيل',
+            onclick: () => api.downloadGet(`/api/org/backups/${encodeURIComponent(r.name)}/download`, r.name)
+          }) }
+      ], rows) : empty('لا توجد نسخ بعد', 'أنشئ نسخة يدوية أو انتظر النسخ التلقائي اليومي.', '💾')),
+      el('p.hint', { text: 'تُخزَّن كل نسخة داخل مجلّد الجهة المعزول، وهي ملف SQL مضغوط يمكن استعادته مباشرةً على قاعدة البيانات.' })
+    );
+  };
+
+  load();
+  return el('div', {}, [
+    el('div.row', { style: { justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' } }, [
+      el('h3', { text: '💾 النسخ الاحتياطي' }),
+      el('button.btn.gold', { text: '＋ إنشاء نسخة الآن', onclick: async (e) => {
+        e.target.disabled = true;
+        try {
+          const r = await api.post('/api/org/backups', {});
+          toast(`تم حفظ نسخة تضم ${AR_NUM(r.rows)} سجل من ${AR_NUM(r.tables)} جدول`, 'ok');
+          await load();
+        } finally { e.target.disabled = false; }
+      } })
+    ]),
+    body
   ]);
 }
 
