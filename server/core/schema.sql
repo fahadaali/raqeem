@@ -1030,3 +1030,36 @@ CREATE TABLE IF NOT EXISTS coupon_redemptions (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE INDEX IF NOT EXISTS ix_coupon_red ON coupon_redemptions(coupon_id, tenant_id);
+
+-- ─────────────── ٢٥. هويّة مالكي المنصة (منفصلة عن المستأجرين) ───────────────
+-- جدول مستقل بلا tenant_id: فاستحالة ظهور مالك المنصة في قوائم مستخدمي مجمّع،
+-- أو حذفه تِبعاً لحذف مجمّع، تصير خاصيةً بنيويةً لا اتفاقاً يُنسى.
+-- أسماء أعمدة totp_* تطابق users عمداً كي تعمل عليها دوال security.js نفسها.
+CREATE TABLE IF NOT EXISTS platform_admins (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  name          TEXT NOT NULL,
+  email         TEXT NOT NULL,
+  password_hash TEXT NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'active',   -- active | suspended
+  totp_secret   TEXT,
+  totp_enabled  INTEGER NOT NULL DEFAULT 0,
+  totp_backup   TEXT,
+  last_login_at TEXT,
+  created_by    INTEGER REFERENCES platform_admins(id),
+  created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_platform_admins_email ON platform_admins(lower(email));
+
+-- جلسات الادمن مستقلة: refresh_tokens لا تصلح لأن tenant_id فيها NOT NULL
+-- و user_id مربوط بـ users ON DELETE CASCADE.
+CREATE TABLE IF NOT EXISTS admin_sessions (
+  id         TEXT PRIMARY KEY,
+  admin_id   INTEGER NOT NULL REFERENCES platform_admins(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL,
+  user_agent TEXT,
+  ip         TEXT,
+  revoked    INTEGER NOT NULL DEFAULT 0,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS ix_admin_sessions ON admin_sessions(admin_id, revoked);

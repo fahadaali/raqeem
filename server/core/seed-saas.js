@@ -1,3 +1,4 @@
+import { hashPassword } from './crypto.js';
 import { nowUTC } from './sql.js';
 import { platformSettings, startSubscription } from './billing.js';
 
@@ -79,9 +80,19 @@ export async function seedSaaS(app, { tenantOneOwnerEmail = 'admin@riyadh-qu.sa'
     }),
     settings.vat_number || '300000000000003', settings.cr_number || '1010000000', nowUTC());
 
-  /* ── الجهة رقم ١: مديرها هو مالك المنصة في هذه المرحلة ── */
-  const owner = await db.get('SELECT id, tenant_id FROM users WHERE lower(email)=lower(?)', tenantOneOwnerEmail);
-  if (owner) await db.run('UPDATE users SET is_platform_admin=1 WHERE id=?', owner.id);
+  /*
+   * ── حساب الادمن الأول ──
+   * حساب مستقل لا ينتمي لأي مجمّع: بريده admin@<نطاق المنصة> لا بريد مدير مجمّع،
+   * فيبقى الفصل بين الطبقتين قائماً منذ أول تشغيل.
+   */
+  const adminEmail = 'admin@raqeem.sa';
+  const existingAdmin = await db.get(
+    'SELECT id FROM platform_admins WHERE lower(email)=lower(?)', adminEmail);
+  if (!existingAdmin) {
+    await db.run(
+      `INSERT INTO platform_admins(name,email,password_hash,status) VALUES(?,?,?,'active')`,
+      'مدير المنصة', adminEmail, await hashPassword('Admin@123'));
+  }
 
   /* ── الجهة رقم ١ على الخطة المؤسسية بلا حدود ولا فوترة ── */
   const t1 = await db.get('SELECT id FROM tenants WHERE id=1');
@@ -98,7 +109,8 @@ export async function seedSaaS(app, { tenantOneOwnerEmail = 'admin@riyadh-qu.sa'
 
   return {
     plans: DEFAULT_PLANS.length,
-    platform_admin: owner?.id || null,
+    platform_admin: (await db.get(
+      'SELECT id FROM platform_admins ORDER BY id LIMIT 1'))?.id || null,
     saas_enabled: !!(await platformSettings(app)).saas_enabled
   };
 }

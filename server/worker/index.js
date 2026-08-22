@@ -163,6 +163,7 @@ f.addEventListener('submit',async(e)=>{
   if(r.ok){
    show('ok','<b>تمّت التهيئة.</b><ol>'
     +'<li>افتح <code>/</code> وادخل بـ <code>admin@riyadh-qu.sa</code> / <code>Admin@123</code></li>'
+    +'<li>لوحة المنصة على <code>/admin</code> بحساب مستقل: <code>admin@raqeem.sa</code> / <code>Admin@123</code></li>'
     +'<li>غيّر كل كلمات المرور الافتراضية فوراً</li>'
     +'<li>احذف السرّ <code>BOOTSTRAP_TOKEN</code> من إعدادات العامل</li></ol>');
    b.textContent='تمّت التهيئة ✔';

@@ -1,10 +1,10 @@
-import api from '../api.js';
-import { state, saveTokens } from '../state.js';
+import api from '../../admin-api.js';
+import { admin } from '../../admin-state.js';
 import {
   el, clear, card, chip, stat, table, toast, modal, field, input, select, textarea, tabs,
   AR_NUM, money, empty, skeleton, confirmDialog, timeAgo, progressBar
-} from '../util.js';
-import { fmtDate, fmtDateTime } from '../hijri.js';
+} from '../../util.js';
+import { fmtDate, fmtDateTime } from '../../hijri.js';
 
 /**
  * لوحة تحكم مالك المنصة (SaaS Owner Console) — المرحلة الثانية.
@@ -15,39 +15,9 @@ const SUB_KIND = { active: 'ok', trialing: 'info', past_due: 'warn', canceled: '
 const INV_KIND = { paid: 'ok', open: 'warn', void: '', uncollectible: 'danger' };
 const gb = (mb) => (mb >= 1024 ? `${AR_NUM(Math.round(mb / 1024 * 10) / 10)} جيجا` : `${AR_NUM(mb)} ميجا`);
 
-export async function render({ navigate }) {
-  if (!state.session?.platform?.is_platform_admin) {
-    return empty('🔒', 'هذه اللوحة مخصّصة لمالك المنصة', 'راجع إدارة المنصة إن كنت تحتاج الوصول.');
-  }
-
-  const t = tabs([
-    { label: '📊 نظرة عامة', build: overviewTab },
-    { label: '📈 النمو', build: growthTab },
-    { label: '❤️ صحة الجهات', build: healthTab },
-    { label: '🏛 الجهات', build: tenantsTab },
-    { label: '💠 الخطط', build: plansTab },
-    { label: '🎟 الكوبونات', build: couponsTab },
-    { label: '🧾 الفواتير', build: invoicesTab },
-    { label: '📝 طلبات التسجيل', build: signupsTab },
-    { label: '📣 الإعلانات', build: announceTab },
-    { label: '🎧 صندوق الدعم', build: supportTab },
-    { label: '🔒 الأمن', build: securityTab },
-    { label: '⚡ التشغيل', build: opsTab },
-    { label: '⚙️ إعدادات المنصة', build: settingsTab },
-    { label: '🛡️ سجل المنصة', build: logsTab }
-  ], (item) => {
-    const n = el('div');
-    n.append(skeleton(5));
-    Promise.resolve(item.build()).then(x => n.replaceChildren(x))
-      .catch(e => n.replaceChildren(empty('⚠️', 'تعذّر التحميل', e.message)));
-    return n;
-  });
-  return t.node;
-}
-
 /* ═══════════ نظرة عامة ═══════════ */
-async function overviewTab() {
-  const d = await api.get('/api/platform/overview');
+export async function overviewTab() {
+  const d = await api.get('/api/admin/overview');
   const cur = d.platform.currency;
 
   const a = d.alerts || {};
@@ -98,14 +68,14 @@ async function overviewTab() {
 }
 
 /* ═══════════ الجهات ═══════════ */
-async function tenantsTab() {
+export async function tenantsTab() {
   const body = el('div');
   const search = input({ placeholder: 'ابحث بالاسم أو الرمز أو البريد…' });
 
   const load = async () => {
     clear(body).append(skeleton(4));
     const q = search.value.trim() ? `?q=${encodeURIComponent(search.value.trim())}` : '';
-    const d = await api.get(`/api/platform/tenants${q}`);
+    const d = await api.get(`/api/admin/tenants${q}`);
     clear(body).append(d.items.length ? table([
       { header: 'الجهة', key: 'name', render: r => el('div', {}, [
         el('b', { text: r.name }),
@@ -136,7 +106,7 @@ async function tenantsTab() {
 }
 
 async function tenantDialog(id, reload) {
-  const d = await api.get(`/api/platform/tenants/${id}`);
+  const d = await api.get(`/api/admin/tenants/${id}`);
   const t = d.tenant;
   const box = el('div.stack');
 
@@ -180,7 +150,7 @@ async function tenantDialog(id, reload) {
       el('button.btn', { text: '💾 حفظ', onclick: async (e) => {
         e.target.disabled = true;
         try {
-          await api.patch(`/api/platform/tenants/${id}`, {
+          await api.patch(`/api/admin/tenants/${id}`, {
             name: name.value.trim(), custom_domain: domain.value.trim() || null,
             primary_color: primary.value, accent_color: accent.value
           });
@@ -191,7 +161,7 @@ async function tenantDialog(id, reload) {
     card('الاشتراك', el('div.stack', {}, [
       el('button.btn.ghost', { text: '⭑ تغيير الخطة', onclick: () => changePlanDialog(id, d, async () => { m.close(); await reload(); }) }),
       el('button.btn.ghost', { text: '🧾 إصدار فاتورة', onclick: async () => {
-        try { const inv = await api.post('/api/platform/invoices', { tenant_id: id });
+        try { const inv = await api.post('/api/admin/invoices', { tenant_id: id });
           toast(`صدرت الفاتورة ${inv.number}`, 'ok'); m.close(); await reload();
         } catch (err) { toast(err.message, 'warn'); }
       } })
@@ -200,7 +170,7 @@ async function tenantDialog(id, reload) {
       { header: 'الرقم', key: 'number', render: r => el('code', { text: r.number, style: { direction: 'ltr', fontSize: '11px' } }) },
       { header: 'الإجمالي', key: 'total', num: true, render: r => money(r.total) },
       { header: 'الحالة', key: 'status', render: r => chip(r.status_label, INV_KIND[r.status]) },
-      { header: 'التاريخ', key: 'issued_at', render: r => fmtDate(r.issued_at, state.calendar) }
+      { header: 'التاريخ', key: 'issued_at', render: r => fmtDate(r.issued_at, 'gregorian') }
     ], d.invoices) : empty('🧾', 'لا فواتير', '')),
     /* صحة الجهة */
     d.health ? card('مؤشّر الصحة', el('div.stack', {}, [
@@ -253,7 +223,7 @@ async function tenantDialog(id, reload) {
         el('button.btn.sm', { text: '💾 حفظ المتابعة', onclick: async (e) => {
           e.target.disabled = true;
           try {
-            await api.put(`/api/platform/tenants/${id}/crm`, {
+            await api.put(`/api/admin/tenants/${id}/crm`, {
               contact_name: cName.value.trim(), contact_phone: cPhone.value.trim(),
               crm_stage: stage.value || null, crm_source: source.value.trim() });
             toast('حُفظت بيانات المتابعة', 'ok');
@@ -266,9 +236,9 @@ async function tenantDialog(id, reload) {
           el('div', { style: { flex: 1 } }, [noteInput]),
           el('button.btn.sm', { text: '＋ إضافة', onclick: async () => {
             if (!noteInput.value.trim()) return;
-            await api.post(`/api/platform/tenants/${id}/notes`, { body: noteInput.value.trim() });
+            await api.post(`/api/admin/tenants/${id}/notes`, { body: noteInput.value.trim() });
             noteInput.value = '';
-            drawNotes(await api.get(`/api/platform/tenants/${id}/notes`));
+            drawNotes(await api.get(`/api/admin/tenants/${id}/notes`));
           } })
         ])
       ]);
@@ -279,27 +249,31 @@ async function tenantDialog(id, reload) {
         if (!await confirmDialog('ستدخل بحساب مدير هذه الجهة للمساندة الفنية، وسيُسجَّل ذلك في سجلّي المنصة والجهة.',
           { confirmText: 'دخول إداري' })) return;
         try {
-          const r = await api.post(`/api/platform/tenants/${id}/impersonate`, {});
-          /* جلسة مساندة قصيرة بلا رمز تجديد — تنتهي بانتهاء الرمز */
-          saveTokens(r.accessToken, null);
-          toast(`دخول إداري إلى ${r.tenant.name}`, 'ok');
-          location.href = '/';
+          const r = await api.post(`/api/admin/tenants/${id}/impersonate`, {});
+          /*
+           * جلسة مساندة قصيرة بلا رمز تجديد. تُسلَّم عبر تبويب جديد بمعامل عابر
+           * لا بكتابة رمز المجمّع من هنا: فلوحة المنصة لا تلمس تخزين جلسة
+           * المجمّع أصلاً، وتبقى جلسة الادمن قائمة في تبويبها.
+           */
+          toast(`فتح جلسة مساندة في ${r.tenant.name}`, 'ok');
+          const w = window.open(`/?impersonate=${encodeURIComponent(r.accessToken)}`, '_blank');
+          if (!w) toast('يرجى السماح بالنوافذ المنبثقة لفتح جلسة المساندة', 'warn');
         } catch (err) { toast(err.message, 'warn'); }
       } }),
       t.status === 'active'
         ? el('button.btn.ghost', { text: '⏸ إيقاف الجهة', onclick: async () => {
             const reason = prompt('سبب الإيقاف:', 'عدم سداد الاشتراك');
             if (reason === null) return;
-            try { await api.patch(`/api/platform/tenants/${id}`, { status: 'suspended', suspend_reason: reason });
+            try { await api.patch(`/api/admin/tenants/${id}`, { status: 'suspended', suspend_reason: reason });
               toast('أُوقفت الجهة', 'ok'); m.close(); await reload();
             } catch (err) { toast(err.message, 'warn'); }
           } })
         : el('button.btn', { text: '▶ إعادة التفعيل', onclick: async () => {
-            await api.patch(`/api/platform/tenants/${id}`, { status: 'active' });
+            await api.patch(`/api/admin/tenants/${id}`, { status: 'active' });
             toast('أُعيد تفعيل الجهة', 'ok'); m.close(); await reload();
           } }),
       el('button.btn.ghost', { text: '⬇ تصدير بيانات الجهة', onclick: async () => {
-        try { await api.downloadGet(`/api/platform/tenants/${id}/export`, `${t.code}-export.sql.gz`);
+        try { await api.downloadGet(`/api/admin/tenants/${id}/export`, `${t.code}-export.sql.gz`);
           toast('نُزّل التصدير الكامل', 'ok'); } catch (e) { toast(e.message, 'warn'); }
       } }),
       el('button.btn.danger', { text: '🗑 محو الجهة نهائياً', onclick: async () => {
@@ -309,7 +283,7 @@ async function tenantDialog(id, reload) {
         const typed = prompt(`للتأكيد اكتب رمز الجهة: ${t.code}`);
         if (typed !== t.code) return void toast('لم يتطابق الرمز — أُلغيت العملية', 'warn');
         try {
-          const r = await api.del(`/api/platform/tenants/${id}?confirm=${encodeURIComponent(t.code)}`);
+          const r = await api.del(`/api/admin/tenants/${id}?confirm=${encodeURIComponent(t.code)}`);
           toast(`مُحيت الجهة (${AR_NUM(r.purged.users)} مستخدم، ${AR_NUM(r.purged.audit_logs)} سجل)`, 'ok');
           m.close(); await reload();
         } catch (err) { toast(err.message, 'warn'); }
@@ -322,7 +296,7 @@ async function tenantDialog(id, reload) {
 }
 
 async function changePlanDialog(tenantId, detail, done) {
-  const plans = await api.get('/api/platform/plans');
+  const plans = await api.get('/api/admin/plans');
   const planSel = select(plans.map(p => ({ value: p.code, label: p.name })), { value: detail.subscription?.plan?.code });
   const cycleSel = select([{ value: 'monthly', label: 'شهري' }, { value: 'yearly', label: 'سنوي' }],
     { value: detail.subscription?.cycle || 'monthly' });
@@ -342,7 +316,7 @@ async function changePlanDialog(tenantId, detail, done) {
     footer: el('button.btn.gold', { text: 'تطبيق', onclick: async (e) => {
       e.target.disabled = true;
       try {
-        await api.post(`/api/platform/tenants/${tenantId}/plan`, {
+        await api.post(`/api/admin/tenants/${tenantId}/plan`, {
           plan_code: planSel.value, cycle: cycleSel.value, status: statusSel.value,
           trial_days: Number(trialDays.value)
         });
@@ -359,7 +333,7 @@ function newTenantDialog(reload) {
   const email = input({ type: 'email', dir: 'ltr' });
   const password = input({ type: 'password', placeholder: 'اتركه فارغاً لتوليد كلمة مرور' });
   const planSel = el('select.input');
-  api.get('/api/platform/plans').then(plans => {
+  api.get('/api/admin/plans').then(plans => {
     planSel.replaceChildren(el('option', { value: '', text: 'بلا اشتراك' }),
       ...plans.map(p => el('option', { value: p.code, text: p.name })));
   });
@@ -377,7 +351,7 @@ function newTenantDialog(reload) {
     footer: el('button.btn.gold', { text: 'إنشاء', onclick: async (e) => {
       e.target.disabled = true;
       try {
-        const r = await api.post('/api/platform/tenants', {
+        const r = await api.post('/api/admin/tenants', {
           code: code.value.trim(), name: name.value.trim(), admin_name: adminName.value.trim(),
           email: email.value.trim(), password: password.value || undefined,
           plan_code: planSel.value || null
@@ -399,11 +373,11 @@ function newTenantDialog(reload) {
 }
 
 /* ═══════════ الخطط ═══════════ */
-async function plansTab() {
+export async function plansTab() {
   const body = el('div');
   const load = async () => {
     clear(body).append(skeleton(4));
-    const plans = await api.get('/api/platform/plans');
+    const plans = await api.get('/api/admin/plans');
     clear(body).append(table([
       { header: 'الخطة', key: 'name', render: r => el('div', {}, [
         el('b', { text: r.name }), el('div.hint', { text: r.code, style: { direction: 'ltr' } })]) },
@@ -420,7 +394,7 @@ async function plansTab() {
         el('button.btn.sm.ghost', { text: 'تحرير', onclick: () => planDialog(r, load) }),
         !r.subscribers ? el('button.btn.sm.ghost', { text: '🗑', onclick: async () => {
           if (!await confirmDialog(`حذف خطة «${r.name}»؟`, { danger: true, confirmText: 'حذف' })) return;
-          try { await api.del(`/api/platform/plans/${r.id}`); toast('حُذفت الخطة', 'ok'); await load(); }
+          try { await api.del(`/api/admin/plans/${r.id}`); toast('حُذفت الخطة', 'ok'); await load(); }
           catch (e) { toast(e.message, 'warn'); }
         } }) : null
       ]) }
@@ -482,8 +456,8 @@ function planDialog(plan, reload) {
         is_public: isPublic.checked, is_active: isActive.checked, highlight: highlight.checked
       };
       try {
-        if (plan) await api.patch(`/api/platform/plans/${plan.id}`, payload);
-        else await api.post('/api/platform/plans', payload);
+        if (plan) await api.patch(`/api/admin/plans/${plan.id}`, payload);
+        else await api.post('/api/admin/plans', payload);
         toast('حُفظت الخطة', 'ok'); m.close(); await reload();
       } catch (err) { toast(err.message, 'warn'); e.target.disabled = false; }
     } })
@@ -494,13 +468,13 @@ function planDialog(plan, reload) {
 /* ═══════════ الكوبونات والخصومات (المستوى ٤) ═══════════ */
 const COUPON_DURATION = { once: 'مرة واحدة', months: 'عدة شهور', forever: 'دائم' };
 
-async function couponsTab() {
+export async function couponsTab() {
   const body = el('div');
   const load = async () => {
     clear(body).append(skeleton(4));
     const [rows, plans] = await Promise.all([
-      api.get('/api/platform/coupons'),
-      api.get('/api/platform/plans').catch(() => [])
+      api.get('/api/admin/coupons'),
+      api.get('/api/admin/plans').catch(() => [])
     ]);
     const granted = rows.reduce((s, c) => s + Number(c.total_discount || 0), 0);
     const live = rows.filter(c => c.is_active).length;
@@ -527,19 +501,19 @@ async function couponsTab() {
         { header: 'الاستخدام', key: 'uses', num: true, render: r =>
           `${AR_NUM(r.uses)}${r.max_redemptions ? ` / ${AR_NUM(r.max_redemptions)}` : ''}` },
         { header: 'الخصم الممنوح', key: 'total_discount', num: true, render: r => money(r.total_discount || 0) },
-        { header: 'ينتهي', key: 'valid_until', render: r => (r.valid_until ? fmtDate(r.valid_until, state.calendar) : '—') },
+        { header: 'ينتهي', key: 'valid_until', render: r => (r.valid_until ? fmtDate(r.valid_until, 'gregorian') : '—') },
         { header: 'الحالة', key: 'is_active', render: r => chip(r.is_active ? 'مفعّل' : 'معطّل', r.is_active ? 'ok' : '') },
         { header: '', key: 'a', render: r => el('div.row', { style: { gap: '4px' } }, [
           el('button.btn.sm.ghost', { text: r.is_active ? 'تعطيل' : 'تفعيل', onclick: async () => {
             try {
-              await api.patch(`/api/platform/coupons/${r.id}`, { is_active: !r.is_active });
+              await api.patch(`/api/admin/coupons/${r.id}`, { is_active: !r.is_active });
               toast(r.is_active ? 'عُطّل الكوبون' : 'فُعّل الكوبون', 'ok'); await load();
             } catch (e) { toast(e.message, 'warn'); }
           } }),
           el('button.btn.sm.ghost', { text: 'تحرير', onclick: () => couponDialog(r, plans, load) }),
           !r.uses ? el('button.btn.sm.ghost', { text: '🗑', onclick: async () => {
             if (!await confirmDialog(`حذف كوبون «${r.code}»؟`, { danger: true, confirmText: 'حذف' })) return;
-            try { await api.del(`/api/platform/coupons/${r.id}`); toast('حُذف الكوبون', 'ok'); await load(); }
+            try { await api.del(`/api/admin/coupons/${r.id}`); toast('حُذف الكوبون', 'ok'); await load(); }
             catch (e) { toast(e.message, 'warn'); }
           } }) : null
         ]) }
@@ -551,7 +525,7 @@ async function couponsTab() {
     el('div.row', { style: { justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' } }, [
       el('h3', { text: 'الكوبونات والخصومات', style: { margin: 0 } }),
       el('button.btn.gold', { text: '＋ كوبون جديد', onclick: async () =>
-        couponDialog(null, await api.get('/api/platform/plans').catch(() => []), load) })
+        couponDialog(null, await api.get('/api/admin/plans').catch(() => []), load) })
     ]),
     el('div.hint', { style: { marginBottom: '10px' },
       text: 'الخصم يُطبَّق على المبلغ قبل ضريبة القيمة المضافة، والضريبة تُحسب على الصافي.' }),
@@ -609,8 +583,8 @@ function couponDialog(coupon, plans, reload) {
         applies_to
       };
       try {
-        if (coupon) await api.patch(`/api/platform/coupons/${coupon.id}`, payload);
-        else await api.post('/api/platform/coupons', payload);
+        if (coupon) await api.patch(`/api/admin/coupons/${coupon.id}`, payload);
+        else await api.post('/api/admin/coupons', payload);
         toast('حُفظ الكوبون', 'ok'); m.close(); await reload();
       } catch (err) { toast(err.message, 'warn'); e.target.disabled = false; }
     } })
@@ -620,11 +594,11 @@ function couponDialog(coupon, plans, reload) {
 /* ═══════════ الإعلانات والبث (المستوى ٢) ═══════════ */
 const SEV_KIND = { info: 'info', warning: 'warn', critical: 'danger' };
 
-async function announceTab() {
+export async function announceTab() {
   const body = el('div');
   const load = async () => {
     clear(body).append(skeleton(4));
-    const d = await api.get('/api/platform/announcements');
+    const d = await api.get('/api/admin/announcements');
     const sevLabel = Object.fromEntries(d.severities.map(s => [s.key, s.label]));
     const audLabel = Object.fromEntries(d.audiences.map(a => [a.key, a.label]));
 
@@ -638,11 +612,11 @@ async function announceTab() {
       { header: 'الجهات', key: 'tenants_count', num: true, render: r => AR_NUM(r.tenants_count) },
       { header: 'المستقبِلون', key: 'recipients', num: true, render: r => AR_NUM(r.recipients || 0) },
       { header: 'شريط', key: 'banner', render: r => (r.banner ? chip('نعم', 'info') : '—') },
-      { header: 'ينتهي', key: 'ends_at', render: r => (r.ends_at ? fmtDate(r.ends_at, state.calendar) : 'بلا انتهاء') },
+      { header: 'ينتهي', key: 'ends_at', render: r => (r.ends_at ? fmtDate(r.ends_at, 'gregorian') : 'بلا انتهاء') },
       { header: 'أُرسل', key: 'sent_at', render: r => (r.sent_at ? timeAgo(r.sent_at) : chip('لم يُرسل', 'warn')) },
       { header: '', key: 'a', render: r => el('button.btn.sm.ghost', { text: '🗑', onclick: async () => {
         if (!await confirmDialog(`حذف إعلان «${r.title}»؟`, { danger: true, confirmText: 'حذف' })) return;
-        try { await api.del(`/api/platform/announcements/${r.id}`); toast('حُذف الإعلان', 'ok'); await load(); }
+        try { await api.del(`/api/admin/announcements/${r.id}`); toast('حُذف الإعلان', 'ok'); await load(); }
         catch (e) { toast(e.message, 'warn'); }
       } }) }
     ], d.items, { emptyText: 'لا توجد إعلانات — ابثّ إشعاراً بالتحديثات أو أعمال الصيانة المجدولة' }));
@@ -660,10 +634,10 @@ async function announceTab() {
 }
 
 async function announceDialog(reload) {
-  const meta = await api.get('/api/platform/announcements');
+  const meta = await api.get('/api/admin/announcements');
   const [plans, tenants] = await Promise.all([
-    api.get('/api/platform/plans').catch(() => []),
-    api.get('/api/platform/tenants').catch(() => ({ items: [] }))
+    api.get('/api/admin/plans').catch(() => []),
+    api.get('/api/admin/tenants').catch(() => ({ items: [] }))
   ]);
   const title = input({ placeholder: 'تحديث مجدول للمنصة' });
   const bodyTxt = textarea({ rows: 4, placeholder: 'تفاصيل الإعلان كما ستصل للجهات...' });
@@ -704,7 +678,7 @@ async function announceDialog(reload) {
       if (!title.value.trim()) return void toast('العنوان إلزامي', 'warn');
       e.target.disabled = true;
       try {
-        const out = await api.post('/api/platform/announcements', {
+        const out = await api.post('/api/admin/announcements', {
           title: title.value.trim(), body: bodyTxt.value.trim() || null,
           url: url.value.trim() || null, severity: severity.value,
           audience: audience.value,
@@ -720,13 +694,13 @@ async function announceDialog(reload) {
 }
 
 /* ═══════════ الفواتير والمدفوعات ═══════════ */
-async function invoicesTab() {
+export async function invoicesTab() {
   const body = el('div');
   const load = async () => {
     clear(body).append(skeleton(4));
     const [d, payments] = await Promise.all([
-      api.get('/api/platform/invoices'),
-      api.get('/api/platform/payments?status=pending')
+      api.get('/api/admin/invoices'),
+      api.get('/api/admin/payments?status=pending')
     ]);
     clear(body).append(
       payments.length ? card(`إشعارات سداد بانتظار الاعتماد (${AR_NUM(payments.length)})`, table([
@@ -737,11 +711,11 @@ async function invoicesTab() {
         { header: 'أبلغ به', key: 'declared_by_name', render: r => `${r.declared_by_name || '—'} · ${timeAgo(r.created_at)}` },
         { header: '', key: 'a', render: r => el('div.row', { style: { gap: '4px' } }, [
           el('button.btn.sm', { text: '✔ اعتماد', onclick: async () => {
-            try { await api.post(`/api/platform/payments/${r.id}/confirm`, {}); toast('اعتُمد السداد', 'ok'); await load(); }
+            try { await api.post(`/api/admin/payments/${r.id}/confirm`, {}); toast('اعتُمد السداد', 'ok'); await load(); }
             catch (e) { toast(e.message, 'warn'); } } }),
           el('button.btn.sm.ghost', { text: '✕ رفض', onclick: async () => {
             const reason = prompt('سبب الرفض:'); if (reason === null) return;
-            await api.post(`/api/platform/payments/${r.id}/reject`, { reason }); toast('رُفض الإشعار', 'ok'); await load(); } })
+            await api.post(`/api/admin/payments/${r.id}/reject`, { reason }); toast('رُفض الإشعار', 'ok'); await load(); } })
         ]) }
       ], payments)) : null,
 
@@ -751,14 +725,14 @@ async function invoicesTab() {
         { header: 'الخطة', key: 'plan_name' },
         { header: 'الإجمالي', key: 'total', num: true, render: r => money(r.total) },
         { header: 'الحالة', key: 'status', render: r => chip(r.status_label, INV_KIND[r.status]) },
-        { header: 'التاريخ', key: 'issued_at', render: r => fmtDate(r.issued_at, state.calendar) },
+        { header: 'التاريخ', key: 'issued_at', render: r => fmtDate(r.issued_at, 'gregorian') },
         { header: '', key: 'a', render: r => el('div.row', { style: { gap: '4px' } }, [
           r.status === 'open' ? el('button.btn.sm', { text: 'تسديد', onclick: async () => {
             if (!await confirmDialog(`اعتماد سداد الفاتورة ${r.number} بمبلغ ${money(r.total)}؟`, { confirmText: 'اعتماد' })) return;
-            await api.post(`/api/platform/invoices/${r.id}/mark-paid`, {}); toast('اعتُمد السداد', 'ok'); await load(); } }) : null,
+            await api.post(`/api/admin/invoices/${r.id}/mark-paid`, {}); toast('اعتُمد السداد', 'ok'); await load(); } }) : null,
           r.status === 'open' ? el('button.btn.sm.ghost', { text: 'إلغاء', onclick: async () => {
             const reason = prompt('سبب الإلغاء:'); if (reason === null) return;
-            await api.post(`/api/platform/invoices/${r.id}/void`, { reason }); toast('أُلغيت الفاتورة', 'ok'); await load(); } }) : null,
+            await api.post(`/api/admin/invoices/${r.id}/void`, { reason }); toast('أُلغيت الفاتورة', 'ok'); await load(); } }) : null,
           /* الإشعار الدائن يصلح على المسدَّدة والمفتوحة، لا على الملغاة ولا على إشعار دائن */
           r.doc_type !== 'credit_note' && ['open', 'paid'].includes(r.status)
             ? el('button.btn.sm.ghost', { text: '↩ إشعار دائن', onclick: () => creditNoteDialog(r, load) }) : null,
@@ -799,7 +773,7 @@ function creditNoteDialog(inv, reload) {
         if (!(v > 0)) return void toast('أدخل مبلغاً أكبر من صفر', 'warn');
         e.target.disabled = true;
         try {
-          const note = await api.post(`/api/platform/invoices/${inv.id}/credit-note`,
+          const note = await api.post(`/api/admin/invoices/${inv.id}/credit-note`,
             { amount: v, reason: reason.value.trim() });
           toast(`صدر الإشعار الدائن ${note.number} بمبلغ ${money(note.total)}`, 'ok');
           m.close(); await reload();
@@ -812,7 +786,7 @@ function creditNoteDialog(inv, reload) {
 /** عرض الفاتورة الإلكترونية المختومة: الوسوم المفكوكة ورمز QR وسلسلة التجزئة */
 async function eInvoiceDialog(inv) {
   let d;
-  try { d = await api.get(`/api/platform/einvoice/${inv.id}`); }
+  try { d = await api.get(`/api/admin/einvoice/${inv.id}`); }
   catch (e) { return void toast(e.message, 'warn'); }
   const LABELS = { 1: 'اسم البائع', 2: 'الرقم الضريبي', 3: 'تاريخ ووقت الإصدار',
     4: 'الإجمالي شامل الضريبة', 5: 'قيمة الضريبة', 6: 'تجزئة المستند', 7: 'التوقيع', 8: 'المفتاح العام' };
@@ -836,11 +810,11 @@ async function eInvoiceDialog(inv) {
 }
 
 /* ═══════════ طلبات التسجيل ═══════════ */
-async function signupsTab() {
+export async function signupsTab() {
   const body = el('div');
   const load = async () => {
     clear(body).append(skeleton(3));
-    const rows = await api.get('/api/platform/signups');
+    const rows = await api.get('/api/admin/signups');
     clear(body).append(rows.length ? table([
       { header: 'الجهة المطلوبة', key: 'tenant_name', render: r => el('div', {}, [
         el('b', { text: r.tenant_name }), el('div.hint', { text: r.code, style: { direction: 'ltr' } })]) },
@@ -853,11 +827,11 @@ async function signupsTab() {
       { header: 'التاريخ', key: 'created_at', render: r => timeAgo(r.created_at) },
       { header: '', key: 'a', render: r => (['pending', 'verified'].includes(r.status) ? el('div.row', { style: { gap: '4px' } }, [
         el('button.btn.sm', { text: '✔ تفعيل', onclick: async () => {
-          try { await api.post(`/api/platform/signups/${r.id}/approve`, {}); toast('فُعّلت الجهة', 'ok'); await load(); }
+          try { await api.post(`/api/admin/signups/${r.id}/approve`, {}); toast('فُعّلت الجهة', 'ok'); await load(); }
           catch (e) { toast(e.message, 'warn'); } } }),
         el('button.btn.sm.ghost', { text: '✕ رفض', onclick: async () => {
           const reason = prompt('سبب الرفض:'); if (reason === null) return;
-          await api.post(`/api/platform/signups/${r.id}/reject`, { reason }); toast('رُفض الطلب', 'ok'); await load(); } })
+          await api.post(`/api/admin/signups/${r.id}/reject`, { reason }); toast('رُفض الطلب', 'ok'); await load(); } })
       ]) : '—') }
     ], rows) : empty('📝', 'لا توجد طلبات تسجيل', 'ستظهر هنا طلبات الجهات الجديدة عند فتح التسجيل الذاتي.'));
   };
@@ -866,11 +840,11 @@ async function signupsTab() {
 }
 
 /* ═══════════ إعدادات المنصة ═══════════ */
-async function settingsTab() {
-  const s = await api.get('/api/platform/settings');
-  const plans = await api.get('/api/platform/plans');
+export async function settingsTab() {
+  const s = await api.get('/api/admin/settings');
+  const plans = await api.get('/api/admin/plans');
   /* قائمة البوابات من الخادم لا مكرّرة في الواجهة، فلا تتباعد النسختان */
-  const gw = await api.get('/api/platform/gateways').catch(() => ({ options: [], configured: false }));
+  const gw = await api.get('/api/admin/gateways').catch(() => ({ options: [], configured: false }));
 
   const f = {
     platform_name: input({ value: s.platform_name }),
@@ -909,16 +883,16 @@ async function settingsTab() {
 
   const admins = el('div');
   const loadAdmins = async () => {
-    const rows = await api.get('/api/platform/admins');
+    const rows = await api.get('/api/admin/admins');
     clear(admins).append(table([
       { header: 'المالك', key: 'name' },
       { header: 'البريد', key: 'email', render: r => el('code', { text: r.email, style: { direction: 'ltr', fontSize: '11px' } }) },
       { header: 'الجهة', key: 'tenant_name' },
       { header: 'آخر دخول', key: 'last_login_at', render: r => (r.last_login_at ? timeAgo(r.last_login_at) : '—') },
-      { header: '', key: 'a', render: r => (r.id === state.session.user.id ? chip('أنت', 'ok')
+      { header: '', key: 'a', render: r => (r.id === admin.session?.admin?.id ? chip('أنت', 'ok')
         : el('button.btn.sm.ghost', { text: 'سحب الصلاحية', onclick: async () => {
             if (!await confirmDialog(`سحب صلاحية مالك المنصة من «${r.name}»؟`, { danger: true, confirmText: 'سحب' })) return;
-            try { await api.del(`/api/platform/admins/${r.id}`); toast('سُحبت الصلاحية', 'ok'); await loadAdmins(); }
+            try { await api.del(`/api/admin/admins/${r.id}`); toast('سُحبت الصلاحية', 'ok'); await loadAdmins(); }
             catch (e) { toast(e.message, 'warn'); } } })) }
     ], rows));
   };
@@ -980,7 +954,7 @@ async function settingsTab() {
     el('button.btn.gold.block', { text: '💾 حفظ إعدادات المنصة', onclick: async (e) => {
       e.target.disabled = true;
       try {
-        await api.put('/api/platform/settings', {
+        await api.put('/api/admin/settings', {
           platform_name: f.platform_name.value.trim(), tagline: f.tagline.value.trim(),
           support_email: f.support_email.value.trim(), support_phone: f.support_phone.value.trim(),
           saas_enabled: saas.checked, signup_enabled: signup.checked, signup_needs_review: review.checked,
@@ -1010,7 +984,7 @@ async function settingsTab() {
         el('div', { style: { flex: 1 } }, [newAdminEmail]),
         el('button.btn', { text: '＋ منح الصلاحية', onclick: async () => {
           if (!newAdminEmail.value.trim()) return;
-          try { await api.post('/api/platform/admins', { email: newAdminEmail.value.trim() });
+          try { await api.post('/api/admin/admins', { email: newAdminEmail.value.trim() });
             toast('مُنحت الصلاحية', 'ok'); newAdminEmail.value = ''; await loadAdmins();
           } catch (e) { toast(e.message, 'warn'); } } })
       ]),
@@ -1020,16 +994,16 @@ async function settingsTab() {
 }
 
 /* ═══════════ سجل المنصة ═══════════ */
-async function logsTab() {
+export async function logsTab() {
   const body = el('div');
   const search = input({ placeholder: 'ابحث في السجل…' });
   const load = async () => {
     clear(body).append(skeleton(4));
     const q = search.value.trim() ? `?q=${encodeURIComponent(search.value.trim())}` : '';
-    const d = await api.get(`/api/platform/logs${q}`);
+    const d = await api.get(`/api/admin/logs${q}`);
     clear(body).append(d.items.length ? table([
       { header: 'الوقت', key: 'created_at', render: r => el('div', {}, [
-        el('span', { text: fmtDateTime(r.created_at, state.calendar) }),
+        el('span', { text: fmtDateTime(r.created_at, 'gregorian') }),
         el('div.hint', { text: timeAgo(r.created_at) })]) },
       { header: 'المنفّذ', key: 'actor_name', render: r => r.actor_name || 'النظام' },
       { header: 'الإجراء', key: 'action', render: r => chip(
@@ -1089,7 +1063,7 @@ const trend = (v, suffix = '') => {
   return chip(`${n > 0 ? '▲' : n < 0 ? '▼' : '—'} ${AR_NUM(Math.abs(n))}${suffix}`, kind);
 };
 
-async function growthTab() {
+export async function growthTab() {
   const body = el('div');
   const range = select([
     { value: '7', label: 'آخر ٧ أيام' }, { value: '30', label: 'آخر ٣٠ يوماً' },
@@ -1098,7 +1072,7 @@ async function growthTab() {
 
   const load = async () => {
     clear(body).append(skeleton(5));
-    const d = await api.get(`/api/platform/metrics?days=${range.value}`);
+    const d = await api.get(`/api/admin/metrics?days=${range.value}`);
     const c = d.change;
     const pts = d.points;
 
@@ -1125,9 +1099,9 @@ async function growthTab() {
       card('اتجاه الإيراد الشهري المتكرر', el('div', {}, [
         sparkline(pts.map(p => p.mrr)),
         el('div.row', { style: { justifyContent: 'space-between', marginTop: '6px' } }, [
-          el('span.hint', { text: fmtDate(pts[0]?.date, state.calendar) }),
+          el('span.hint', { text: fmtDate(pts[0]?.date, 'gregorian') }),
           trend(c.mrr_growth, '٪'),
-          el('span.hint', { text: fmtDate(pts[pts.length - 1]?.date, state.calendar) })
+          el('span.hint', { text: fmtDate(pts[pts.length - 1]?.date, 'gregorian') })
         ])
       ])),
       el('div.grid.g2', {}, [
@@ -1135,7 +1109,7 @@ async function growthTab() {
         card('المستخدمون', sparkline(pts.map(p => p.users_total), { color: 'var(--info)' }))
       ]),
       card('اللقطات', table([
-        { header: 'التاريخ', key: 'date', render: r => fmtDate(r.date, state.calendar) },
+        { header: 'التاريخ', key: 'date', render: r => fmtDate(r.date, 'gregorian') },
         { header: 'الجهات', key: 'tenants_total', num: true, render: r => AR_NUM(r.tenants_total) },
         { header: 'الإيراد المتكرر', key: 'mrr', num: true, render: r => money(r.mrr) },
         { header: 'المستخدمون', key: 'users_total', num: true, render: r => AR_NUM(r.users_total) },
@@ -1160,8 +1134,8 @@ async function growthTab() {
 
 const HEALTH_KIND = (score) => (score >= 70 ? 'ok' : score >= 50 ? 'warn' : 'danger');
 
-async function healthTab() {
-  const d = await api.get('/api/platform/health');
+export async function healthTab() {
+  const d = await api.get('/api/admin/health');
   const s = d.summary;
 
   const scoreCell = (t) => el('div', {}, [
@@ -1222,11 +1196,11 @@ async function healthTab() {
 
 /* ═══════════ صندوق الدعم الموحّد (المستوى ٢) ═══════════ */
 
-async function supportTab() {
+export async function supportTab() {
   const body = el('div');
   const load = async () => {
     clear(body).append(skeleton(3));
-    const d = await api.get('/api/platform/support');
+    const d = await api.get('/api/admin/support');
     clear(body).append(
       el('div.row.wrap', { style: { gap: '8px', marginBottom: '12px' } }, [
         chip(`مفتوحة: ${AR_NUM(d.open)}`, d.open ? 'warn' : 'ok'),
@@ -1270,7 +1244,7 @@ function supportDialog(t, reload) {
         el('span.k', { text: 'الموضوع' }), el('span.v', { text: t.subject }),
         el('span.k', { text: 'مقدّمها' }), el('span.v', { text: `${t.requester_name || '—'} (${t.requester_email || ''})` }),
         el('span.k', { text: 'الخطة' }), el('span.v', { text: t.plan_name || '—' }),
-        el('span.k', { text: 'صُعّدت' }), el('span.v', { text: fmtDateTime(t.vendor_escalated_at, state.calendar) })
+        el('span.k', { text: 'صُعّدت' }), el('span.v', { text: fmtDateTime(t.vendor_escalated_at, 'gregorian') })
       ]),
       card('نص التذكرة', el('p', { text: t.body || '—', style: { whiteSpace: 'pre-wrap', margin: 0 } })),
       t.vendor_reply ? el('div.alert.info', {}, [
@@ -1284,7 +1258,7 @@ function supportDialog(t, reload) {
       if (!reply.value.trim()) return void toast('نص الرد إلزامي', 'warn');
       e.target.disabled = true;
       try {
-        await api.post(`/api/platform/support/${t.id}/reply`, { reply: reply.value.trim(), close: close.checked });
+        await api.post(`/api/admin/support/${t.id}/reply`, { reply: reply.value.trim(), close: close.checked });
         toast('أُرسل الرد وأُشعر صاحب التذكرة', 'ok'); m.close(); await reload();
       } catch (err) { toast(err.message, 'warn'); e.target.disabled = false; }
     } })
@@ -1293,7 +1267,7 @@ function supportDialog(t, reload) {
 
 /* ═══════════ الأمن (المستوى ٣) ═══════════ */
 
-async function securityTab() {
+export async function securityTab() {
   const body = el('div');
   const range = select([
     { value: '24', label: 'آخر ٢٤ ساعة' }, { value: '168', label: 'آخر ٧ أيام' }, { value: '720', label: 'آخر ٣٠ يوماً' }
@@ -1302,8 +1276,8 @@ async function securityTab() {
   const load = async () => {
     clear(body).append(skeleton(4));
     const [d, chain] = await Promise.all([
-      api.get(`/api/platform/security?hours=${range.value}`),
-      api.get('/api/platform/einvoice/chain').catch(() => null)
+      api.get(`/api/admin/security?hours=${range.value}`),
+      api.get('/api/admin/einvoice/chain').catch(() => null)
     ]);
     const failRate = d.total ? Math.round((d.failed / d.total) * 100) : 0;
 
@@ -1369,13 +1343,13 @@ const JOB_AR = {
   backup: 'النسخ الاحتياطي اليومي', metrics: 'لقطة المؤشرات والصيانة', queue: 'تصريف طابور المعالجة'
 };
 
-async function opsTab() {
+export async function opsTab() {
   const body = el('div');
   const load = async () => {
     clear(body).append(skeleton(4));
     const [health, runs] = await Promise.all([
-      api.get('/api/platform/jobs/health'),
-      api.get('/api/platform/jobs/runs?limit=40')
+      api.get('/api/admin/jobs/health'),
+      api.get('/api/admin/jobs/runs?limit=40')
     ]);
 
     clear(body).append(
@@ -1388,7 +1362,7 @@ async function opsTab() {
           el('code.hint', { text: r.job, style: { direction: 'ltr', fontSize: '10.5px' } })]) },
         { header: 'آخر تشغيل', key: 'started_at', render: r => (r.started_at ? el('div', {}, [
           el('span', { text: timeAgo(r.started_at) }),
-          el('div.hint', { text: fmtDateTime(r.started_at, state.calendar) })
+          el('div.hint', { text: fmtDateTime(r.started_at, 'gregorian') })
         ]) : el('span.hint', { text: 'لم تعمل بعد' })) },
         { header: 'الحالة', key: 'status', render: r => chip(
           ({ success: 'نجحت', failed: 'فشلت', running: 'قيد التنفيذ', never: 'لم تعمل' })[r.status] || r.status,
@@ -1401,7 +1375,7 @@ async function opsTab() {
         { header: '', key: 'a', render: r => el('button.btn.sm.ghost', { text: '▶ تشغيل', onclick: async (e) => {
           e.target.disabled = true;
           try {
-            const out = await api.post(`/api/platform/jobs/${r.job}/run`, {});
+            const out = await api.post(`/api/admin/jobs/${r.job}/run`, {});
             toast(`${out.label}: تمّت في ${AR_NUM(out.ms)} ms`, 'ok');
             await load();
           } catch (err) { toast(err.message, 'warn'); e.target.disabled = false; }
@@ -1432,7 +1406,7 @@ async function opsTab() {
       el('h3', { text: 'التشغيل والصيانة', style: { margin: 0 } }),
       el('button.btn.ghost', { text: '📸 التقاط لقطة مؤشرات', onclick: async (e) => {
         e.target.disabled = true;
-        try { const m = await api.post('/api/platform/metrics/snapshot', {});
+        try { const m = await api.post('/api/admin/metrics/snapshot', {});
           toast(`التُقطت لقطة ${m.date}`, 'ok'); } catch (err) { toast(err.message, 'warn'); }
         finally { e.target.disabled = false; }
       } })
@@ -1498,10 +1472,86 @@ function overridesDialog(d, done) {
         if (f.cb.checked !== inPlan) features[f.key] = f.cb.checked;
       }
       try {
-        const out = await api.put(`/api/platform/tenants/${t.id}/overrides`, { limits, features });
+        const out = await api.put(`/api/admin/tenants/${t.id}/overrides`, { limits, features });
         toast('حُفظت التجاوزات', 'ok');
         m.close(); await done(out);
       } catch (err) { toast(err.message, 'warn'); e.target.disabled = false; }
     } })
+  });
+}
+
+/* ═══════════ حسابات الادمن ═══════════ */
+export async function adminsTab() {
+  const body = el('div');
+  const load = async () => {
+    clear(body).append(skeleton(3));
+    const rows = await api.get('/api/admin/admins');
+    clear(body).append(table([
+      { header: 'الاسم', key: 'name', render: r => el('div', {}, [
+        el('b', { text: r.name }),
+        r.id === admin.session?.admin?.id ? chip('أنت', 'ok') : null]) },
+      { header: 'البريد', key: 'email', render: r => el('span', { text: r.email, style: { direction: 'ltr' } }) },
+      { header: 'الحالة', key: 'status',
+        render: r => chip(r.status === 'active' ? 'نشط' : 'موقوف', r.status === 'active' ? 'ok' : 'warn') },
+      { header: 'تحقّق بخطوتين', key: 'totp_enabled',
+        render: r => (r.totp_enabled ? chip('مفعّل', 'ok') : chip('غير مفعّل', '')) },
+      { header: 'آخر دخول', key: 'last_login_at', render: r => (r.last_login_at ? timeAgo(r.last_login_at) : '—') },
+      { header: '', key: 'a', render: r => el('div.row', { style: { gap: '4px' } }, [
+        el('button.btn.sm.ghost', { text: 'تحرير', onclick: () => adminDialog(r, load) }),
+        r.id === admin.session?.admin?.id ? null
+          : el('button.btn.sm.ghost', { text: '🗑', onclick: async () => {
+              if (!await confirmDialog(`حذف حساب الادمن «${r.name}»؟`, { danger: true, confirmText: 'حذف' })) return;
+              try { await api.del(`/api/admin/admins/${r.id}`); toast('حُذف الحساب', 'ok'); await load(); }
+              catch (e) { toast(e.message, 'warn'); }
+            } })
+      ]) }
+    ], rows));
+  };
+  load();
+  return el('div', {}, [
+    el('div.row', { style: { justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' } }, [
+      el('h3', { text: 'حسابات إدارة المنصة', style: { margin: 0 } }),
+      el('button.btn.gold', { text: '＋ حساب جديد', onclick: () => adminDialog(null, load) })
+    ]),
+    el('div.hint', { style: { marginBottom: '10px' },
+      text: 'حسابات مستقلة لا تنتمي لأي مجمّع، ولا تظهر في قوائم مستخدميه، ولا تفتح إلا هذه اللوحة.' }),
+    body
+  ]);
+}
+
+function adminDialog(row, reload) {
+  const name = input({ value: row?.name || '' });
+  const email = input({ value: row?.email || '', dir: 'ltr', disabled: !!row });
+  const pass = input({ type: 'password', autocomplete: 'new-password',
+    placeholder: row ? 'اتركه فارغاً للإبقاء على كلمة المرور' : '٨ خانات فأكثر' });
+  const st = select([{ value: 'active', label: 'نشط' }, { value: 'suspended', label: 'موقوف' }],
+    { value: row?.status || 'active' });
+
+  const m = modal({
+    title: row ? `تحرير «${row.name}»` : 'حساب ادمن جديد',
+    body: el('div.stack', {}, [
+      field('الاسم', name, { required: true }),
+      field('البريد الإلكتروني', email, { required: !row }),
+      field('كلمة المرور', pass, { required: !row }),
+      row ? field('الحالة', st) : null,
+      row ? el('div.hint', { text: 'تغيير كلمة المرور أو إيقاف الحساب يُنهي جلساته القائمة فوراً.' }) : null
+    ]),
+    footer: [
+      el('button.btn.ghost', { text: 'إلغاء', onclick: () => m.close() }),
+      el('button.btn.gold', { text: row ? 'حفظ' : 'إنشاء', onclick: async (e) => {
+        e.target.disabled = true;
+        try {
+          if (row) {
+            await api.patch(`/api/admin/admins/${row.id}`, {
+              name: name.value.trim(), status: st.value,
+              ...(pass.value ? { password: pass.value } : {}) });
+          } else {
+            await api.post('/api/admin/admins', {
+              name: name.value.trim(), email: email.value.trim(), password: pass.value });
+          }
+          toast('حُفظ الحساب', 'ok'); m.close(); await reload();
+        } catch (err) { toast(err.message, 'warn'); e.target.disabled = false; }
+      } })
+    ]
   });
 }

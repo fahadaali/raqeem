@@ -56,4 +56,6 @@ if (typeof data.seeded === 'object') {
   console.log('    مدير المجمّع : admin@riyadh-qu.sa / Admin@123');
   console.log('    المحاسب      : finance@riyadh-qu.sa / Finance@123');
   console.log('    المعلم       : teacher@riyadh-qu.sa / Teach@123');
+  console.log('\n  لوحة المنصة على /admin — حساب مستقل لا ينتمي لأي مجمّع:');
+  console.log('    مدير المنصة  : admin@raqeem.sa / Admin@123');
 }

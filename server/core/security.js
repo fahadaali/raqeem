@@ -166,7 +166,7 @@ export async function consumeBackupCode(stored, code) {
  * بوابة التحقّق بخطوتين عند الدخول.
  * تُستدعى بعد التحقق من كلمة المرور وقبل إصدار الجلسة.
  */
-export async function assertSecondFactor(app, user, token, backupCodes) {
+export async function assertSecondFactor(app, user, token, backupCodes, table = 'users') {
   if (!user.totp_enabled) return { required: false };
   if (!token) throw unauthorized('يلزم رمز التحقّق بخطوتين');
 
@@ -174,7 +174,9 @@ export async function assertSecondFactor(app, user, token, backupCodes) {
 
   const consumed = await consumeBackupCode(backupCodes, token);
   if (consumed.ok) {
-    await app.db.run('UPDATE users SET totp_backup=? WHERE id=?', JSON.stringify(consumed.remaining), user.id);
+    /* أعمدة totp_* متطابقة الأسماء في users و platform_admins، فالجدول وحده يختلف */
+    if (!['users', 'platform_admins'].includes(table)) throw unauthorized();
+    await app.db.run(`UPDATE ${table} SET totp_backup=? WHERE id=?`, JSON.stringify(consumed.remaining), user.id);
     return { required: true, method: 'backup', remaining: consumed.remaining.length };
   }
   throw unauthorized('رمز التحقّق غير صحيح');

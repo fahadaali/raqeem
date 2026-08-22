@@ -97,8 +97,43 @@ export async function reconcileIndexes(app) {
   for (const sql of stmts) { try { await app.db.run(sql); } catch { /* موجود مسبقاً */ } }
 }
 
+/**
+ * ترحيل مالكي المنصة من users إلى جدول الهويّة المستقل.
+ *
+ * تُنسخ تجزئة كلمة المرور كما هي فلا ينقطع دخول أحد، ثم يُصفَّر العلَم في users
+ * فلا يبقى للمستأجر مستخدمٌ يحمل صلاحية منصة. العملية آمنة التكرار: تعتمد على
+ * فهرس البريد الفريد، وتتخطّى ما نُقل سابقاً.
+ */
+export async function migratePlatformAdmins(app) {
+  let legacy;
+  try {
+    legacy = await app.db.all(
+      `SELECT id, name, email, password_hash, totp_secret, totp_enabled, totp_backup, last_login_at
+       FROM users WHERE is_platform_admin = 1`);
+  } catch { return { moved: 0 }; }
+  if (!legacy?.length) return { moved: 0 };
+
+  let moved = 0;
+  for (const u of legacy) {
+    const exists = await app.db.get(
+      'SELECT id FROM platform_admins WHERE lower(email) = lower(?)', u.email);
+    if (!exists) {
+      await app.db.run(
+        `INSERT INTO platform_admins(name,email,password_hash,status,
+           totp_secret,totp_enabled,totp_backup,last_login_at)
+         VALUES(?,?,?,'active',?,?,?,?)`,
+        u.name, String(u.email).toLowerCase(), u.password_hash,
+        u.totp_secret, u.totp_enabled || 0, u.totp_backup, u.last_login_at);
+      moved++;
+    }
+    await app.db.run('UPDATE users SET is_platform_admin = 0 WHERE id = ?', u.id);
+  }
+  return { moved };
+}
+
 export async function upgradeSchema(app) {
   const added = await reconcileColumns(app);
   await reconcileIndexes(app);
-  return added;
+  const admins = await migratePlatformAdmins(app).catch(() => ({ moved: 0 }));
+  return admins.moved ? [...added, `platform_admins:+${admins.moved}`] : added;
 }

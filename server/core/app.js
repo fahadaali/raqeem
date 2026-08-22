@@ -19,7 +19,8 @@ import { importsRouter, reportsRouter, auditRouter, dashboardRouter } from './ro
 import { keysRouter, publicRouter } from './routes/integration.js';
 import publicSaasRoutes from './routes/public.js';
 import billingRoutes from './routes/billing.js';
-import platformRoutes from './routes/platform.js';
+import adminRoutes from './routes/admin.js';
+import adminAuthRoutes from './routes/admin-auth.js';
 import { subscriptionGate } from './middleware/saas.js';
 import { requireFeature } from './features.js';
 
@@ -66,7 +67,7 @@ export function createApi(container) {
 
   /* إشعار بوابة الدفع — تُناديه البوابة نفسها بلا جلسة */
   api.post('/webhooks/payments', h(async (req) => {
-    const { paymentWebhook } = await import('./routes/platform.js');
+    const { paymentWebhook } = await import('./routes/admin.js');
     return paymentWebhook(req.app, req.body || {});
   }));
 
@@ -102,9 +103,19 @@ export function createApi(container) {
   api.route('/audit', guard(auditRouter));
   api.route('/dashboard', guard(dashboardRouter));
 
-  /* المرحلة الثانية: اشتراك الجهة، ولوحة مالك المنصة */
+  /* المرحلة الثانية: اشتراك الجهة */
   api.route('/billing', guard(billingRoutes, { gate: false }));
-  api.route('/platform', guard(platformRoutes, { gate: false }));
+
+  /*
+   * لوحة المنصة: طبقة مستقلة تماماً — هويّة أخرى وحارس آخر.
+   * لا تمرّ بـ guard() لأن ذاك يبني سياق مستأجر، ولا سياق مستأجر هنا أصلاً.
+   * حدّ الطلبات يُفتَح على معرّف الادمن لا على مستخدم جهة.
+   */
+  api.route('/admin/auth', adminAuthRoutes);
+  const adminGuarded = new Hono();
+  adminGuarded.use('*', rateLimit({ key: (r) => `adm:${r.ctx?.adminId || r.ip}` }));
+  adminGuarded.route('/', adminRoutes);
+  api.route('/admin', adminGuarded);
 
   return api;
 }

@@ -1,5 +1,5 @@
 import api from './api.js';
-import { state, setState, setPref, clearSession, can, activeTerm, currentTermObj } from './state.js';
+import { state, setState, setPref, saveTokens, clearSession, can, activeTerm, currentTermObj } from './state.js';
 import { el, clear, qs, qsa, toast, timeAgo, T, avatar, skeleton, AR_NUM } from './util.js';
 import * as rt from './realtime.js';
 import * as pwa from './push.js';
@@ -33,8 +33,6 @@ const NAV = [
   { path: '/billing', label: 'الاشتراك والفوترة', icon: '💳', view: 'billing', perm: ['billing.view'], saas: true },
   { path: '/settings', label: 'الإعدادات', icon: '⚙️', view: 'settings' },
 
-  { group: 'المنصة' },
-  { path: '/platform', label: 'لوحة مالك المنصة', icon: '🛰️', view: 'platform', platformOnly: true }
 ];
 
 const BOTTOM = [
@@ -61,8 +59,7 @@ const VIEWS = {
   org: () => import('./views/org.js'),
   settings: () => import('./views/settings.js'),
   notifications: () => import('./views/notifications.js'),
-  billing: () => import('./views/billing.js'),
-  platform: () => import('./views/platform.js')
+  billing: () => import('./views/billing.js')
 };
 
 /* شاشات عامة لا تتطلّب تسجيل دخول (المرحلة الثانية) */
@@ -355,6 +352,16 @@ async function refreshView() {
 
 async function render() {
   const app = qs('#app');
+
+  /*
+   * لوحة المنصة طبقة مستقلة: تُسلَّم كاملةً لهيكلها ولا يُبنى هيكل المجمّعات
+   * إطلاقاً — فلا تتسرّب قائمة مجمّع ولا مبدّل فروع ولا جلسة مستأجر إليها.
+   */
+  if (location.pathname.startsWith('/admin')) {
+    const { renderAdmin } = await import('./admin-shell.js');
+    return renderAdmin();
+  }
+
   if (!state.session) {
     const path = location.pathname.replace(/\/+$/, '') || '/';
     const pub = PUBLIC_VIEWS[path];
@@ -389,8 +396,23 @@ function hideBoot() {
 }
 
 /* ═══════════════ الإقلاع ═══════════════ */
+/**
+ * تسليم جلسة المساندة القادمة من لوحة المنصة.
+ * الرمز يصل في معامل عابر ويُستهلك فوراً ثم يُمحى من شريط العنوان، فلا يبقى
+ * في التاريخ ولا يُشارَك بالنسخ. وهو رمز قصير بلا رمز تجديد.
+ */
+function consumeImpersonation() {
+  const u = new URL(location.href);
+  const token = u.searchParams.get('impersonate');
+  if (!token) return;
+  saveTokens(token, null);
+  u.searchParams.delete('impersonate');
+  history.replaceState({}, '', u.pathname + (u.search || '') );
+}
+
 async function boot() {
   applyTheme(state.theme);
+  consumeImpersonation();
   if (state.accessToken) {
     try {
       const s = await api.me();
@@ -402,7 +424,7 @@ async function boot() {
   clear(qs('#app'));
   await render();
 
-  if (state.session) {
+  if (state.session && !location.pathname.startsWith('/admin')) {
     rt.connect();
     loadNotifications();
     pwa.autoResubscribe();
@@ -424,7 +446,10 @@ rt.on('task.updated', (m) => window.dispatchEvent(new CustomEvent('raqeem:task',
 /* وضع التراجع: إن تعذّرت القناة الدائمة تُحدَّث البيانات بالاستطلاع الدوري */
 rt.on('poll', () => { loadNotifications(); window.dispatchEvent(new CustomEvent('raqeem:poll')); });
 
-window.addEventListener('popstate', () => refreshView());
+window.addEventListener('popstate', () => {
+  if (location.pathname.startsWith('/admin')) return void render();
+  refreshView();
+});
 window.addEventListener('raqeem:signout', async () => { clearSession(); rt.disconnect(); clear(qs('#app')); await render(); });
 window.addEventListener('raqeem:navigate', (e) => navigate(e.detail));
 window.addEventListener('raqeem:push', () => loadNotifications());

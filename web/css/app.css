@@ -593,3 +593,60 @@ table.tbl.editable td[contenteditable]:focus{background:var(--brand-50);box-shad
   .check-row{min-height:44px}
   table td .btn.sm{min-height:36px}
 }
+
+/* ══════════════════════════════════════════════════════════
+   لوحة المنصة — هوية بصرية داكنة مميِّزة عن لوحة المجمّعات،
+   فلا تلتبس اللوحتان على من يفتحهما في تبويبين متجاورين.
+   ══════════════════════════════════════════════════════════ */
+.admin-mode{--adm:#111c17;--adm-2:#18271f;--adm-line:#294034;--adm-txt:#e6efe9;--adm-dim:#8fa79a}
+
+.admin-shell{display:grid;grid-template-columns:250px 1fr;min-height:100dvh;background:var(--bg)}
+.admin-side{background:var(--adm);color:var(--adm-txt);display:flex;flex-direction:column;
+  border-inline-start:0;border-inline-end:1px solid var(--adm-line);
+  position:sticky;inset-block-start:0;height:100dvh;overflow-y:auto}
+.admin-brand{display:flex;align-items:center;gap:10px;padding:18px 16px;border-bottom:1px solid var(--adm-line)}
+.admin-brand .ic{font-size:22px}
+.admin-brand b{display:block;font-size:14.5px;color:#fff}
+.admin-brand span{font-size:11.5px;color:var(--adm-dim)}
+.admin-nav{flex:1;padding:10px 8px;display:flex;flex-direction:column;gap:2px}
+.admin-group{font-size:10.5px;color:var(--adm-dim);padding:12px 10px 5px;letter-spacing:.4px}
+.admin-link{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:9px;
+  color:var(--adm-txt);cursor:pointer;font-size:13px;text-decoration:none;transition:.14s;min-height:38px}
+.admin-link:hover{background:var(--adm-2)}
+.admin-link.active{background:var(--gold);color:#1a1400;font-weight:600}
+.admin-link .ic{font-size:15px;width:20px;text-align:center}
+.admin-foot{padding:12px 16px;font-size:10.5px;color:var(--adm-dim);border-top:1px solid var(--adm-line)}
+
+.admin-main{display:flex;flex-direction:column;min-width:0}
+.admin-top{display:flex;align-items:center;gap:12px;padding:0 18px;height:var(--top);
+  background:var(--surface);border-bottom:1px solid var(--border);position:sticky;inset-block-start:0;z-index:40}
+.admin-top h2{font-size:16px;margin:0}
+.admin-top .spacer{flex:1}
+.admin-who{font-size:12.5px;color:var(--text-2)}
+.admin-burger{display:none}
+.admin-content{padding:18px;flex:1;min-width:0}
+.admin-back{display:none}
+
+/* شاشة دخول اللوحة */
+.admin-login{min-height:100dvh;display:grid;place-items:center;padding:20px;
+  background:linear-gradient(150deg,var(--adm) 0%,#0b130f 100%)}
+.admin-login-card{background:var(--surface);border-radius:18px;padding:30px 26px;width:min(420px,100%);
+  box-shadow:0 20px 50px rgba(0,0,0,.35)}
+.admin-login-brand{text-align:center;margin-bottom:20px}
+.admin-login-brand .ic{font-size:34px}
+.admin-login-brand h1{font-size:19px;margin:8px 0 4px;color:var(--brand)}
+.admin-login-brand p{font-size:12.5px;color:var(--text-3);margin:0}
+.admin-login-back{display:block;text-align:center;margin-top:12px;font-size:12.5px;color:var(--text-3);padding:11px;border-radius:9px;min-height:44px;line-height:22px}
+
+@media (max-width:900px){
+  .admin-shell{grid-template-columns:1fr}
+  .admin-side{position:fixed;inset-block:0;inset-inline-start:0;width:264px;z-index:120;
+    transform:translateX(100%);transition:transform .22s}
+  [dir="ltr"] .admin-side{transform:translateX(-100%)}
+  .admin-open .admin-side{transform:none}
+  .admin-open .admin-back{display:block;position:fixed;inset:0;background:var(--overlay);z-index:110}
+  .admin-burger{display:grid}
+  .admin-content{padding:13px}
+  .admin-top{padding:0 12px}
+}
+@media (pointer:coarse){ .admin-link{min-height:44px} }

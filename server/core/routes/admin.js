@@ -2,8 +2,8 @@ import { Hono } from 'hono';
 import { nowUTC, j } from '../sql.js';
 import { h, created } from '../http.js';
 import { badRequest, notFound, conflict } from '../errors.js';
-import { platformAdmin } from '../middleware/saas.js';
-import { randomToken } from '../crypto.js';
+import { authenticateAdmin } from '../middleware/admin-auth.js';
+import { randomToken, hashPassword } from '../crypto.js';
 import { signAccess, buildContext } from '../middleware/auth.js';
 import {
   platformSettings, tenantUsage, tenantSubscription, planLimits, yearlySavings,
@@ -33,20 +33,11 @@ import { notifyUsers } from '../notify.js';
  * وهي الطبقة الوحيدة في المنصة التي تتجاوز عزل الجهات — ولذلك تُسجَّل
  * كل عملية فيها في سجل منصة مقفل (Append-only) مستقل عن سجلات الجهات.
  */
-const router = new Hono();
-router.use('*', platformAdmin());
+import { plog } from '../plog.js';
 
-/* ─────────────── سجل عمليات المنصة ─────────────── */
-async function plog(req, { action, entity, entityId = null, tenantId = null, summary = '', meta = null }) {
-  try {
-    await req.app.db.run(
-      `INSERT INTO platform_logs(actor_id,actor_name,tenant_id,action,entity,entity_id,summary,meta,ip,created_at)
-       VALUES(?,?,?,?,?,?,?,?,?,?)`,
-      req.ctx.userId, req.ctx.userName, tenantId, action, entity,
-      entityId === null ? null : String(entityId), summary,
-      meta ? JSON.stringify(meta) : null, req.ip || '', nowUTC());
-  } catch (e) { console.error('[platform-log]', e.message); }
-}
+const router = new Hono();
+/* الحارس يقبل رمز الادمن وحده — رمز المستأجر يُرفض قبل أي مسار */
+router.use('*', authenticateAdmin());
 
 /* ─────────────── نظرة عامة ─────────────── */
 router.get('/overview', h(async (req) => {
@@ -213,7 +204,7 @@ router.post('/tenants', h(async (req) => {
   });
 
   await plog(req, { action: 'create', entity: 'tenant', entityId: result.tenant.id, tenantId: result.tenant.id,
-    summary: `${req.ctx.userName} أنشأ الجهة «${result.tenant.name}» (${result.tenant.code})`,
+    summary: `${req.ctx.adminName} أنشأ الجهة «${result.tenant.name}» (${result.tenant.code})`,
     meta: { plan: b.plan_code || null } });
 
   return created({
@@ -267,9 +258,9 @@ router.patch('/tenants/:id', h(async (req) => {
   await plog(req, {
     action: suspending ? 'suspend' : (resuming ? 'resume' : 'update'),
     entity: 'tenant', entityId: t.id, tenantId: t.id,
-    summary: suspending ? `${req.ctx.userName} أوقف الجهة «${t.name}» — ${b.suspend_reason || 'إيقاف إداري'}`
-      : resuming ? `${req.ctx.userName} أعاد تفعيل الجهة «${t.name}»`
-      : `${req.ctx.userName} حدّث بيانات الجهة «${t.name}»`,
+    summary: suspending ? `${req.ctx.adminName} أوقف الجهة «${t.name}» — ${b.suspend_reason || 'إيقاف إداري'}`
+      : resuming ? `${req.ctx.adminName} أعاد تفعيل الجهة «${t.name}»`
+      : `${req.ctx.adminName} حدّث بيانات الجهة «${t.name}»`,
     meta: { before: { status: t.status, custom_domain: t.custom_domain }, after: next }
   });
 
@@ -294,7 +285,7 @@ router.post('/tenants/:id/plan', h(async (req) => {
   await app.db.run('UPDATE tenants SET plan=? WHERE id=?', planCode, t.id);
 
   await plog(req, { action: 'update', entity: 'subscription', entityId: sub.id, tenantId: t.id,
-    summary: `${req.ctx.userName} حوّل «${t.name}» إلى خطة «${sub.plan?.name}»`,
+    summary: `${req.ctx.adminName} حوّل «${t.name}» إلى خطة «${sub.plan?.name}»`,
     meta: { before: before && { plan: before.plan?.code, status: before.status }, after: { plan: planCode, cycle, status: sub.status } } });
   return sub;
 }));
@@ -315,12 +306,12 @@ router.post('/tenants/:id/impersonate', h(async (req) => {
   const accessToken = await signAccess(app, ctx);
 
   await plog(req, { action: 'impersonate', entity: 'tenant', entityId: t.id, tenantId: t.id,
-    summary: `${req.ctx.userName} دخل إدارياً إلى «${t.name}» بحساب مديرها للمساندة الفنية`,
+    summary: `${req.ctx.adminName} دخل إدارياً إلى «${t.name}» بحساب مديرها للمساندة الفنية`,
     meta: { as_user: owner.id } });
   await app.db.run(
     `INSERT INTO audit_logs(tenant_id,user_id,user_name,role_key,action,entity,entity_id,summary,ip,created_at)
      VALUES(?,?,?,?,?,?,?,?,?,?)`,
-    t.id, owner.id, `${req.ctx.userName} (مالك المنصة)`, 'platform_admin', 'login', 'tenant', String(t.id),
+    t.id, owner.id, `${req.ctx.adminName} (مالك المنصة)`, 'platform_admin', 'login', 'tenant', String(t.id),
     `دخول إداري من مالك المنصة للمساندة الفنية`, req.ip || '', nowUTC());
 
   return { accessToken, tenant: { id: t.id, code: t.code, name: t.name }, impersonated: true };
@@ -335,7 +326,7 @@ router.delete('/tenants/:id', h(async (req) => {
 
   const out = await purgeTenant(req.app, t.id);
   await plog(req, { action: 'delete', entity: 'tenant', entityId: t.id, tenantId: t.id,
-    summary: `${req.ctx.userName} محا الجهة «${t.name}» (${t.code}) وكل بياناتها`, meta: out.counts });
+    summary: `${req.ctx.adminName} محا الجهة «${t.name}» (${t.code}) وكل بياناتها`, meta: out.counts });
   return { ok: true, purged: out.counts };
 }));
 
@@ -377,7 +368,7 @@ router.post('/plans', h(async (req) => {
     b.is_public === false ? 0 : 1, b.is_active === false ? 0 : 1, b.highlight ? 1 : 0, Number(b.sort || 0));
 
   await plog(req, { action: 'create', entity: 'plan', entityId: r.lastId,
-    summary: `${req.ctx.userName} أنشأ خطة «${b.name}»` });
+    summary: `${req.ctx.adminName} أنشأ خطة «${b.name}»` });
   return created(await req.app.db.get('SELECT * FROM plans WHERE id=?', r.lastId));
 }));
 
@@ -405,7 +396,7 @@ router.patch('/plans/:id', h(async (req) => {
 
   await app.db.run(`UPDATE plans SET ${sets.join(', ')} WHERE id=?`, ...vals, p.id);
   await plog(req, { action: 'update', entity: 'plan', entityId: p.id,
-    summary: `${req.ctx.userName} حدّث خطة «${p.name}»`, meta: { before: p, after: b } });
+    summary: `${req.ctx.adminName} حدّث خطة «${p.name}»`, meta: { before: p, after: b } });
   return app.db.get('SELECT * FROM plans WHERE id=?', p.id);
 }));
 
@@ -417,7 +408,7 @@ router.delete('/plans/:id', h(async (req) => {
   if (used.c) throw conflict(`الخطة مرتبطة بـ ${used.c} جهة — عطّلها بدل حذفها`);
   await app.db.run('DELETE FROM plans WHERE id=?', p.id);
   await plog(req, { action: 'delete', entity: 'plan', entityId: p.id,
-    summary: `${req.ctx.userName} حذف خطة «${p.name}»` });
+    summary: `${req.ctx.adminName} حذف خطة «${p.name}»` });
   return { ok: true };
 }));
 
@@ -461,7 +452,7 @@ router.post('/invoices', h(async (req) => {
   if (!sub) throw badRequest('الجهة بلا اشتراك — عيّن لها خطة أولاً');
   const inv = await issueInvoice(app, tenantId, sub, { note: req.body?.note || 'فاتورة يدوية' });
   await plog(req, { action: 'create', entity: 'subscription_invoice', entityId: inv.id, tenantId,
-    summary: `${req.ctx.userName} أصدر الفاتورة ${inv.number} بمبلغ ${inv.total} ${inv.currency}` });
+    summary: `${req.ctx.adminName} أصدر الفاتورة ${inv.number} بمبلغ ${inv.total} ${inv.currency}` });
   return created(inv);
 }));
 
@@ -469,9 +460,9 @@ router.post('/invoices/:id/mark-paid', h(async (req) => {
   const app = req.app;
   const inv = await app.db.get('SELECT * FROM subscription_invoices WHERE id=?', req.params.id);
   if (!inv) throw notFound('الفاتورة غير موجودة');
-  const out = await settleInvoice(app, inv.id, { confirmedBy: req.ctx.userId });
+  const out = await settleInvoice(app, inv.id, { confirmedBy: req.ctx.adminId });
   await plog(req, { action: 'approve', entity: 'subscription_invoice', entityId: inv.id, tenantId: inv.tenant_id,
-    summary: `${req.ctx.userName} اعتمد سداد الفاتورة ${inv.number} (${inv.total} ${inv.currency})` });
+    summary: `${req.ctx.adminName} اعتمد سداد الفاتورة ${inv.number} (${inv.total} ${inv.currency})` });
   return out;
 }));
 
@@ -483,7 +474,7 @@ router.post('/invoices/:id/void', h(async (req) => {
   await app.db.run(`UPDATE subscription_invoices SET status='void', void_reason=? WHERE id=?`,
     req.body?.reason || 'إلغاء إداري', inv.id);
   await plog(req, { action: 'reject', entity: 'subscription_invoice', entityId: inv.id, tenantId: inv.tenant_id,
-    summary: `${req.ctx.userName} ألغى الفاتورة ${inv.number}` });
+    summary: `${req.ctx.adminName} ألغى الفاتورة ${inv.number}` });
   return app.db.get('SELECT * FROM subscription_invoices WHERE id=?', inv.id);
 }));
 
@@ -505,9 +496,9 @@ router.post('/payments/:id/confirm', h(async (req) => {
   const p = await app.db.get('SELECT * FROM subscription_payments WHERE id=?', req.params.id);
   if (!p) throw notFound('إشعار السداد غير موجود');
   if (p.status !== 'pending') throw badRequest('تمت معالجة هذا الإشعار مسبقاً');
-  const inv = await settleInvoice(app, p.invoice_id, { confirmedBy: req.ctx.userId });
+  const inv = await settleInvoice(app, p.invoice_id, { confirmedBy: req.ctx.adminId });
   await plog(req, { action: 'approve', entity: 'subscription_payment', entityId: p.id, tenantId: p.tenant_id,
-    summary: `${req.ctx.userName} اعتمد سداداً بمبلغ ${p.amount} للفاتورة ${inv.number}` });
+    summary: `${req.ctx.adminName} اعتمد سداداً بمبلغ ${p.amount} للفاتورة ${inv.number}` });
   return { ok: true, invoice: inv };
 }));
 
@@ -517,9 +508,9 @@ router.post('/payments/:id/reject', h(async (req) => {
   if (!p) throw notFound('إشعار السداد غير موجود');
   await app.db.run(
     `UPDATE subscription_payments SET status='rejected', confirmed_by=?, confirmed_at=?, note=? WHERE id=?`,
-    req.ctx.userId, nowUTC(), req.body?.reason || p.note, p.id);
+    req.ctx.adminId, nowUTC(), req.body?.reason || p.note, p.id);
   await plog(req, { action: 'reject', entity: 'subscription_payment', entityId: p.id, tenantId: p.tenant_id,
-    summary: `${req.ctx.userName} رفض إشعار سداد بمبلغ ${p.amount}` });
+    summary: `${req.ctx.adminName} رفض إشعار سداد بمبلغ ${p.amount}` });
   return { ok: true };
 }));
 
@@ -549,7 +540,7 @@ router.post('/signups/:id/approve', h(async (req) => {
     result.tenant.id, nowUTC(), nowUTC(), s.id);
 
   await plog(req, { action: 'approve', entity: 'signup', entityId: s.id, tenantId: result.tenant.id,
-    summary: `${req.ctx.userName} اعتمد طلب تسجيل «${s.tenant_name}» وفعّل الجهة` });
+    summary: `${req.ctx.adminName} اعتمد طلب تسجيل «${s.tenant_name}» وفعّل الجهة` });
   return created({ tenant: result.tenant, owner: result.owner, subscription: result.subscription });
 }));
 
@@ -561,7 +552,7 @@ router.post('/signups/:id/reject', h(async (req) => {
   await app.db.run(`UPDATE signups SET status='rejected', reject_reason=? WHERE id=?`,
     req.body?.reason || 'لم يستوفِ الشروط', s.id);
   await plog(req, { action: 'reject', entity: 'signup', entityId: s.id,
-    summary: `${req.ctx.userName} رفض طلب تسجيل «${s.tenant_name}»` });
+    summary: `${req.ctx.adminName} رفض طلب تسجيل «${s.tenant_name}»` });
   return { ok: true };
 }));
 
@@ -605,38 +596,86 @@ router.put('/settings', h(async (req) => {
     nowUTC());
 
   await plog(req, { action: 'update', entity: 'platform_settings', entityId: 1,
-    summary: `${req.ctx.userName} حدّث إعدادات المنصة`,
+    summary: `${req.ctx.adminName} حدّث إعدادات المنصة`,
     meta: { saas_enabled: bool(b.saas_enabled, cur.saas_enabled), signup_enabled: bool(b.signup_enabled, cur.signup_enabled) } });
   return platformSettings(app);
 }));
 
 /* ─────────────── مدراء المنصة ─────────────── */
+/*
+ * حسابات الادمن في جدولها المستقل: تُنشأ هنا بكلمة مرورها، ولا تُشتقّ من
+ * مستخدم في مجمّع — فلا يملك أحدٌ صلاحية منصة بحكم عضويته في جهة.
+ */
 router.get('/admins', h(async (req) => req.app.db.all(
-  `SELECT u.id,u.name,u.email,u.last_login_at,t.name AS tenant_name
-   FROM users u JOIN tenants t ON t.id=u.tenant_id WHERE u.is_platform_admin=1 ORDER BY u.id`)));
+  `SELECT id,name,email,status,totp_enabled,last_login_at,created_at
+   FROM platform_admins ORDER BY id`)));
 
 router.post('/admins', h(async (req) => {
   const app = req.app;
+  const name = String(req.body?.name || '').trim();
   const email = String(req.body?.email || '').trim().toLowerCase();
-  const u = await app.db.get('SELECT * FROM users WHERE lower(email)=?', email);
-  if (!u) throw notFound('لا يوجد مستخدم بهذا البريد');
-  await app.db.run('UPDATE users SET is_platform_admin=1 WHERE id=?', u.id);
-  await plog(req, { action: 'update', entity: 'platform_admin', entityId: u.id, tenantId: u.tenant_id,
-    summary: `${req.ctx.userName} منح «${u.name}» صلاحية مالك المنصة` });
-  return { ok: true, user: { id: u.id, name: u.name, email: u.email } };
+  const password = String(req.body?.password || '');
+  if (!name) throw badRequest('اسم الحساب إلزامي');
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(email)) throw badRequest('البريد الإلكتروني غير صالح');
+  if (password.length < 8) throw badRequest('كلمة المرور لا تقل عن ٨ خانات');
+  if (await app.db.get('SELECT id FROM platform_admins WHERE lower(email)=?', email)) {
+    throw conflict('يوجد حساب ادمن بهذا البريد');
+  }
+
+  const r = await app.db.run(
+    `INSERT INTO platform_admins(name,email,password_hash,status,created_by)
+     VALUES(?,?,?,'active',?)`,
+    name, email, await hashPassword(password), req.ctx.adminId);
+  await plog(req, { action: 'create', entity: 'platform_admin', entityId: r.lastId,
+    summary: `${req.ctx.adminName} أنشأ حساب ادمن «${name}»` });
+  return created({ id: r.lastId, name, email, status: 'active' });
+}));
+
+router.patch('/admins/:id', h(async (req) => {
+  const app = req.app;
+  const a = await app.db.get('SELECT * FROM platform_admins WHERE id=?', req.params.id);
+  if (!a) throw notFound('الحساب غير موجود');
+  const b = req.body || {};
+
+  /* إيقاف آخر حساب نشط يقفل اللوحة على الجميع */
+  if (b.status === 'suspended') {
+    if (a.id === req.ctx.adminId) throw badRequest('لا يمكنك إيقاف حسابك بنفسك');
+    const live = await app.db.get(
+      `SELECT COUNT(*) AS c FROM platform_admins WHERE status='active' AND id<>?`, a.id);
+    if (live.c < 1) throw badRequest('يجب بقاء حساب ادمن نشط واحد على الأقل');
+  }
+
+  await app.db.run('UPDATE platform_admins SET name=?, status=? WHERE id=?',
+    b.name?.trim() || a.name,
+    ['active', 'suspended'].includes(b.status) ? b.status : a.status, a.id);
+
+  /* إيقاف الحساب يُنهي جلساته القائمة فوراً لا عند انتهاء صلاحيتها */
+  if (b.status === 'suspended') {
+    await app.db.run('UPDATE admin_sessions SET revoked=1 WHERE admin_id=?', a.id);
+  }
+  if (b.password) {
+    if (String(b.password).length < 8) throw badRequest('كلمة المرور لا تقل عن ٨ خانات');
+    await app.db.run('UPDATE platform_admins SET password_hash=? WHERE id=?',
+      await hashPassword(String(b.password)), a.id);
+    await app.db.run('UPDATE admin_sessions SET revoked=1 WHERE admin_id=?', a.id);
+  }
+
+  await plog(req, { action: 'update', entity: 'platform_admin', entityId: a.id,
+    summary: `${req.ctx.adminName} حدّث حساب الادمن «${a.name}»` });
+  return app.db.get('SELECT id,name,email,status,totp_enabled,last_login_at FROM platform_admins WHERE id=?', a.id);
 }));
 
 router.delete('/admins/:id', h(async (req) => {
   const app = req.app;
   const id = Number(req.params.id);
-  if (id === req.ctx.userId) throw badRequest('لا يمكنك إزالة صلاحيتك بنفسك');
-  const count = await app.db.get('SELECT COUNT(*) AS c FROM users WHERE is_platform_admin=1');
-  if (count.c <= 1) throw badRequest('يجب بقاء مالك واحد للمنصة على الأقل');
-  const u = await app.db.get('SELECT * FROM users WHERE id=?', id);
-  if (!u) throw notFound('المستخدم غير موجود');
-  await app.db.run('UPDATE users SET is_platform_admin=0 WHERE id=?', id);
-  await plog(req, { action: 'update', entity: 'platform_admin', entityId: id, tenantId: u.tenant_id,
-    summary: `${req.ctx.userName} سحب صلاحية مالك المنصة من «${u.name}»` });
+  if (id === req.ctx.adminId) throw badRequest('لا يمكنك حذف حسابك بنفسك');
+  const count = await app.db.get('SELECT COUNT(*) AS c FROM platform_admins');
+  if (count.c <= 1) throw badRequest('يجب بقاء حساب ادمن واحد على الأقل');
+  const a = await app.db.get('SELECT * FROM platform_admins WHERE id=?', id);
+  if (!a) throw notFound('الحساب غير موجود');
+  await app.db.run('DELETE FROM platform_admins WHERE id=?', id);
+  await plog(req, { action: 'delete', entity: 'platform_admin', entityId: id,
+    summary: `${req.ctx.adminName} حذف حساب الادمن «${a.name}»` });
   return { ok: true };
 }));
 
@@ -670,9 +709,9 @@ router.post('/jobs/:name/run', h(async (req) => {
   if (!job) throw notFound('وظيفة غير معروفة');
   const started = Date.now();
   const result = await job.run(req.app, {
-    trigger: 'manual', actorId: req.ctx.userId, actorName: req.ctx.userName });
+    trigger: 'manual', actorId: req.ctx.adminId, actorName: req.ctx.adminName });
   await plog(req, { action: 'update', entity: 'job', entityId: req.params.name,
-    summary: `${req.ctx.userName} شغّل «${job.label}» يدوياً`, meta: result });
+    summary: `${req.ctx.adminName} شغّل «${job.label}» يدوياً`, meta: result });
   return { job: req.params.name, label: job.label, ms: Date.now() - started, result };
 }));
 
@@ -694,7 +733,7 @@ router.get('/metrics', h(async (req) => {
 router.post('/metrics/snapshot', h(async (req) => {
   const m = await snapshotMetrics(req.app);
   await plog(req, { action: 'create', entity: 'metrics', entityId: m.date,
-    summary: `${req.ctx.userName} التقط لقطة مؤشرات ليوم ${m.date}` });
+    summary: `${req.ctx.adminName} التقط لقطة مؤشرات ليوم ${m.date}` });
   return created(m);
 }));
 
@@ -736,10 +775,10 @@ router.post('/announcements', h(async (req) => {
     banner: !!b.banner, push: b.push !== false,
     startsAt: b.starts_at || null, endsAt: b.ends_at || null,
     send: b.send !== false,
-    createdBy: req.ctx.userId, createdByName: req.ctx.userName
+    createdBy: req.ctx.adminId, createdByName: req.ctx.adminName
   });
   await plog(req, { action: 'create', entity: 'announcement', entityId: out.id,
-    summary: `${req.ctx.userName} بثّ إعلان «${out.title}» إلى ${out.tenants} جهة (${out.recipients} مستخدم)`,
+    summary: `${req.ctx.adminName} بثّ إعلان «${out.title}» إلى ${out.tenants} جهة (${out.recipients} مستخدم)`,
     meta: { audience: out.audience, severity: out.severity } });
   return created(out);
 }));
@@ -749,7 +788,7 @@ router.delete('/announcements/:id', h(async (req) => {
   if (!a) throw notFound('الإعلان غير موجود');
   await deleteAnnouncement(req.app, a.id);
   await plog(req, { action: 'delete', entity: 'announcement', entityId: a.id,
-    summary: `${req.ctx.userName} حذف الإعلان «${a.title}»` });
+    summary: `${req.ctx.adminName} حذف الإعلان «${a.title}»` });
   return { ok: true };
 }));
 
@@ -795,7 +834,7 @@ router.post('/support/:id/reply', h(async (req) => {
   }).catch(() => {});
 
   await plog(req, { action: 'update', entity: 'ticket', entityId: k.id, tenantId: k.tenant_id,
-    summary: `${req.ctx.userName} ردّ على تذكرة مُصعَّدة (${k.subject})` });
+    summary: `${req.ctx.adminName} ردّ على تذكرة مُصعَّدة (${k.subject})` });
   return { ok: true, closed: close };
 }));
 
@@ -808,7 +847,7 @@ router.post('/tenants/:id/notes', h(async (req) => {
   if (!body) throw badRequest('نص الملاحظة إلزامي');
   const r = await req.app.db.run(
     'INSERT INTO tenant_notes(tenant_id,author_id,author_name,body,pinned) VALUES(?,?,?,?,?)',
-    req.params.id, req.ctx.userId, req.ctx.userName, body, req.body?.pinned ? 1 : 0);
+    req.params.id, req.ctx.adminId, req.ctx.adminName, body, req.body?.pinned ? 1 : 0);
   return created(await req.app.db.get('SELECT * FROM tenant_notes WHERE id=?', r.lastId));
 }));
 
@@ -833,7 +872,7 @@ router.put('/tenants/:id/crm', h(async (req) => {
     b.crm_stage === '' ? null : (b.crm_stage ?? t.crm_stage),
     b.crm_source ?? t.crm_source, t.id);
   await plog(req, { action: 'update', entity: 'tenant', entityId: t.id, tenantId: t.id,
-    summary: `${req.ctx.userName} حدّث بيانات متابعة «${t.name}»` });
+    summary: `${req.ctx.adminName} حدّث بيانات متابعة «${t.name}»` });
   return app.db.get('SELECT * FROM tenants WHERE id=?', t.id);
 }));
 
@@ -867,7 +906,7 @@ router.get('/tenants/:id/export', h(async (req) => {
   const { sql, tables, rows } = await dumpSQL(app, { tenantId: t.id });
   const body = await gzip(new TextEncoder().encode(sql));
   await plog(req, { action: 'export', entity: 'tenant', entityId: t.id, tenantId: t.id,
-    summary: `${req.ctx.userName} صدّر بيانات «${t.name}» كاملةً (${rows} سجل من ${tables} جدول)`,
+    summary: `${req.ctx.adminName} صدّر بيانات «${t.name}» كاملةً (${rows} سجل من ${tables} جدول)`,
     meta: { tables, rows } });
 
   return new Response(body, { headers: {
@@ -901,10 +940,10 @@ router.post('/coupons', h(async (req) => {
     JSON.stringify(Array.isArray(b.applies_to) ? b.applies_to : []),
     b.max_redemptions ? Number(b.max_redemptions) : null,
     b.valid_from || null, b.valid_until || null,
-    b.is_active === false ? 0 : 1, req.ctx.userId);
+    b.is_active === false ? 0 : 1, req.ctx.adminId);
 
   await plog(req, { action: 'create', entity: 'coupon', entityId: r.lastId,
-    summary: `${req.ctx.userName} أنشأ كوبون «${code}» بخصم ${value}${b.type === 'percent' ? '٪' : ''}` });
+    summary: `${req.ctx.adminName} أنشأ كوبون «${code}» بخصم ${value}${b.type === 'percent' ? '٪' : ''}` });
   return created(await req.app.db.get('SELECT * FROM coupons WHERE id=?', r.lastId));
 }));
 
@@ -923,7 +962,7 @@ router.patch('/coupons/:id', h(async (req) => {
     Array.isArray(b.applies_to) ? JSON.stringify(b.applies_to) : c.applies_to,
     c.id);
   await plog(req, { action: 'update', entity: 'coupon', entityId: c.id,
-    summary: `${req.ctx.userName} حدّث كوبون «${c.code}»` });
+    summary: `${req.ctx.adminName} حدّث كوبون «${c.code}»` });
   return app.db.get('SELECT * FROM coupons WHERE id=?', c.id);
 }));
 
@@ -934,7 +973,7 @@ router.delete('/coupons/:id', h(async (req) => {
   if (c.redemptions > 0) throw conflict(`الكوبون مُستخدَم ${c.redemptions} مرة — عطّله بدل حذفه`);
   await app.db.run('DELETE FROM coupons WHERE id=?', c.id);
   await plog(req, { action: 'delete', entity: 'coupon', entityId: c.id,
-    summary: `${req.ctx.userName} حذف كوبون «${c.code}»` });
+    summary: `${req.ctx.adminName} حذف كوبون «${c.code}»` });
   return { ok: true };
 }));
 
@@ -945,10 +984,10 @@ router.post('/invoices/:id/credit-note', h(async (req) => {
   if (!inv) throw notFound('الفاتورة غير موجودة');
   const note = await issueCreditNote(app, inv.id, {
     amount: req.body?.amount !== undefined ? Number(req.body.amount) : null,
-    reason: req.body?.reason || '', createdBy: req.ctx.userId
+    reason: req.body?.reason || '', createdBy: req.ctx.adminId
   });
   await plog(req, { action: 'create', entity: 'credit_note', entityId: note.id, tenantId: inv.tenant_id,
-    summary: `${req.ctx.userName} أصدر إشعاراً دائناً ${note.number} بمبلغ ${note.total} على الفاتورة ${inv.number}` });
+    summary: `${req.ctx.adminName} أصدر إشعاراً دائناً ${note.number} بمبلغ ${note.total} على الفاتورة ${inv.number}` });
   return created(note);
 }));
 
@@ -974,7 +1013,7 @@ router.put('/tenants/:id/overrides', h(async (req) => {
   await app.db.run('UPDATE tenants SET limit_overrides=?, feature_overrides=? WHERE id=?',
     JSON.stringify(limits), JSON.stringify(features), t.id);
   await plog(req, { action: 'update', entity: 'tenant', entityId: t.id, tenantId: t.id,
-    summary: `${req.ctx.userName} ضبط حدوداً ومزايا خاصة لـ«${t.name}»`,
+    summary: `${req.ctx.adminName} ضبط حدوداً ومزايا خاصة لـ«${t.name}»`,
     meta: { limits, features } });
 
   const sub = await tenantSubscription(app, t.id);

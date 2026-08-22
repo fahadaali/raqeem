@@ -10,7 +10,7 @@ if (id) {
   console.log('  مدير المجمّع : admin@riyadh-qu.sa / Admin@123');
   console.log('  المحاسب      : finance@riyadh-qu.sa / Finance@123');
   console.log('  المعلم       : teacher@riyadh-qu.sa / Teach@123');
-  console.log('  مالك المنصة  : admin@riyadh-qu.sa (لوحة /platform)');
+  console.log('  مدير المنصة  : admin@raqeem.sa / Admin@123  (لوحة /admin — حساب مستقل)');
 } else {
   console.log('ℹ البيانات التجريبية موجودة مسبقاً — حُدِّثت خطط الاشتراك وإعدادات المنصة فقط.');
 }

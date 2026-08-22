@@ -105,6 +105,12 @@ export function authenticate() {
         ? 'انتهت صلاحية الجلسة، يرجى إعادة تسجيل الدخول' : undefined);
     }
 
+    /*
+     * رمز لوحة المنصة لا يفتح مسارات المجمّعات. الفصل متبادل: هذا الشرط يقابل
+     * نظيره في authenticateAdmin، فلا يعبر رمزٌ إلى الطبقة الأخرى ولو تسرّب.
+     */
+    if (payload.adm) throw forbidden('رمز لوحة المنصة لا يصلح لمسارات المجمّعات');
+
     const ctx = await buildContext(app, payload.sub);
     if (!ctx) throw unauthorized('الحساب موقوف أو غير موجود');
     if (ctx.tenantId !== payload.tid) throw forbidden('عدم تطابق نطاق الجهة');

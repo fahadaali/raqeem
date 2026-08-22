@@ -5,7 +5,7 @@
    • استقبال إشعارات الدفع (Web Push) على المتصفح والأندرويد والآيفون
    • مزامنة خلفية لإعادة إرسال العمليات التي تمت أثناء انقطاع الشبكة
    ═══════════════════════════════════════════════════════════════════════ */
-const VERSION = 'raqeem-v1.0.2';
+const VERSION = 'raqeem-v1.1.0';
 const SHELL_CACHE = `${VERSION}-shell`;
 const DATA_CACHE = `${VERSION}-data`;
 
@@ -20,7 +20,8 @@ const SHELL = [
   '/js/views/tickets.js', '/js/views/reports.js', '/js/views/imports.js',
   '/js/views/audit.js', '/js/views/org.js', '/js/views/settings.js',
   '/js/views/notifications.js',
-  '/js/views/billing.js', '/js/views/platform.js', '/js/views/pricing.js', '/js/views/signup.js',
+  '/js/views/billing.js', '/js/views/pricing.js', '/js/views/signup.js',
+  '/js/admin-shell.js', '/js/admin-api.js', '/js/admin-state.js', '/js/views/admin/sections.js',
   '/assets/icons/icon-192.png', '/assets/icons/icon-512.png', '/assets/icons/favicon.png'
 ];
 
