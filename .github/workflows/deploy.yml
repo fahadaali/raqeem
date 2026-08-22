@@ -1,0 +1,61 @@
+# ════════════════════════════════════════════════════════════════════════
+#  نشر منصة رقيم على Cloudflare Workers
+#
+#  يعمل عند كل دفع إلى main، ويمكن تشغيله يدوياً من تبويب Actions.
+#  الشرط الوحيد: سرّ CLOUDFLARE_API_TOKEN في إعدادات المستودع.
+#
+#  لا يطبّق ترحيلات D1 تلقائياً عن قصد: تغيير المخطط على قاعدة فيها بيانات
+#  قرارٌ يُتّخذ بعينين مفتوحتين لا أثراً جانبياً لدفعة شيفرة. طبّقه من كونسول
+#  D1 أو بـ `npm run cf:migrate` ثم ادفع.
+# ════════════════════════════════════════════════════════════════════════
+name: نشر على Cloudflare
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# دفعتان متتاليتان لا تتسابقان على النشر
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: بناء ونشر
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: تثبيت الاعتماديات
+        run: npm ci
+
+      - name: فحص التوصيل (خادم + واجهة لكل قدرة)
+        run: npm run verify:wiring
+
+      - name: بناء ملفات النشر (الترحيلات ورؤوس الأمان)
+        run: npm run cf:build
+
+      - name: نشر العامل
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx wrangler deploy
+
+      - name: التحقّق من صحة الخدمة بعد النشر
+        run: |
+          for i in $(seq 1 10); do
+            body=$(curl -fsS --max-time 20 https://raqeem.fahad2ao.workers.dev/api/health) && {
+              echo "$body"
+              echo "$body" | grep -q '"status":"ok"' && exit 0
+            }
+            echo "محاولة $i — لم تستقر الخدمة بعد، إعادة المحاولة…"
+            sleep 6
+          done
+          echo "::error::الخدمة لم ترجع status=ok بعد النشر"
+          exit 1
