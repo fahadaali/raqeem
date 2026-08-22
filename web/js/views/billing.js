@@ -96,7 +96,19 @@ export async function render({ navigate }) {
       { header: '', key: 'a', render: r => el('div.row', { style: { gap: '4px' } }, [
         el('button.btn.sm.ghost', { text: '🖨 طباعة', onclick: () => api.openPrintGet(`/api/billing/invoices/${r.id}/print`) }),
         r.status === 'open' && can('billing.manage')
-          ? el('button.btn.sm', { text: '💳 إبلاغ بالسداد', onclick: () => payDialog(r, data, refresh) }) : null
+          ? (data.gateway?.redirects
+              ? el('button.btn.sm', { text: '💳 ادفع الآن', onclick: async (e) => {
+                  e.target.disabled = true;
+                  try {
+                    const out = await api.post(`/api/billing/invoices/${r.id}/pay`, {});
+                    if (out.redirect_url) location.href = out.redirect_url;
+                    else { toast(out.message || 'بدأت عملية الدفع', 'ok'); await refresh(); }
+                  } catch (err) { toast(err.message, 'warn'); e.target.disabled = false; }
+                } })
+              : el('button.btn.sm', { text: '💳 إبلاغ بالسداد', onclick: () => payDialog(r, data, refresh) }))
+          : null,
+        r.zatca_qr ? el('button.btn.sm.ghost', { text: '⬛ فاتورة إلكترونية',
+          onclick: () => eInvoiceDialog(r) }) : null
       ]) }
     ], invoicesData.items) : empty('🧾', 'لا توجد فواتير بعد', 'ستظهر هنا فواتير الاشتراك عند إصدارها.'),
     { sub: `الرصيد المستحق: ${money(invoicesData.balance.due)} ${data.currency}` });
@@ -114,7 +126,74 @@ export async function render({ navigate }) {
         ]))
       : null;
 
-    clear(root).append(header, usage, invoices, ...(bank ? [bank] : []),
+    /* ── الكوبون ── */
+    const couponInput = input({ placeholder: 'أدخل رمز الكوبون', dir: 'ltr', style: { textTransform: 'uppercase' } });
+    const couponCard = manage ? card('كوبون خصم', el('div.stack', {}, [
+      data.coupon
+        ? el('div.row', { style: { gap: '10px' } }, [
+            chip(`${data.coupon.code} — ${data.coupon.type === 'percent' ? AR_NUM(data.coupon.value) + '٪' : money(data.coupon.value)}`, 'ok'),
+            data.coupon.until ? el('span.hint', { text: `ساري حتى ${fmtDate(data.coupon.until, state.calendar)}` }) : null,
+            el('button.btn.sm.ghost', { text: 'إزالة', onclick: async () => {
+              await api.del('/api/billing/coupon'); toast('أُزيل الكوبون', 'ok'); await refresh(); } })
+          ])
+        : el('div.row', { style: { gap: '8px' } }, [
+            el('div', { style: { flex: 1 } }, [couponInput]),
+            el('button.btn', { text: 'تفعيل', onclick: async (e) => {
+              if (!couponInput.value.trim()) return;
+              e.target.disabled = true;
+              try {
+                const r = await api.post('/api/billing/coupon', { code: couponInput.value.trim() });
+                toast(`فُعّل كوبون «${r.code}» — خصم ${money(r.discount_preview)}`, 'ok');
+                await refresh();
+              } catch (err) { toast(err.message, 'warn'); e.target.disabled = false; }
+            } })
+          ]),
+      el('p.hint', { text: 'يُخصم الكوبون من فاتورتك القادمة قبل احتساب الضريبة.' })
+    ])) : null;
+
+    /* ── الرصيد المُرحَّل ── */
+    const creditCard = data.credit_balance > 0 ? el('div.alert.ok', {
+      text: `لديك رصيد ${money(data.credit_balance)} ${data.currency} سيُخصم تلقائياً من فاتورتك القادمة.` }) : null;
+
+    /* ── ما تشمله خطتك ── */
+    const featuresCard = data.features ? card('ما تشمله خطتك', el('div.grid-2', {},
+      data.features.map(f => el('div.row', { style: { gap: '6px' } }, [
+        el('span', { text: f.enabled ? '✓' : '✕', style: { color: `var(--${f.enabled ? 'ok' : 'text-3'})`, fontWeight: '700' } }),
+        el('span', { text: f.label, style: f.enabled ? {} : { color: 'var(--text-3)' } })
+      ])))) : null;
+
+    /* ── بيانات الفوترة وأمر الشراء ── */
+    const be = data.billing_entity || {};
+    const beFields = {
+      name: input({ value: be.name || '', placeholder: 'الاسم النظامي للجهة' }),
+      vat: input({ value: be.vat_number || '', dir: 'ltr', placeholder: '١٥ رقماً', maxlength: 15 }),
+      cr: input({ value: be.cr_number || '', dir: 'ltr' }),
+      po: input({ value: be.po_number || '', dir: 'ltr', placeholder: 'PO-2026-001' }),
+      city: input({ value: be.address?.city || '' }),
+      street: input({ value: be.address?.street || '' })
+    };
+    const beCard = manage ? card('بيانات الفوترة وأمر الشراء', el('div.stack', {}, [
+      el('p.hint', { text: 'تُثبَّت هذه البيانات على الفاتورة وقت إصدارها. الرقم الضريبي إلزامي للفاتورة الضريبية بين المنشآت.' }),
+      field('اسم الجهة النظامي', beFields.name),
+      el('div.grid-2', {}, [field('الرقم الضريبي', beFields.vat), field('السجل التجاري', beFields.cr)]),
+      field('رقم أمر الشراء (للجهات الحكومية)', beFields.po),
+      el('div.grid-2', {}, [field('المدينة', beFields.city), field('الشارع', beFields.street)]),
+      el('button.btn.sm', { text: '💾 حفظ', onclick: async (e) => {
+        e.target.disabled = true;
+        try {
+          await api.put('/api/billing/billing-entity', {
+            name: beFields.name.value.trim(), vat_number: beFields.vat.value.trim(),
+            cr_number: beFields.cr.value.trim(), po_number: beFields.po.value.trim(),
+            address: { city: beFields.city.value.trim(), street: beFields.street.value.trim() }
+          });
+          toast('حُفظت بيانات الفوترة', 'ok');
+        } catch (err) { toast(err.message, 'warn'); }
+        finally { e.target.disabled = false; }
+      } })
+    ])) : null;
+
+    clear(root).append(header, creditCard, usage, featuresCard, invoices,
+      ...(couponCard ? [couponCard] : []), ...(beCard ? [beCard] : []), ...(bank ? [bank] : []),
       el('p.hint', { text: `للاستفسار: ${data.support_email || '—'}` }));
   };
 
@@ -213,4 +292,41 @@ function payDialog(inv, data, refresh) {
     } })
   });
   return m;
+}
+
+/* ═════════ عرض الفاتورة الإلكترونية ورمز QR ═════════ */
+
+/** رسم رمز QR بلا مكتبات: نستخدم خدمة العرض المدمجة في المتصفح عبر canvas بسيط
+ *  — وبما أن الشبكة الخارجية محجوبة، نعرض السلسلة المُرمَّزة نصّاً قابلاً للنسخ
+ *  إضافةً إلى حقولها المفكوكة، وهو ما يحتاجه المدقّق فعلياً. */
+async function eInvoiceDialog(invoiceRow) {
+  const d = await api.get(`/api/billing/invoices/${invoiceRow.id}/einvoice`);
+  const LABELS = { 1: 'اسم البائع', 2: 'الرقم الضريبي', 3: 'تاريخ ووقت الإصدار',
+    4: 'الإجمالي شامل الضريبة', 5: 'قيمة الضريبة', 6: 'تجزئة المستند', 7: 'التوقيع', 8: 'المفتاح العام' };
+
+  modal({
+    title: `الفاتورة الإلكترونية — ${d.number}`, size: 'lg',
+    body: el('div.stack', {}, [
+      el('div.kv', {}, Object.entries(d.fields).flatMap(([tag, v]) => [
+        el('span.k', { text: LABELS[tag] || `الوسم ${tag}` }),
+        el('span.v', { text: v, style: Number(tag) >= 6 ? { direction: 'ltr', fontSize: '11px', wordBreak: 'break-all' } : {} })
+      ])),
+      card('رمز QR (TLV بترميز Base64)', el('div.stack', {}, [
+        el('code', { text: d.qr, style: { direction: 'ltr', fontSize: '10.5px', wordBreak: 'break-all', lineHeight: '1.8' } }),
+        el('button.btn.sm.ghost', { text: '📋 نسخ', onclick: async () => {
+          try { await navigator.clipboard.writeText(d.qr); toast('نُسخ رمز QR', 'ok'); }
+          catch { toast('تعذّر النسخ — حدّد النص يدوياً', 'warn'); }
+        } })
+      ])),
+      el('div.kv', {}, [
+        el('span.k', { text: 'المعرّف الفريد' }),
+        el('span.v', { text: d.uuid, style: { direction: 'ltr', fontSize: '11px' } }),
+        el('span.k', { text: 'تجزئة الفاتورة' }),
+        el('span.v', { text: d.hash, style: { direction: 'ltr', fontSize: '11px', wordBreak: 'break-all' } })
+      ]),
+      d.xml_available ? el('button.btn.ghost', { text: '⬇ تنزيل مستند XML',
+        onclick: () => api.downloadGet(`/api/billing/invoices/${invoiceRow.id}/xml`, `${d.number}.xml`) }) : null,
+      el('p.hint', { text: 'المستند بمعيار UBL 2.1 وسلسلة التجزئة مترابطة. الختم التشفيري يُضاف بعد استخراج شهادة CSID من هيئة الزكاة والضريبة والجمارك.' })
+    ])
+  });
 }

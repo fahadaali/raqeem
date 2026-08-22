@@ -6,10 +6,15 @@ import { can } from '../middleware/rbac.js';
 import { audit } from '../middleware/audit.js';
 import { buildReportHTML } from '../report.js';
 import {
-  platformSettings, tenantSubscription, tenantUsage, planLimits, planPrice, yearlySavings,
-  startSubscription, issueInvoice, outstandingBalance, subscriptionWritable,
-  subscriptionBlockReason, STATUS_AR, INVOICE_STATUS_AR, CYCLES, periodEnd
+  platformSettings, tenantSubscription, tenantUsage, planLimits, effectiveLimits, planPrice,
+  yearlySavings, startSubscription, issueInvoice, outstandingBalance, subscriptionWritable,
+  subscriptionBlockReason, prorationCredit, paidForCurrentPeriod, couponDiscount,
+  STATUS_AR, INVOICE_STATUS_AR, CYCLES
 } from '../billing.js';
+import { validateCoupon, attachCoupon, detachCoupon, activeCoupon } from '../coupons.js';
+import { startPayment, reconcilePayment, activeGateway, GATEWAYS } from '../payments.js';
+import { effectiveFeatures, FEATURES } from '../features.js';
+import { decodeQR } from '../zatca.js';
 
 /**
  * شاشة الاشتراك والفوترة الخاصة بالجهة (المرحلة الثانية).
@@ -24,7 +29,11 @@ async function overview(app, tenantId) {
   const sub = await tenantSubscription(app, tenantId);
   const usage = await tenantUsage(app, tenantId);
   const balance = await outstandingBalance(app, tenantId);
-  const limits = sub?.plan ? planLimits(sub.plan) : { branches: null, users: null, storage_mb: null };
+  const tenant = await app.db.get('SELECT * FROM tenants WHERE id=?', tenantId);
+  const limits = sub?.plan ? effectiveLimits(sub.plan, tenant) : { branches: null, users: null, storage_mb: null };
+  const coupon = sub ? await activeCoupon(app, sub) : null;
+  const gateway = await activeGateway(app);
+  const features = sub?.plan ? effectiveFeatures(sub.plan, tenant) : null;
 
   return {
     saas_enabled: !!settings.saas_enabled,
@@ -32,6 +41,14 @@ async function overview(app, tenantId) {
     vat_rate: settings.vat_rate,
     bank_details: settings.bank_details,
     support_email: settings.support_email,
+    gateway: { key: gateway.key, label: GATEWAYS[gateway.key]?.label, redirects: !!GATEWAYS[gateway.key]?.redirects },
+    features: features && FEATURES.map(f => ({ ...f, enabled: features.includes(f.key) })),
+    coupon: coupon && {
+      code: coupon.code, name: coupon.name, type: coupon.type, value: coupon.value,
+      until: sub.coupon_until
+    },
+    credit_balance: Number(sub?.credit_balance || 0),
+    billing_entity: j(tenant?.billing_entity, {}) || {},
     subscription: sub && {
       status: sub.status, status_label: STATUS_AR[sub.status] || sub.status,
       cycle: sub.cycle,
@@ -64,11 +81,12 @@ router.get('/', can('billing.view'), h(async (req) => overview(req.app, req.ctx.
 router.get('/plans', can('billing.view'), h(async (req) => {
   const sub = await tenantSubscription(req.app, req.ctx.tenantId);
   const usage = await tenantUsage(req.app, req.ctx.tenantId);
+  const tenant = await req.app.db.get('SELECT * FROM tenants WHERE id=?', req.ctx.tenantId);
   const rows = await req.app.db.all('SELECT * FROM plans WHERE is_active=1 ORDER BY sort, price_monthly');
   return {
     current: sub?.plan?.code || null,
     plans: rows.map(p => {
-      const limits = planLimits(p);
+      const limits = effectiveLimits(p, tenant);
       /* خطة لا تتسع للاستهلاك الحالي لا يمكن النزول إليها */
       const blockers = Object.entries(limits)
         .filter(([k, v]) => v !== null && Number(usage[k] || 0) > v)
@@ -103,12 +121,29 @@ router.post('/subscribe', can('billing.manage'), h(async (req) => {
   }
 
   const before = await tenantSubscription(app, tenantId);
+
+  /* التناسب: الجزء غير المستهلَك من الفترة الجارية يُرحَّل رصيداً بدل ضياعه */
+  let proration = null;
+  if (before && before.plan && ['active', 'past_due'].includes(before.status)) {
+    const paid = await paidForCurrentPeriod(app, before);
+    const p = prorationCredit(before, before.plan, { paidForPeriod: paid });
+    if (p.credit > 0) {
+      proration = { ...p, from_plan: before.plan.code, from_cycle: before.cycle };
+      await app.db.run('UPDATE subscriptions SET credit_balance = credit_balance + ?, updated_at=? WHERE id=?',
+        p.credit, nowUTC(), before.id);
+    }
+  }
+
   const sub = await startSubscription(app, tenantId, { planCode, cycle, status: 'active' });
 
-  /* فاتورة الفترة الجديدة تُصدر فوراً للخطط المدفوعة */
+  /* فاتورة الفترة الجديدة تُصدر فوراً للخطط المدفوعة، بعد خصم الكوبون والرصيد */
   let invoice = null;
   if (planPrice(plan, cycle) > 0) {
-    invoice = await issueInvoice(app, tenantId, sub, { note: `اشتراك ${plan.name} — ${cycle === 'yearly' ? 'سنوي' : 'شهري'}` });
+    const coupon = await activeCoupon(app, sub);
+    invoice = await issueInvoice(app, tenantId, sub, {
+      note: `اشتراك ${plan.name} — ${cycle === 'yearly' ? 'سنوي' : 'شهري'}`,
+      proration, coupon
+    });
   }
   await app.db.run('UPDATE tenants SET plan=? WHERE id=?', plan.code, tenantId);
 
@@ -118,7 +153,7 @@ router.post('/subscribe', can('billing.manage'), h(async (req) => {
     before: before && { plan: before.plan?.code, cycle: before.cycle, status: before.status },
     after: { plan: plan.code, cycle, status: sub.status }
   });
-  return created({ subscription: await overview(app, tenantId), invoice });
+  return created({ subscription: await overview(app, tenantId), invoice, proration });
 }));
 
 /* إيقاف التجديد التلقائي */
@@ -145,11 +180,19 @@ router.post('/resume', can('billing.manage'), h(async (req) => {
 }));
 
 /* ─────────────── الفواتير ─────────────── */
+/* الحقول المخزّنة JSON تُفكّ قبل الإرسال حتى لا تضطر الواجهة لتحليلها */
+const shapeInvoice = (r) => ({
+  ...r,
+  status_label: INVOICE_STATUS_AR[r.status] || r.status,
+  buyer: j(r.buyer, {}) || {},
+  proration: j(r.proration, null)
+});
+
 router.get('/invoices', can('billing.view'), h(async (req) => {
   const rows = await req.app.db.all(
     'SELECT * FROM subscription_invoices WHERE tenant_id=? ORDER BY id DESC LIMIT 100', req.ctx.tenantId);
   return {
-    items: rows.map(r => ({ ...r, status_label: INVOICE_STATUS_AR[r.status] || r.status })),
+    items: rows.map(shapeInvoice),
     balance: await outstandingBalance(req.app, req.ctx.tenantId)
   };
 }));
@@ -161,7 +204,7 @@ router.get('/invoices/:id', can('billing.view'), h(async (req) => {
   const payments = await req.app.db.all(
     `SELECT p.*, u.name AS declared_by_name FROM subscription_payments p
      LEFT JOIN users u ON u.id=p.declared_by WHERE p.invoice_id=? ORDER BY p.id DESC`, inv.id);
-  return { ...inv, status_label: INVOICE_STATUS_AR[inv.status] || inv.status, payments };
+  return { ...shapeInvoice(inv), payments };
 }));
 
 /** فاتورة رسمية مرَوَّسة بهوية المنصة (البند ١٣ مطبَّقاً على فواتير الاشتراك) */
@@ -235,6 +278,108 @@ router.post('/invoices/:id/declare-payment', can('billing.manage'), h(async (req
     id: r.lastId, status: 'pending',
     message: 'سُجّل إشعار السداد — تُعتمد الفاتورة بعد تحقّق إدارة المنصة'
   });
+}));
+
+/* ─────────────── الكوبونات ─────────────── */
+router.post('/coupon', can('billing.manage'), h(async (req) => {
+  const app = req.app;
+  const sub = await tenantSubscription(app, req.ctx.tenantId);
+  if (!sub) throw notFound('لا يوجد اشتراك');
+  const check = await validateCoupon(app, req.body?.code, {
+    tenantId: req.ctx.tenantId, planCode: sub.plan?.code });
+  if (!check.valid) throw badRequest(check.reason);
+
+  await attachCoupon(app, req.ctx.tenantId, check.coupon);
+  const price = planPrice(sub.plan, sub.cycle);
+  await audit(req, { action: 'update', entity: 'subscription', entityId: sub.id,
+    summary: `${req.ctx.userName} فعّل كوبون «${check.coupon.code}»` });
+  return {
+    ok: true, code: check.coupon.code, name: check.coupon.name,
+    discount_preview: couponDiscount(check.coupon, price),
+    subscription: await overview(app, req.ctx.tenantId)
+  };
+}));
+
+router.delete('/coupon', can('billing.manage'), h(async (req) => {
+  await detachCoupon(req.app, req.ctx.tenantId);
+  await audit(req, { action: 'update', entity: 'subscription', summary: `${req.ctx.userName} أزال الكوبون` });
+  return overview(req.app, req.ctx.tenantId);
+}));
+
+/* ─────────────── بيانات المشتري وأمر الشراء ─────────────── */
+router.put('/billing-entity', can('billing.manage'), h(async (req) => {
+  const b = req.body || {};
+  const entity = {
+    name: String(b.name || '').trim() || null,
+    vat_number: String(b.vat_number || '').trim() || null,
+    cr_number: String(b.cr_number || '').trim() || null,
+    po_number: String(b.po_number || '').trim() || null,
+    address: {
+      street: b.address?.street || null, district: b.address?.district || null,
+      city: b.address?.city || null, postal_code: b.address?.postal_code || null
+    },
+    email: String(b.email || '').trim() || null
+  };
+  if (entity.vat_number && !/^\d{15}$/.test(entity.vat_number)) {
+    throw badRequest('الرقم الضريبي يتكوّن من ١٥ رقماً');
+  }
+  await req.app.db.run('UPDATE tenants SET billing_entity=? WHERE id=?',
+    JSON.stringify(entity), req.ctx.tenantId);
+  await audit(req, { action: 'update', entity: 'tenant', entityId: req.ctx.tenantId,
+    summary: `${req.ctx.userName} حدّث بيانات الفوترة والرقم الضريبي` });
+  return entity;
+}));
+
+/* ─────────────── الدفع عبر البوابة ─────────────── */
+router.post('/invoices/:id/pay', can('billing.manage'), h(async (req) => {
+  const app = req.app;
+  const inv = await app.db.get('SELECT * FROM subscription_invoices WHERE id=? AND tenant_id=?',
+    req.params.id, req.ctx.tenantId);
+  if (!inv) throw notFound('الفاتورة غير موجودة');
+
+  const origin = (req.get('origin') || app.cfg.appUrl || '').replace(/\/+$/, '');
+  const out = await startPayment(app, inv, {
+    userId: req.ctx.userId,
+    callbackUrl: origin ? `${origin}/billing?paid=${inv.id}` : null
+  });
+  await audit(req, { action: 'create', entity: 'subscription_payment', entityId: out.payment_id,
+    summary: `${req.ctx.userName} بدأ سداد الفاتورة ${inv.number} عبر ${out.gateway}` });
+  return created(out);
+}));
+
+router.post('/payments/:id/check', can('billing.manage'), h(async (req) => {
+  const app = req.app;
+  const pay = await app.db.get('SELECT * FROM subscription_payments WHERE id=? AND tenant_id=?',
+    req.params.id, req.ctx.tenantId);
+  if (!pay) throw notFound('عملية الدفع غير موجودة');
+  return reconcilePayment(app, pay.id);
+}));
+
+/* ─────────────── الفاتورة الإلكترونية ─────────────── */
+router.get('/invoices/:id/einvoice', can('billing.view'), h(async (req) => {
+  const app = req.app;
+  const inv = await app.db.get('SELECT * FROM subscription_invoices WHERE id=? AND tenant_id=?',
+    req.params.id, req.ctx.tenantId);
+  if (!inv) throw notFound('الفاتورة غير موجودة');
+  if (!inv.zatca_qr) throw badRequest('الفاتورة الإلكترونية غير مفعّلة لهذه الفاتورة');
+  return {
+    number: inv.number, uuid: inv.zatca_uuid, qr: inv.zatca_qr,
+    fields: decodeQR(inv.zatca_qr), hash: inv.zatca_hash,
+    xml_available: !!inv.zatca_xml_key
+  };
+}));
+
+router.get('/invoices/:id/xml', can('billing.view'), h(async (req) => {
+  const app = req.app;
+  const inv = await app.db.get('SELECT * FROM subscription_invoices WHERE id=? AND tenant_id=?',
+    req.params.id, req.ctx.tenantId);
+  if (!inv?.zatca_xml_key) throw notFound('مستند الفاتورة الإلكترونية غير متاح');
+  const data = await app.storage.get(inv.zatca_xml_key);
+  if (!data) throw notFound('مستند الفاتورة الإلكترونية غير متاح');
+  return new Response(data, { headers: {
+    'Content-Type': 'application/xml; charset=utf-8',
+    'Content-Disposition': `attachment; filename="${inv.number}.xml"`
+  } });
 }));
 
 export default router;

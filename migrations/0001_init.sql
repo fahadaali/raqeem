@@ -24,6 +24,13 @@ CREATE TABLE IF NOT EXISTS tenants (
   owner_email     TEXT,
   suspended_at    TEXT,
   suspend_reason  TEXT,
+  contact_name    TEXT,                             
+  contact_phone   TEXT,
+  crm_stage       TEXT,                             
+  crm_source      TEXT,
+  limit_overrides TEXT NOT NULL DEFAULT '{}',       
+  feature_overrides TEXT NOT NULL DEFAULT '{}',     
+  billing_entity  TEXT NOT NULL DEFAULT '{}',       
   created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
@@ -90,6 +97,9 @@ CREATE TABLE IF NOT EXISTS users (
   notify_prefs      TEXT NOT NULL DEFAULT '{"push":true,"inapp":true,"tasks":true,"finance":true,"chat":true,"tickets":true,"hr":true}',
   must_change_pw    INTEGER NOT NULL DEFAULT 0,
   is_platform_admin INTEGER NOT NULL DEFAULT 0,     
+  totp_secret       TEXT,                           
+  totp_enabled      INTEGER NOT NULL DEFAULT 0,
+  totp_backup       TEXT,
   last_login_at     TEXT,
   created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   UNIQUE (tenant_id, email)
@@ -506,6 +516,11 @@ CREATE TABLE IF NOT EXISTS tickets (
   first_response_at TEXT,
   escalated         INTEGER NOT NULL DEFAULT 0,
   escalated_at      TEXT,
+  vendor_escalated  INTEGER NOT NULL DEFAULT 0,     
+  vendor_escalated_at TEXT,
+  vendor_status     TEXT,                           
+  vendor_reply      TEXT,
+  vendor_replied_at TEXT,
   closed_at         TEXT,
   created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   updated_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
@@ -727,6 +742,9 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   cancel_at_period_end INTEGER NOT NULL DEFAULT 0,
   canceled_at          TEXT,
   grace_until          TEXT,        
+  credit_balance       REAL NOT NULL DEFAULT 0,   
+  coupon_id            INTEGER REFERENCES coupons(id) ON DELETE SET NULL,
+  coupon_until         TEXT,
   notes                TEXT,
   created_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   updated_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
@@ -756,7 +774,21 @@ CREATE TABLE IF NOT EXISTS subscription_invoices (
   due_at          TEXT,
   paid_at         TEXT,
   void_reason     TEXT,
-  notes           TEXT
+  notes           TEXT,
+  
+  doc_type        TEXT NOT NULL DEFAULT 'invoice',  
+  parent_id       INTEGER REFERENCES subscription_invoices(id) ON DELETE SET NULL,
+  credit_applied  REAL NOT NULL DEFAULT 0,          
+  proration       TEXT,                             
+  coupon_code     TEXT,
+  po_number       TEXT,                             
+  buyer           TEXT NOT NULL DEFAULT '{}',       
+  
+  zatca_uuid      TEXT,
+  zatca_qr        TEXT,                             
+  zatca_hash      TEXT,
+  zatca_prev_hash TEXT,
+  zatca_xml_key   TEXT
 );
 
 CREATE INDEX IF NOT EXISTS ix_subinv_tenant ON subscription_invoices(tenant_id, issued_at);
@@ -773,6 +805,9 @@ CREATE TABLE IF NOT EXISTS subscription_payments (
   reference    TEXT,
   status       TEXT NOT NULL DEFAULT 'pending',        
   file_id      INTEGER REFERENCES files(id) ON DELETE SET NULL,   
+  gateway        TEXT,                              
+  gateway_ref    TEXT,
+  gateway_status TEXT,
   declared_by  INTEGER REFERENCES users(id),
   confirmed_by INTEGER REFERENCES users(id),
   confirmed_at TEXT,
@@ -825,6 +860,13 @@ CREATE TABLE IF NOT EXISTS platform_settings (
   bank_details       TEXT NOT NULL DEFAULT '{}',   
   invoice_prefix     TEXT NOT NULL DEFAULT 'NOOR',
   invoice_seq        INTEGER NOT NULL DEFAULT 0,
+  seller_address     TEXT NOT NULL DEFAULT '{}',   
+  zatca_enabled      INTEGER NOT NULL DEFAULT 0,   
+  payment_gateway    TEXT NOT NULL DEFAULT 'manual',
+  gateway_config     TEXT NOT NULL DEFAULT '{}',
+  require_2fa_admins INTEGER NOT NULL DEFAULT 0,   
+  health_idle_days   INTEGER NOT NULL DEFAULT 14,  
+  upsell_threshold   INTEGER NOT NULL DEFAULT 80,  
   updated_at         TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
@@ -849,3 +891,127 @@ BEGIN SELECT RAISE(ABORT, 'AUDIT_APPEND_ONLY: سجل المنصة غير قاب�
 
 CREATE TRIGGER IF NOT EXISTS trg_plog_no_delete BEFORE DELETE ON platform_logs
 BEGIN SELECT RAISE(ABORT, 'AUDIT_APPEND_ONLY: سجل المنصة غير قابل للحذف'); END;
+
+CREATE TABLE IF NOT EXISTS platform_metrics (
+  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+  date               TEXT NOT NULL UNIQUE,        
+  tenants_total      INTEGER NOT NULL DEFAULT 0,
+  tenants_active     INTEGER NOT NULL DEFAULT 0,
+  tenants_suspended  INTEGER NOT NULL DEFAULT 0,
+  subs_trialing      INTEGER NOT NULL DEFAULT 0,
+  subs_active        INTEGER NOT NULL DEFAULT 0,
+  subs_past_due      INTEGER NOT NULL DEFAULT 0,
+  subs_canceled      INTEGER NOT NULL DEFAULT 0,
+  subs_expired       INTEGER NOT NULL DEFAULT 0,
+  mrr                REAL NOT NULL DEFAULT 0,
+  arr                REAL NOT NULL DEFAULT 0,
+  arpu               REAL NOT NULL DEFAULT 0,
+  users_total        INTEGER NOT NULL DEFAULT 0,
+  branches_total     INTEGER NOT NULL DEFAULT 0,
+  storage_mb         REAL NOT NULL DEFAULT 0,
+  revenue_collected  REAL NOT NULL DEFAULT 0,     
+  outstanding_due    REAL NOT NULL DEFAULT 0,
+  new_tenants        INTEGER NOT NULL DEFAULT 0,  
+  churned_tenants    INTEGER NOT NULL DEFAULT 0,
+  trials_converted   INTEGER NOT NULL DEFAULT 0,
+  active_tenants_7d  INTEGER NOT NULL DEFAULT 0,  
+  created_at         TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+CREATE INDEX IF NOT EXISTS ix_pmetrics_date ON platform_metrics(date);
+
+CREATE TABLE IF NOT EXISTS job_runs (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  job          TEXT NOT NULL,
+  status       TEXT NOT NULL DEFAULT 'running',   
+  trigger      TEXT NOT NULL DEFAULT 'cron',      
+  actor_id     INTEGER REFERENCES users(id),
+  actor_name   TEXT,
+  started_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  finished_at  TEXT,
+  duration_ms  INTEGER,
+  result       TEXT,
+  error        TEXT
+);
+
+CREATE INDEX IF NOT EXISTS ix_jobruns ON job_runs(job, started_at);
+
+CREATE TABLE IF NOT EXISTS announcements (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  title         TEXT NOT NULL,
+  body          TEXT,
+  url           TEXT,
+  severity      TEXT NOT NULL DEFAULT 'info',      
+  audience      TEXT NOT NULL DEFAULT 'all',       
+  audience_value TEXT,
+  banner        INTEGER NOT NULL DEFAULT 0,        
+  push          INTEGER NOT NULL DEFAULT 1,        
+  starts_at     TEXT,
+  ends_at       TEXT,
+  sent_at       TEXT,
+  recipients    INTEGER NOT NULL DEFAULT 0,
+  tenants_count INTEGER NOT NULL DEFAULT 0,
+  created_by    INTEGER REFERENCES users(id),
+  created_by_name TEXT,
+  created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+CREATE INDEX IF NOT EXISTS ix_announce_window ON announcements(banner, starts_at, ends_at);
+
+CREATE TABLE IF NOT EXISTS tenant_notes (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  tenant_id   INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  author_id   INTEGER REFERENCES users(id),
+  author_name TEXT,
+  body        TEXT NOT NULL,
+  pinned      INTEGER NOT NULL DEFAULT 0,
+  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+CREATE INDEX IF NOT EXISTS ix_tnotes ON tenant_notes(tenant_id, created_at);
+
+CREATE TABLE IF NOT EXISTS login_attempts (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  email      TEXT NOT NULL,
+  tenant_id  INTEGER,
+  user_id    INTEGER,
+  success    INTEGER NOT NULL DEFAULT 0,
+  reason     TEXT,
+  ip         TEXT,
+  user_agent TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+CREATE INDEX IF NOT EXISTS ix_login_attempts ON login_attempts(created_at);
+
+CREATE INDEX IF NOT EXISTS ix_login_attempts_email ON login_attempts(email, created_at);
+
+CREATE TABLE IF NOT EXISTS coupons (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  code             TEXT NOT NULL UNIQUE,
+  name             TEXT NOT NULL,
+  type             TEXT NOT NULL DEFAULT 'percent',   
+  value            REAL NOT NULL DEFAULT 0,
+  currency         TEXT NOT NULL DEFAULT 'SAR',
+  duration         TEXT NOT NULL DEFAULT 'once',      
+  duration_months  INTEGER,
+  applies_to       TEXT NOT NULL DEFAULT '[]',        
+  max_redemptions  INTEGER,
+  redemptions      INTEGER NOT NULL DEFAULT 0,
+  valid_from       TEXT,
+  valid_until      TEXT,
+  is_active        INTEGER NOT NULL DEFAULT 1,
+  created_by       INTEGER REFERENCES users(id),
+  created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+CREATE TABLE IF NOT EXISTS coupon_redemptions (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  coupon_id  INTEGER NOT NULL REFERENCES coupons(id) ON DELETE CASCADE,
+  tenant_id  INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  invoice_id INTEGER REFERENCES subscription_invoices(id) ON DELETE SET NULL,
+  amount_off REAL NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+CREATE INDEX IF NOT EXISTS ix_coupon_red ON coupon_redemptions(coupon_id, tenant_id);

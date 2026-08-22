@@ -28,6 +28,10 @@ export async function render({ onSuccess, navigate }) {
 
   const email = input({ type: 'email', name: 'email', placeholder: 'name@riyadh-qu.sa', autocomplete: 'username', required: true, dir: 'ltr' });
   const pass = input({ type: 'password', name: 'password', placeholder: '••••••••', autocomplete: 'current-password', required: true });
+  const totp = input({ dir: 'ltr', inputmode: 'numeric', maxlength: 6, placeholder: '******',
+    style: { textAlign: 'center', letterSpacing: '6px' } });
+  const totpField = field('رمز التحقّق بخطوتين', totp, { hint: 'من تطبيق المصادقة، أو أحد رموز الاسترداد' });
+  totpField.hidden = true;
   const btn = el('button.btn.lg.block', { type: 'submit', text: 'تسجيل الدخول' });
   const msg = el('div.hint', { style: { color: 'var(--danger)', textAlign: 'center', minHeight: '18px' } });
 
@@ -38,20 +42,29 @@ export async function render({ onSuccess, navigate }) {
     const original = btn.textContent;
     btn.textContent = ''; btn.append(el('span.spinner'), document.createTextNode(' جارٍ التحقق...'));
     try {
-      await api.login(email.value.trim(), pass.value);
+      await api.login(email.value.trim(), pass.value, totpField.hidden ? undefined : totp.value.trim());
       toast('مرحباً بك في منصة نور', 'ok');
       await onSuccess();
     } catch (err) {
+      /* الحساب يطلب طبقة ثانية — نُظهر حقل الرمز ولا نُفرغ كلمة المرور */
+      if (err.code === 'TOTP_REQUIRED') {
+        totpField.hidden = false;
+        msg.textContent = '';
+        btn.disabled = false; btn.textContent = original;
+        totp.focus();
+        return;
+      }
       msg.textContent = err.message || 'تعذّر تسجيل الدخول';
       btn.disabled = false; btn.textContent = original;
-      pass.value = ''; pass.focus();
+      if (!totpField.hidden) { totp.value = ''; totp.focus(); }
+      else { pass.value = ''; pass.focus(); }
     }
   };
 
   const form = el('form', { onsubmit: submit, novalidate: true }, [
     field('البريد الإلكتروني', email, { required: true }),
     field('كلمة المرور', pass, { required: true }),
-    btn, msg
+    totpField, btn, msg
   ]);
 
   const demoGrid = el('div.demo-grid', {}, DEMO.map(([role, e, p]) =>

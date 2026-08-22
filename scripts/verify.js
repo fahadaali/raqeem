@@ -9,7 +9,7 @@ let pass = 0, fail = 0;
 const lines = [];
 const S = {};
 
-async function call(method, url, { token, body, raw, headers = {} } = {}) {
+async function call(method, url, { token, body, raw, headers = {}, expect429 = false } = {}) {
   const isForm = body instanceof FormData;
   const res = await fetch(BASE + url, {
     method,
@@ -19,6 +19,19 @@ async function call(method, url, { token, body, raw, headers = {} } = {}) {
   });
   if (raw) return { status: res.status, buf: Buffer.from(await res.arrayBuffer()), res };
   let data = null; try { data = await res.json(); } catch {}
+  /*
+   * حدّ الطلبات مشترك بين كل الفحوص، فتجاوزه يُسقط عشرات الفحوص التالية بأخطاء
+   * مضلّلة. نوقف التدقيق فوراً برسالة صريحة بدل أن نترك المدقّق يطارد وهماً.
+   */
+  if (res.status === 429 && data?.error?.code === 'RATE_LIMITED' && !expect429) {
+    console.log(`\n${'═'.repeat(60)}`);
+    console.log('  ✘ توقّف التدقيق: تجاوز حدّ الطلبات على الخادم');
+    console.log(`    المسار: ${method} ${url}`);
+    console.log('    شغّل التدقيق على نسخة جديدة أو انتظر انقضاء النافذة (دقيقة)،');
+    console.log('    أو ارفع الحد مؤقتاً:  RATE_LIMIT_MAX=5000 npm start');
+    console.log(`${'═'.repeat(60)}\n`);
+    process.exit(2);
+  }
   return { status: res.status, data, res };
 }
 const login = (email, password) => call('POST', '/api/auth/login', { body: { email, password } });
@@ -460,7 +473,7 @@ section('٩. التكامل والواجهة البرمجية العامة', asy
 
   let limited = false, headerSeen = false;
   for (let i = 0; i < 10; i++) {
-    const r = await call('GET', '/api/v1/branches', { token: API });
+    const r = await call('GET', '/api/v1/branches', { token: API, expect429: true });
     if (r.res.headers.get('x-ratelimit-limit') === '6') headerSeen = true;
     if (r.status === 429) { limited = true; break; }
   }
@@ -1118,6 +1131,478 @@ section('١٩. طبقة الـ SaaS (المرحلة الثانية)', async () =
   ok('التسجيل الذاتي يُغلق فوراً',
     (await call('POST', '/api/public/signup', { body: { code: 'ZZ9', tenant_name: 'x', admin_name: 'y',
       email: 'zz9@z.sa', password: 'Abcd@1234' } })).status === 403);
+});
+
+/* ═════════ ٢٠. لوحة المالك — المستويات ١–٤ ═════════ */
+section('٢٠. لوحة المالك: المزايا والنمو والامتثال والفوترة المتقدمة', async () => {
+  const crypto = await import('node:crypto');
+  /* مولّد رمز TOTP محلي للتحقق من مطابقة الخادم لمعيار RFC 6238 */
+  const b32 = (s) => {
+    const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+    let bits = '';
+    for (const c of s.replace(/=+$/, '').toUpperCase()) bits += A.indexOf(c).toString(2).padStart(5, '0');
+    const out = [];
+    for (let i = 0; i + 8 <= bits.length; i += 8) out.push(parseInt(bits.slice(i, i + 8), 2));
+    return Buffer.from(out);
+  };
+  const totpOf = (secret, step = Math.floor(Date.now() / 30000)) => {
+    const buf = Buffer.alloc(8); buf.writeBigUInt64BE(BigInt(step));
+    const mac = crypto.createHmac('sha1', b32(secret)).update(buf).digest();
+    const o = mac[mac.length - 1] & 0x0f;
+    const n = ((mac[o] & 0x7f) << 24) | (mac[o + 1] << 16) | (mac[o + 2] << 8) | mac[o + 3];
+    return String(n % 1e6).padStart(6, '0');
+  };
+
+  /* الطبقة أُعيدت إلى وضع المستأجر الواحد في نهاية القسم السابق — نعيد تفعيلها */
+  await call('PUT', '/api/platform/settings', {
+    token: S.owner, body: { saas_enabled: true, signup_enabled: true, signup_needs_review: false } });
+
+  const stamp = Date.now().toString().slice(-6);
+  const CODE = 'L' + stamp;
+  const MAIL = `lvl${stamp}@verify.sa`;
+  const su = await call('POST', '/api/public/signup', { body: {
+    code: CODE, tenant_name: 'مجمّع اختبار المستويات', admin_name: 'مدير المستويات',
+    email: MAIL, password: 'Verify@2026', plan_code: 'starter', cycle: 'monthly' } });
+  ok('تهيئة جهة اختبار للمستويات', su.status === 201, JSON.stringify(su.data));
+  const TID = su.data.tenant.id;
+  const TK = (await login(MAIL, 'Verify@2026')).data.accessToken;
+
+  /* ─────────── المستوى ١: تفعيل مزايا الخطط ─────────── */
+  const feats = await call('GET', '/api/platform/features', { token: S.owner });
+  ok('كتالوج المزايا متاح للمالك', feats.status === 200 && feats.data.length >= 13);
+  ok('كل ميزة لها مفتاح واسم عربي ووحدة',
+    feats.data.every(f => f.key && f.label && f.module));
+
+  ok('خطة البداية تتيح المهام', (await call('GET', '/api/tasks', { token: TK })).status === 200);
+  const locked = await call('GET', '/api/finance/requests', { token: TK });
+  ok('خطة البداية تحجب الدورة المالية', locked.status === 403);
+  ok('الحجب يعلن سببه بوضوح للواجهة', locked.data?.error?.details?.code === 'FEATURE_LOCKED');
+  ok('رسالة الحجب تذكر اسم الميزة بالعربية',
+    /الدورة المالية/.test(locked.data?.error?.message || ''));
+  ok('خطة البداية تحجب منشئ النماذج',
+    (await call('GET', '/api/forms', { token: TK })).status === 403);
+  ok('خطة البداية تحجب مفاتيح الربط',
+    (await call('GET', '/api/api-keys', { token: TK })).status === 403);
+  ok('الإشعارات تعمل في خطة البداية',
+    (await call('GET', '/api/notifications', { token: TK })).status === 200);
+
+  await call('POST', `/api/platform/tenants/${TID}/plan`, {
+    token: S.owner, body: { plan_code: 'enterprise', cycle: 'monthly', status: 'active' } });
+  ok('خطة المؤسسات تفتح كل الوحدات',
+    (await call('GET', '/api/finance/requests', { token: TK })).status === 200);
+  ok('خطة المؤسسات تفتح مفاتيح الربط',
+    (await call('GET', '/api/api-keys', { token: TK })).status === 200);
+
+  /* ─────────── المستوى ١: لقطات المؤشرات التاريخية ─────────── */
+  const snap = await call('POST', '/api/platform/metrics/snapshot', { token: S.owner });
+  ok('التقاط لقطة مؤشرات فورية', snap.status === 201 && /^\d{4}-\d{2}-\d{2}$/.test(snap.data.date));
+  ok('اللقطة تسجّل الإيراد الشهري المتكرر', typeof snap.data.mrr === 'number');
+  const mt = await call('GET', '/api/platform/metrics?days=30', { token: S.owner });
+  ok('سلسلة المؤشرات الزمنية متاحة', mt.status === 200 && Array.isArray(mt.data.points) && mt.data.points.length >= 1);
+  ok('السلسلة تحمل دلتا الفترة', mt.data.change && typeof mt.data.change.mrr === 'number');
+  ok('السلسلة تحسب معدل التسرّب', typeof mt.data.change.churn_rate === 'number');
+  ok('السلسلة ترفق تحويل التجارب', mt.data.trial_conversion && typeof mt.data.trial_conversion.rate === 'number');
+  ok('السلسلة ترفق توقّع الإيراد',
+    mt.data.forecast && typeof mt.data.forecast.expected === 'number'
+    && typeof mt.data.forecast.at_risk === 'number');
+  ok('اللقطة لا تتكرر لنفس اليوم',
+    mt.data.points.filter(p => p.date === snap.data.date).length === 1);
+
+  /* ─────────── المستوى ١: سجل تشغيل الوظائف ─────────── */
+  const runJob = await call('POST', '/api/platform/jobs/kpi/run', { token: S.owner });
+  ok('تشغيل وظيفة يدوياً ينجح', runJob.status === 200 && typeof runJob.data.ms === 'number');
+  const runs = await call('GET', '/api/platform/jobs/runs?job=kpi', { token: S.owner });
+  ok('سجل التشغيل يحفظ الوظيفة المنفّذة', runs.status === 200 && runs.data.length >= 1);
+  ok('السجل يميّز التشغيل اليدوي عن المجدول', runs.data.some(r => r.trigger === 'manual'));
+  ok('السجل يسجّل الحالة والمدة',
+    runs.data[0].status === 'success' && Number(runs.data[0].duration_ms) >= 0,
+    JSON.stringify({ status: runs.data[0].status, ms: runs.data[0].duration_ms }));
+  ok('السجل يحفظ ناتج الوظيفة', runs.data[0].result !== null && runs.data[0].result !== undefined);
+  ok('السجل يسمّي مُشغّل الوظيفة', !!runs.data[0].actor_name);
+  const jh = await call('GET', '/api/platform/jobs/health', { token: S.owner });
+  ok('صحة الوظائف تشمل كل الوظائف المعرّفة', jh.status === 200 && jh.data.jobs.length >= 6);
+  ok('صحة الوظائف تحصي الإخفاقات', typeof jh.data.failing === 'number' && jh.data.failing === 0);
+  ok('وظيفة لم تُعرّف تُرفض',
+    (await call('POST', '/api/platform/jobs/nope/run', { token: S.owner })).status === 404);
+
+  /* ─────────── المستوى ١: التناسب عند تغيير الخطة ─────────── */
+  const sub1 = await call('POST', '/api/billing/subscribe', {
+    token: TK, body: { plan_code: 'growth', cycle: 'monthly' } });
+  ok('الاشتراك في خطة النمو يُصدر فاتورة', sub1.status === 201 && sub1.data.invoice?.total > 0);
+  const inv1 = sub1.data.invoice;
+  near('الفاتورة تحسب ضريبة ١٥٪ على ٤٩٩', inv1.total, 573.85);
+
+  const up1 = await call('POST', '/api/billing/subscribe', {
+    token: TK, body: { plan_code: 'enterprise', cycle: 'monthly' } });
+  ok('الترقية قبل السداد لا تمنح رصيداً غير مدفوع',
+    !up1.data.proration || up1.data.proration.credit === 0,
+    JSON.stringify(up1.data.proration));
+  near('فاتورة الترقية بلا خصم غير مستحق', up1.data.invoice.total, 1723.85);
+
+  /* الآن نسدّد فعلياً ثم نرقّي — يجب أن يُحتسب المتبقّي رصيداً */
+  await call('POST', `/api/platform/invoices/${up1.data.invoice.id}/mark-paid`, { token: S.owner });
+  const up2 = await call('POST', '/api/billing/subscribe', {
+    token: TK, body: { plan_code: 'growth', cycle: 'monthly' } });
+  ok('الفترة المدفوعة غير المستهلكة تُرحَّل رصيداً',
+    up2.data.proration && up2.data.proration.credit > 0, JSON.stringify(up2.data.proration));
+  near('الرصيد يساوي المدفوع صافياً قبل الضريبة', up2.data.proration.credit, 1499, 2);
+  ok('الرصيد يغطي الفاتورة الجديدة بالكامل',
+    up2.data.invoice === null || up2.data.invoice.total === 0 || up2.data.invoice.status === 'paid',
+    JSON.stringify(up2.data.invoice));
+
+  const bal = await call('GET', '/api/billing', { token: TK });
+  ok('الرصيد المتبقي يظهر للجهة', Number(bal.data.credit_balance || 0) > 0,
+    `الرصيد ${bal.data.credit_balance}`);
+
+  /* ─────────── المستوى ٢: صحة الجهات وفرص الترقية ─────────── */
+  const hl = await call('GET', '/api/platform/health', { token: S.owner });
+  ok('تقرير صحة الجهات متاح', hl.status === 200 && hl.data.items.length >= 2);
+  const me = hl.data.items.find(t => t.id === TID);
+  ok('كل جهة تُقيَّم من ١٠٠', me && me.health.score >= 0 && me.health.score <= 100);
+  ok('التقييم يصنّف الخطورة',
+    ['healthy', 'watch', 'at_risk', 'critical'].includes(me.health.risk));
+  ok('التقييم يفصّل أسبابه', Array.isArray(me.health.reasons));
+  ok('التقييم يرصد إشارات الاستخدام',
+    typeof me.users === 'number' && typeof me.events_30d === 'number');
+  ok('التقرير يلخّص التوزيع حسب الخطورة',
+    hl.data.summary && typeof hl.data.summary.by_risk.at_risk === 'number'
+    && hl.data.summary.total === hl.data.items.length);
+  ok('التقرير يحسب متوسط التقييم العام', typeof hl.data.summary.average_score === 'number');
+  ok('التقرير يقدّر قيمة فرص الترقية', typeof hl.data.summary.upsell_value === 'number');
+  ok('التقرير يفرز الجهات المعرّضة للخطر على حدة', Array.isArray(hl.data.at_risk));
+  ok('التقرير يرصد فرص الترقية', Array.isArray(hl.data.upsells));
+  ok('تسميات الخطورة بالعربية',
+    (await call('GET', '/api/platform/health/risk-labels', { token: S.owner })).data.at_risk === 'معرّضة للتسرّب');
+  ok('كل جهة تحمل تسمية خطورتها بالعربية', !!me.health.risk_label);
+
+  /* ─────────── المستوى ٢: البث والإعلانات ─────────── */
+  const ann = await call('POST', '/api/platform/announcements', { token: S.owner, body: {
+    title: 'تحديث مجدول للمنصة', body: 'ستتوقف الخدمة ١٥ دقيقة الجمعة',
+    severity: 'warning', audience: 'all', banner: true, push: false } });
+  ok('بثّ إعلان لكل الجهات', ann.status === 201 && ann.data.tenants >= 2);
+  ok('الإعلان يصل مستخدمي الجهات', ann.data.recipients >= 2);
+  const sess = await call('GET', '/api/auth/me', { token: TK });
+  ok('الإعلان يظهر شريطاً في جلسة الجهة',
+    sess.data.banners?.some(b => b.title === 'تحديث مجدول للمنصة'));
+  ok('الإعلان يصل كإشعار للمستخدم',
+    (await call('GET', '/api/notifications', { token: TK })).data.items
+      .some(n => n.type === 'platform.announcement'));
+
+  const targeted = await call('POST', '/api/platform/announcements', { token: S.owner, body: {
+    title: 'عرض خاص لخطة المؤسسات', severity: 'info',
+    audience: 'plan', audience_value: 'enterprise', push: false } });
+  ok('البث الموجّه يحصر الجمهور بالخطة', targeted.status === 201 && targeted.data.audience === 'plan');
+  ok('الجهة على خطة النمو لا ترى إعلان المؤسسات',
+    !(await call('GET', '/api/auth/me', { token: TK })).data.banners
+      ?.some(b => b.title === 'عرض خاص لخطة المؤسسات'));
+  ok('البث الموجّه بلا قيمة جمهور مرفوض',
+    (await call('POST', '/api/platform/announcements', { token: S.owner,
+      body: { title: 'x', audience: 'plan' } })).status === 400);
+  ok('الإعلان بلا عنوان مرفوض',
+    (await call('POST', '/api/platform/announcements', { token: S.owner, body: { title: '  ' } })).status === 400);
+  ok('حذف الإعلان يزيل الشريط',
+    (await call('DELETE', `/api/platform/announcements/${ann.data.id}`, { token: S.owner })).status === 200 &&
+    !(await call('GET', '/api/auth/me', { token: TK })).data.banners
+      ?.some(b => b.title === 'تحديث مجدول للمنصة'));
+
+  /* ─────────── المستوى ٢: صندوق الدعم الموحّد ─────────── */
+  const tk1 = await call('POST', '/api/comms/tickets', { token: TK, body: {
+    subject: 'تعذّر تصدير التقرير', body: 'يظهر خطأ عند التصدير', category: 'technical', priority: 'high' } });
+  ok('الجهة ترفع تذكرة', tk1.status === 201);
+  const esc = await call('POST', `/api/comms/tickets/${tk1.data.id}/escalate-vendor`, { token: TK });
+  ok('تصعيد التذكرة إلى مزوّد المنصة', esc.status === 200 && esc.data.status === 'open');
+  const inbox = await call('GET', '/api/platform/support', { token: S.owner });
+  ok('التذكرة تظهر في صندوق دعم المزوّد',
+    inbox.status === 200 && inbox.data.items.some(i => i.id === tk1.data.id));
+  ok('الصندوق يعرض اسم الجهة مع التذكرة',
+    inbox.data.items.find(i => i.id === tk1.data.id).tenant_name === 'مجمّع اختبار المستويات');
+  ok('الصندوق يحصي المفتوح', inbox.data.open >= 1);
+  ok('الرد الفارغ من المزوّد مرفوض',
+    (await call('POST', `/api/platform/support/${tk1.data.id}/reply`, {
+      token: S.owner, body: { reply: '   ' } })).status === 400);
+  const rep = await call('POST', `/api/platform/support/${tk1.data.id}/reply`, {
+    token: S.owner, body: { reply: 'صُحّح الخلل في تحديث اليوم', close: true } });
+  ok('المزوّد يردّ على التذكرة', rep.status === 200 && rep.data.closed === true);
+  const seen = await call('GET', `/api/comms/tickets/${tk1.data.id}`, { token: TK });
+  ok('ردّ المزوّد يصل للجهة', seen.data.vendor?.reply === 'صُحّح الخلل في تحديث اليوم');
+  ok('حالة المعالجة تظهر للجهة', seen.data.vendor.status === 'closed');
+  ok('صاحب التذكرة يُشعَر بردّ المزوّد',
+    (await call('GET', '/api/notifications', { token: TK })).data.items
+      .some(n => n.type === 'ticket.vendor_reply'));
+  ok('التذكرة تخرج من قائمة المفتوح بعد إغلاقها',
+    !(await call('GET', '/api/platform/support?status=open', { token: S.owner })).data.items
+      .some(i => i.id === tk1.data.id));
+  ok('الرد على تذكرة غير مُصعّدة مرفوض',
+    (await call('POST', '/api/platform/support/999999/reply', {
+      token: S.owner, body: { reply: 'x' } })).status === 404);
+
+  /* ─────────── المستوى ٢: ملاحظات وإدارة العلاقة ─────────── */
+  const note = await call('POST', `/api/platform/tenants/${TID}/notes`, {
+    token: S.owner, body: { body: 'اتصال متابعة — مهتمون بخطة المؤسسات', pinned: true } });
+  ok('تسجيل ملاحظة على الجهة', note.status === 201);
+  ok('الملاحظة توثّق كاتبها', note.data.author_name && note.data.author_id >= 1);
+  ok('الملاحظة الفارغة مرفوضة',
+    (await call('POST', `/api/platform/tenants/${TID}/notes`, { token: S.owner, body: { body: ' ' } })).status === 400);
+  const notes = await call('GET', `/api/platform/tenants/${TID}/notes`, { token: S.owner });
+  ok('الملاحظات تُقرأ بترتيبها',
+    notes.data.some(n => n.body.startsWith('اتصال متابعة')));
+  ok('الملاحظة المثبّتة تتصدّر القائمة', notes.data[0].pinned === 1);
+  const crm = await call('PUT', `/api/platform/tenants/${TID}/crm`, {
+    token: S.owner, body: { crm_stage: 'at_risk', contact_name: 'فريق المبيعات', crm_source: 'معرض' } });
+  ok('تحديث مرحلة العلاقة مع الجهة', crm.status === 200 && crm.data.crm_stage === 'at_risk');
+  ok('بيانات جهة الاتصال تُحفظ', crm.data.contact_name === 'فريق المبيعات' && crm.data.crm_source === 'معرض');
+  ok('مرحلة غير معروفة مرفوضة',
+    (await call('PUT', `/api/platform/tenants/${TID}/crm`, { token: S.owner, body: { crm_stage: 'zzz' } })).status === 400);
+  ok('حذف الملاحظة متاح',
+    (await call('DELETE', `/api/platform/tenants/${TID}/notes/${note.data.id}`, { token: S.owner })).status === 200);
+
+  /* ─────────── المستوى ٣: الفاتورة الإلكترونية (ZATCA) ─────────── */
+  const zs = await call('PUT', '/api/platform/settings', { token: S.owner, body: {
+    zatca_enabled: true, vat_number: '300000000000003', cr_number: '1010101010',
+    seller_address: { street: 'طريق الملك فهد', district: 'العليا', city: 'الرياض', postal_code: '12345' } } });
+  ok('تفعيل الفوترة الإلكترونية من الإعدادات', zs.status === 200 && zs.data.zatca_enabled === 1);
+  ok('الرقم الضريبي للمنصة محفوظ', zs.data.vat_number === '300000000000003');
+
+  const zi = await call('POST', '/api/platform/invoices', {
+    token: S.owner, body: { tenant_id: TID, note: 'فاتورة اختبار الفوترة الإلكترونية' } });
+  ok('إصدار فاتورة بعد التفعيل', zi.status === 201);
+  const ez = await call('GET', `/api/platform/einvoice/${zi.data.id}`, { token: S.owner });
+  ok('الفاتورة مختومة برمز الاستجابة السريعة', ez.status === 200 && !!ez.data.qr);
+  ok('الرمز يفكّ إلى وسوم ZATCA الإلزامية',
+    ez.data.fields && [1, 2, 3, 4, 5].every(t => ez.data.fields[t] !== undefined));
+  ok('اسم البائع في الرمز عربي سليم بلا تلف ترميز', /[؀-ۿ]/.test(ez.data.fields[1] || ''));
+  ok('الرقم الضريبي مضمّن في الرمز', ez.data.fields[2] === '300000000000003');
+  near('إجمالي الفاتورة في الرمز يطابقها', Number(ez.data.fields[4]), Number(zi.data.total));
+  near('قيمة الضريبة في الرمز تطابق الفاتورة', Number(ez.data.fields[5]), Number(zi.data.vat_amount));
+  ok('طابع الإصدار الزمني بصيغة ISO', !Number.isNaN(Date.parse(ez.data.fields[3])));
+  ok('لكل فاتورة معرّف عالمي فريد', /^[0-9a-f-]{36}$/.test(ez.data.uuid));
+  ok('الفاتورة مرتبطة بتجزئة سابقتها', !!ez.data.hash && !!ez.data.previous_hash);
+  ok('مستند UBL محفوظ في التخزين', !!ez.data.xml_key);
+  const chain = await call('GET', '/api/platform/einvoice/chain', { token: S.owner });
+  ok('سلسلة التجزئة سليمة', chain.status === 200 && chain.data.intact === true,
+    JSON.stringify(chain.data.breaks || []));
+  ok('السلسلة تغطي كل الفواتير المختومة', chain.data.checked >= 1);
+  const xml = await call('GET', `/api/billing/invoices/${zi.data.id}/xml`, { token: TK, raw: true });
+  ok('الجهة تنزّل مستند UBL', xml.status === 200 && xml.buf.toString().includes('<cbc:UUID>'));
+  ok('المستند بصيغة الفاتورة المبسّطة', xml.buf.toString().includes('InvoiceTypeCode'));
+  ok('فاتورة غير مختومة لا تُعيد رمزاً',
+    (await call('GET', '/api/platform/einvoice/999999', { token: S.owner })).status === 404);
+
+  /* ─────────── المستوى ٣: التحقق بخطوتين ─────────── */
+  const st = await call('POST', '/api/auth/2fa/setup', { token: TK });
+  ok('بدء تفعيل التحقق بخطوتين', st.status === 200 && st.data.secret.length >= 16);
+  ok('رابط التطبيق المصادق صحيح', st.data.uri.startsWith('otpauth://totp/'));
+  ok('رمز خاطئ يمنع التفعيل',
+    (await call('POST', '/api/auth/2fa/enable', { token: TK, body: { token: '000000' } })).status === 400);
+  const en = await call('POST', '/api/auth/2fa/enable', { token: TK, body: { token: totpOf(st.data.secret) } });
+  ok('الرمز الصحيح يفعّل التحقق بخطوتين', en.status === 200);
+  ok('رموز الاسترداد تُسلَّم مرة واحدة', Array.isArray(en.data.backup_codes) && en.data.backup_codes.length >= 8);
+
+  const noTotp = await login(MAIL, 'Verify@2026');
+  ok('الدخول بدون الرمز مرفوض', noTotp.status === 401);
+  ok('الواجهة تعرف أن الرمز مطلوب', noTotp.data?.error?.code === 'TOTP_REQUIRED');
+  ok('رمز خاطئ يرفض الدخول',
+    (await call('POST', '/api/auth/login', { body: { email: MAIL, password: 'Verify@2026', totp: '123456' } })).status === 401);
+  const withTotp = await call('POST', '/api/auth/login', {
+    body: { email: MAIL, password: 'Verify@2026', totp: totpOf(st.data.secret) } });
+  ok('الدخول بالرمز الصحيح ينجح', withTotp.status === 200);
+  const backup = en.data.backup_codes[0];
+  const byBackup = await call('POST', '/api/auth/login', {
+    body: { email: MAIL, password: 'Verify@2026', totp: backup } });
+  ok('رمز الاسترداد يصلح للدخول', byBackup.status === 200);
+  ok('رمز الاسترداد لا يُستخدم مرتين',
+    (await call('POST', '/api/auth/login', { body: { email: MAIL, password: 'Verify@2026', totp: backup } })).status === 401);
+  const TK2 = withTotp.data.accessToken;
+  ok('حالة التحقق بخطوتين تظهر للمستخدم',
+    (await call('GET', '/api/auth/2fa', { token: TK2 })).data.enabled === true);
+  ok('إلغاء التحقق يتطلّب كلمة المرور',
+    (await call('POST', '/api/auth/2fa/disable', { token: TK2, body: { password: 'wrong' } })).status === 400);
+
+  /* إلزام مدراء المنصة بالتحقق بخطوتين */
+  await call('PUT', '/api/platform/settings', { token: S.owner, body: { require_2fa_admins: true } });
+  ok('إلزام مدراء المنصة بالتحقق بخطوتين',
+    (await call('GET', '/api/auth/me', { token: S.owner })).data.platform.totp_required === true);
+  ok('الجهة العادية لا يشملها الإلزام',
+    (await call('GET', '/api/auth/me', { token: TK2 })).data.platform.totp_required === false);
+  await call('PUT', '/api/platform/settings', { token: S.owner, body: { require_2fa_admins: false } });
+  ok('إلغاء التحقق بكلمة المرور الصحيحة',
+    (await call('POST', '/api/auth/2fa/disable', { token: TK2, body: { password: 'Verify@2026' } })).status === 200);
+  ok('الدخول يعود بلا رمز بعد الإلغاء', (await login(MAIL, 'Verify@2026')).status === 200);
+
+  /* ─────────── المستوى ٣: مراقبة محاولات الدخول ─────────── */
+  for (let i = 0; i < 3; i++) await login(`intruder${stamp}@x.sa`, 'WrongPass@1');
+  const sec = await call('GET', '/api/platform/security?hours=24', { token: S.owner });
+  ok('تقرير أمن الدخول متاح', sec.status === 200 && sec.data.total > 0);
+  ok('المحاولات الفاشلة محصاة', sec.data.failed >= 3);
+  ok('المحاولات الناجحة محصاة', sec.data.succeeded >= 1);
+  ok('أكثر الحسابات استهدافاً مرصودة',
+    sec.data.top_failed_accounts.some(f => f.email === `intruder${stamp}@x.sa` && f.attempts >= 3));
+  ok('السجل يرصد عناوين المصدر', Array.isArray(sec.data.top_failed_ips));
+  ok('التقرير يحصي الحسابات الموقوفة', typeof sec.data.suspended_accounts === 'number');
+  ok('السجل يوثّق سبب كل رفض',
+    sec.data.recent.some(r => r.success === 0 && !!r.reason));
+  ok('السجل يميّز الرفض بسبب التحقق بخطوتين',
+    sec.data.recent.some(r => /رمز التحقّق|رمز تحقّق/.test(r.reason || '')));
+
+  /* ─────────── المستوى ٣: تصدير بيانات جهة كاملة ─────────── */
+  const exp = await call('GET', `/api/platform/tenants/${TID}/export`, { token: S.owner, raw: true });
+  ok('تصدير بيانات الجهة ينجح', exp.status === 200);
+  ok('الملف مضغوط ومهيّأ للتنزيل',
+    /attachment; filename=/.test(exp.res.headers.get('content-disposition') || ''));
+  const zlib = await import('node:zlib');
+  const sql = zlib.gunzipSync(exp.buf).toString('utf8');
+  ok('التصدير يحوي سجل الجهة نفسها', new RegExp(`INSERT OR REPLACE INTO tenants\\(`).test(sql) && sql.includes(CODE));
+  ok('التصدير يحوي مستخدمي الجهة', sql.includes(MAIL));
+  ok('التصدير يحوي فواتير اشتراكها', sql.includes('subscription_invoices'));
+  ok('التصدير لا يسرّب مستخدمي جهة أخرى', !sql.includes('admin@riyadh-qu.sa'));
+  ok('التصدير لا يسرّب إعدادات المنصة ولا مفاتيح البوابة',
+    !sql.includes('platform_settings') && !sql.includes('gateway_config'));
+  ok('التصدير لا يسرّب خطط المنصة ولا كوبوناتها',
+    !/INSERT OR REPLACE INTO plans\(/.test(sql) && !/INSERT OR REPLACE INTO coupons\(/.test(sql));
+  ok('التصدير قابل للاستعادة (يُسقط المُشغّلات ثم يعيدها)',
+    sql.includes('DROP TRIGGER IF EXISTS') && sql.includes('CREATE TRIGGER'));
+  ok('التصدير يوثَّق في سجل المنصة',
+    (await call('GET', '/api/platform/logs', { token: S.owner })).data.items
+      .some(l => l.action === 'export' && l.entity === 'tenant'));
+  ok('تصدير جهة غير موجودة مرفوض',
+    (await call('GET', '/api/platform/tenants/999999/export', { token: S.owner })).status === 404);
+
+  /* ─────────── المستوى ٤: الكوبونات ─────────── */
+  const CP = 'VERIFY' + stamp;
+  const cp = await call('POST', '/api/platform/coupons', { token: S.owner, body: {
+    code: CP.toLowerCase(), name: 'خصم التدقيق', type: 'percent', value: 25, duration: 'once' } });
+  ok('إنشاء كوبون خصم', cp.status === 201);
+  ok('رمز الكوبون يُوحَّد بحروف كبيرة', cp.data.code === CP);
+  ok('تكرار رمز الكوبون مرفوض',
+    (await call('POST', '/api/platform/coupons', { token: S.owner,
+      body: { code: CP, name: 'x', type: 'percent', value: 5 } })).status === 409);
+  ok('نسبة خصم فوق ١٠٠٪ مرفوضة',
+    (await call('POST', '/api/platform/coupons', { token: S.owner,
+      body: { code: 'BAD' + stamp, name: 'x', type: 'percent', value: 150 } })).status === 400);
+  ok('قيمة خصم صفرية مرفوضة',
+    (await call('POST', '/api/platform/coupons', { token: S.owner,
+      body: { code: 'ZER' + stamp, name: 'x', type: 'percent', value: 0 } })).status === 400);
+
+  const apply = await call('POST', '/api/billing/coupon', { token: TK, body: { code: CP } });
+  ok('الجهة تفعّل الكوبون', apply.status === 200 && apply.data.code === CP);
+  near('معاينة الخصم ٢٥٪ من ٤٩٩', apply.data.discount_preview, 124.75);
+  ok('كوبون غير موجود مرفوض',
+    (await call('POST', '/api/billing/coupon', { token: TK, body: { code: 'NOPE' } })).status === 400);
+
+  /* الرصيد المتبقي من الترقية يشوّش على حساب الكوبون — نصفّره أولاً */
+  await call('POST', '/api/platform/invoices', { token: S.owner, body: { tenant_id: TID, note: 'استهلاك الرصيد' } });
+  const cInv = await call('POST', '/api/platform/invoices', {
+    token: S.owner, body: { tenant_id: TID, note: 'فاتورة بعد الكوبون' } });
+  ok('الفاتورة تُصدر بعد تفعيل الكوبون', cInv.status === 201);
+  const cpReport = await call('GET', '/api/platform/coupons', { token: S.owner });
+  const mine = cpReport.data.find(c => c.code === CP);
+  ok('تقرير الكوبونات يحصي الاستخدام', mine && mine.uses >= 1, JSON.stringify(mine));
+  ok('التقرير يحصي قيمة الخصم الممنوح', Number(mine.total_discount) > 0);
+  ok('التقرير يحصي الجهات المستفيدة', Number(mine.tenants) >= 1);
+  ok('حذف كوبون مستخدَم مرفوض',
+    (await call('DELETE', `/api/platform/coupons/${cp.data.id}`, { token: S.owner })).status === 409);
+  ok('تعطيل الكوبون بديل الحذف',
+    (await call('PATCH', `/api/platform/coupons/${cp.data.id}`, {
+      token: S.owner, body: { is_active: false } })).data.is_active === 0);
+  ok('إزالة الكوبون من الجهة متاحة',
+    (await call('DELETE', '/api/billing/coupon', { token: TK })).status === 200);
+
+  /* ─────────── المستوى ٤: الإشعارات الدائنة ─────────── */
+  const paidInv = await call('POST', '/api/platform/invoices', {
+    token: S.owner, body: { tenant_id: TID, note: 'فاتورة للإشعار الدائن' } });
+  await call('POST', `/api/platform/invoices/${paidInv.data.id}/mark-paid`, { token: S.owner });
+  const before = Number((await call('GET', '/api/billing', { token: TK })).data.credit_balance || 0);
+  const cn = await call('POST', `/api/platform/invoices/${paidInv.data.id}/credit-note`, {
+    token: S.owner, body: { amount: 115, reason: 'خصم تسوية' } });
+  ok('إصدار إشعار دائن على فاتورة مسددة', cn.status === 201 && cn.data.doc_type === 'credit_note');
+  ok('الإشعار الدائن مرتبط بفاتورته الأصلية', cn.data.parent_id === paidInv.data.id);
+  near('الإشعار يفصل الأصل عن الضريبة', cn.data.subtotal, 100);
+  near('ضريبة الإشعار الدائن ١٥٪', cn.data.vat_amount, 15);
+  const after = Number((await call('GET', '/api/billing', { token: TK })).data.credit_balance || 0);
+  /* الرصيد يُخزَّن ويُطبَّق قبل الضريبة، فيعود للجهة ١١٥ عند احتساب الضريبة على الفاتورة التالية */
+  near('الإشعار الدائن على فاتورة مسددة يزيد الرصيد صافياً', after - before, 100);
+
+  const openInv = await call('POST', '/api/platform/invoices', {
+    token: S.owner, body: { tenant_id: TID, note: 'فاتورة غير مسددة' } });
+  const balBefore = Number((await call('GET', '/api/billing', { token: TK })).data.credit_balance || 0);
+  const cn2 = await call('POST', `/api/platform/invoices/${openInv.data.id}/credit-note`, {
+    token: S.owner, body: { reason: 'إلغاء كامل' } });
+  ok('إشعار دائن على فاتورة غير مسددة ينجح', cn2.status === 201);
+  const balAfter = Number((await call('GET', '/api/billing', { token: TK })).data.credit_balance || 0);
+  ok('لا يُمنح رصيد على مبلغ لم يُدفع', Math.abs(balAfter - balBefore) < 0.01,
+    `قبل ${balBefore} بعد ${balAfter}`);
+  ok('الفاتورة تُلغى بتغطيتها كاملةً',
+    (await call('GET', `/api/billing/invoices/${openInv.data.id}`, { token: TK })).data.status === 'void');
+  ok('تجاوز قيمة الفاتورة بإشعار دائن ممنوع',
+    (await call('POST', `/api/platform/invoices/${openInv.data.id}/credit-note`, {
+      token: S.owner, body: { amount: 5000 } })).status === 400);
+
+  /* ─────────── المستوى ٤: بوابات الدفع ─────────── */
+  const gw = await call('GET', '/api/platform/gateways', { token: S.owner });
+  ok('كتالوج بوابات الدفع متاح', gw.status === 200 && gw.data.options.length >= 2);
+  ok('البوابات تشمل مزوّدات سعودية',
+    gw.data.options.some(g => /moyasar|tap/i.test(g.key)));
+  ok('البوابة غير مهيّأة ابتدائياً', gw.data.configured === false);
+  const payTry = await call('POST', `/api/billing/invoices/${paidInv.data.id}/pay`, { token: TK });
+  ok('الدفع الإلكتروني يُرفض قبل تهيئة البوابة', payTry.status === 400);
+  await call('PUT', '/api/platform/settings', { token: S.owner, body: {
+    payment_gateway: 'moyasar', gateway_config: { secret_key: 'sk_test_verify', publishable_key: 'pk_test' } } });
+  ok('تهيئة البوابة تُحفظ',
+    (await call('GET', '/api/platform/gateways', { token: S.owner })).data.configured === true);
+  ok('مفتاح البوابة السرّي لا يُسرَّب للجهة',
+    !JSON.stringify((await call('GET', '/api/billing', { token: TK })).data).includes('sk_test_verify'));
+  await call('PUT', '/api/platform/settings', { token: S.owner, body: { gateway_config: {} } });
+
+  /* ─────────── المستوى ٤: تجاوزات الحدود والمزايا ─────────── */
+  const ovr = await call('PUT', `/api/platform/tenants/${TID}/overrides`, { token: S.owner, body: {
+    limits: { branches: 1 }, features: { finance: false, api: true } } });
+  ok('ضبط تجاوزات خاصة بالجهة', ovr.status === 200);
+  eq('حد الفروع الخاص يطغى على الخطة', ovr.data.limits.branches, 1);
+  ok('إيقاف ميزة لجهة رغم توفرها في خطتها',
+    !ovr.data.features.includes('finance') && ovr.data.features.includes('api'));
+  ok('الوحدة الموقوفة تُحجب فعلياً',
+    (await call('GET', '/api/finance/requests', { token: TK })).status === 403);
+  ok('الوحدة الممنوحة تُفتح فعلياً',
+    (await call('GET', '/api/api-keys', { token: TK })).status === 200);
+  const br = await call('POST', '/api/org/branches', { token: TK, body: {
+    name: 'فرع إضافي', code: 'X1', lat: 24.7, lng: 46.7, radius_m: 150 } });
+  ok('حد الفروع الخاص يمنع التجاوز', br.status === 403, `status ${br.status}`);
+  ok('رسالة التجاوز تذكر الحد الخاص لا حد الخطة',
+    br.data?.error?.details?.limit === 1 && br.data.error.details.resource === 'branches');
+  ok('مفتاح ميزة غير معروف يُتجاهل',
+    !(await call('PUT', `/api/platform/tenants/${TID}/overrides`, { token: S.owner,
+      body: { features: { not_a_feature: true } } })).data.overrides.features.not_a_feature);
+  await call('PUT', `/api/platform/tenants/${TID}/overrides`, {
+    token: S.owner, body: { limits: {}, features: {} } });
+  ok('إزالة التجاوزات تعيد سلوك الخطة',
+    (await call('GET', '/api/finance/requests', { token: TK })).status === 200);
+
+  /* ─────────── المستوى ٤: بيانات المشتري وأمر الشراء ─────────── */
+  ok('رقم ضريبي غير صحيح مرفوض',
+    (await call('PUT', '/api/billing/billing-entity', { token: TK,
+      body: { name: 'x', vat_number: '123' } })).status === 400);
+  const be = await call('PUT', '/api/billing/billing-entity', { token: TK, body: {
+    name: 'مجمّع اختبار المستويات', vat_number: '311111111111113', cr_number: '1010202020',
+    po_number: 'PO-2026-77', email: 'acc@verify.sa',
+    address: { street: 'شارع الأمير', district: 'النخيل', city: 'الرياض', postal_code: '11564' } } });
+  ok('حفظ بيانات المشتري والرقم الضريبي', be.status === 200 && be.data.vat_number === '311111111111113');
+  const poInv = await call('POST', '/api/platform/invoices', {
+    token: S.owner, body: { tenant_id: TID, note: 'فاتورة بأمر شراء' } });
+  const full = await call('GET', `/api/billing/invoices/${poInv.data.id}`, { token: TK });
+  ok('الفاتورة تحمل بيانات المشتري', full.data.buyer?.vat_number === '311111111111113');
+  ok('الفاتورة تحمل رقم أمر الشراء', full.data.buyer.po_number === 'PO-2026-77');
+  const pxml = await call('GET', `/api/billing/invoices/${poInv.data.id}/xml`, { token: TK, raw: true });
+  ok('رقم المشتري الضريبي مضمّن في مستند UBL',
+    pxml.status === 200 && pxml.buf.toString().includes('311111111111113'));
+  ok('أمر الشراء مضمّن في مستند UBL', pxml.buf.toString().includes('PO-2026-77'));
+
+  /* ─────────── تنظيف ─────────── */
+  await call('PUT', '/api/platform/settings', { token: S.owner, body: { zatca_enabled: false } });
+  await call('DELETE', `/api/platform/tenants/${TID}?confirm=${CODE}`, { token: S.owner });
+  ok('حذف جهة الاختبار بعد الانتهاء',
+    (await call('GET', `/api/platform/tenants/${TID}`, { token: S.owner })).status === 404);
+  await call('PUT', '/api/platform/settings', {
+    token: S.owner, body: { saas_enabled: false, signup_enabled: false } });
 });
 
 /* ═════════ التشغيل ═════════ */

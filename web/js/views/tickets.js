@@ -14,6 +14,13 @@ const CATEGORIES = [
   { value: 'general', label: 'استفسار عام' }
 ];
 
+/* حالات التذكرة لدى مزوّد المنصة كما يكتبها الخادم */
+const VENDOR_STATE = {
+  open:     { label: '⏳ بانتظار رد المزوّد', kind: 'warn' },
+  answered: { label: '💬 ردّ المزوّد والتذكرة مفتوحة', kind: 'ok' },
+  closed:   { label: '✅ عالجها المزوّد وأغلقها', kind: 'ok' }
+};
+
 export async function render({ route }) {
   const body = el('div');
   let filter = '';
@@ -88,6 +95,18 @@ async function openTicket(id, reload) {
       ]),
       t.body ? el('p', { text: t.body, style: { marginTop: '11px', fontSize: '13px', color: 'var(--text-2)', whiteSpace: 'pre-wrap' } }) : null
     ]),
+    t.vendor ? card('دعم مزوّد المنصة', el('div.stack', { style: { gap: '8px' } }, [
+      el('div.row', {}, [
+        chip(VENDOR_STATE[t.vendor.status]?.label || '⏳ بانتظار رد المزوّد',
+          VENDOR_STATE[t.vendor.status]?.kind || 'warn'),
+        chip(`صُعّدت ${timeAgo(t.vendor.escalated_at)}`)
+      ]),
+      t.vendor.reply ? el('div', { style: { background: 'var(--ok-bg)', border: '1px solid var(--border)', borderRadius: '11px', padding: '10px 13px' } }, [
+        el('b', { text: 'رد فريق منصة نور', style: { fontSize: '12.5px' } }),
+        el('p', { text: t.vendor.reply, style: { margin: '6px 0 0', fontSize: '13px', whiteSpace: 'pre-wrap' } }),
+        el('div.hint', { text: timeAgo(t.vendor.replied_at) })
+      ]) : el('div.hint', { text: 'لم يصل رد من المزوّد بعد.' })
+    ])) : null,
     card('الردود', replies)
   ]);
 
@@ -103,7 +122,18 @@ async function openTicket(id, reload) {
           await api.patch(`/api/comms/tickets/${t.id}`, { status: status.value, assignee_id: assignee.value || null, priority: priority.value });
           toast('تم تحديث التذكرة', 'ok'); d.close(); reload();
         } finally { e.target.disabled = false; }
-      } })
+      } }),
+      t.vendor ? null : el('button.btn.ghost.block', {
+        style: { marginTop: '8px' }, text: '⤴️ تصعيد إلى دعم مزوّد المنصة',
+        onclick: async (e) => {
+          if (!confirm('سيُرسَل نص التذكرة إلى فريق منصة نور لمعالجتها. متابعة؟')) return;
+          e.target.disabled = true;
+          try {
+            await api.post(`/api/comms/tickets/${t.id}/escalate-vendor`, {});
+            toast('تم تصعيد التذكرة إلى مزوّد المنصة', 'ok'); d.close(); openTicket(t.id, reload); reload();
+          } finally { e.target.disabled = false; }
+        }
+      })
     ]));
   }
 

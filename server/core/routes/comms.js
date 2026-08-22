@@ -6,6 +6,7 @@ import { can, has } from '../middleware/rbac.js';
 import { audit } from '../middleware/audit.js';
 import { scoped, findScoped, nextNumber } from '../scope.js';
 import { notifyUsers, notifyByPermission } from '../notify.js';
+import { requireFeature } from '../features.js';
 
 const router = new Hono();
 
@@ -75,6 +76,15 @@ async function ensureConversation(app, ctx, type, id) {
     ['INSERT OR IGNORE INTO conversation_members(tenant_id,conversation_id,user_id) VALUES(?,?,?)', [ctx.tenantId, conv.id, m]]));
   return { conv, members };
 }
+
+/*
+ * البوابة على مستوى المسار لا على مستوى الوحدة كلها:
+ * خطة قد تمنح مركز التذاكر دون المحادثات السياقية — والعكس.
+ */
+router.use('/tickets', requireFeature('tickets'));
+router.use('/tickets/*', requireFeature('tickets'));
+router.use('/conversations', requireFeature('chat'));
+router.use('/conversations/*', requireFeature('chat'));
 
 router.get('/conversations', can('chat.use'), h(async (req) =>
   req.app.db.all(`SELECT c.*,
@@ -156,7 +166,24 @@ router.get('/tickets/:id', can('tickets.create', 'tickets.view_all'), h(async (r
   if (!has(req.ctx, 'tickets.view_all') && t.requester_id !== req.ctx.userId) throw forbidden();
   const replies = await app.db.all(`SELECT r.*, u.name AS user_name FROM ticket_replies r JOIN users u ON u.id=r.user_id
     WHERE r.ticket_id=? ${has(req.ctx, 'tickets.manage') ? '' : 'AND r.is_internal=0'} ORDER BY r.id`, t.id);
-  return { ...t, replies };
+  return { ...t, replies, vendor: t.vendor_escalated ? {
+    escalated_at: t.vendor_escalated_at, status: t.vendor_status,
+    reply: t.vendor_reply, replied_at: t.vendor_replied_at
+  } : null };
+}));
+
+/** تصعيد تذكرة إلى مزوّد المنصة — تظهر في صندوق الدعم الموحّد لديه */
+router.post('/tickets/:id/escalate-vendor', can('tickets.manage'), h(async (req) => {
+  const app = req.app;
+  const t = await findScoped(app, req.ctx, 'tickets', req.params.id);
+  if (!t) throw notFound('التذكرة غير موجودة');
+  if (t.vendor_escalated) return { ok: true, already: true, status: t.vendor_status };
+  await app.db.run(
+    `UPDATE tickets SET vendor_escalated=1, vendor_escalated_at=?, vendor_status='open' WHERE id=?`,
+    nowUTC(), t.id);
+  await audit(req, { action: 'update', entity: 'ticket', entityId: t.id,
+    summary: `${req.ctx.userName} صعّد التذكرة (${t.subject}) إلى دعم المنصة` });
+  return { ok: true, status: 'open' };
 }));
 
 router.post('/tickets', can('tickets.create'), h(async (req) => {

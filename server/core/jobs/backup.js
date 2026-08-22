@@ -18,6 +18,14 @@ import { gzip } from '../zip.js';
 const GLOBAL_TABLES = new Set(['permissions', 'schema_meta']);
 const SKIP_TABLES = new Set(['sqlite_sequence', 'job_queue', 'rate_limits', 'refresh_tokens', 'sessions']);
 
+/*
+ * التصدير المحصور بجهة واحدة (حق نقل البيانات) لا يجوز أن يتسرّب منه شيء
+ * لجهة أخرى ولا لأسرار المنصة. الجداول بلا عمود tenant_id تُستبعَد كلها
+ * ما لم يكن لها مفتاح ربط صريح بالجهة أدناه — فجدول `platform_settings`
+ * وحده يحمل مفاتيح بوابة الدفع، و`tenants` بلا شرط يصدّر كل الجهات.
+ */
+const TENANT_KEY = { tenants: 'id' };
+
 const quote = (v) => {
   if (v === null || v === undefined) return 'NULL';
   if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'NULL';
@@ -88,10 +96,15 @@ export async function dumpSQL(app, { tenantId = null } = {}) {
   for (const table of tables) {
     const cols = await tableColumns(app, table);
     if (!cols.length) continue;
-    const scoped = tenantId && !GLOBAL_TABLES.has(table) && cols.includes('tenant_id');
-    const rows = scoped
-      ? await app.db.all(`SELECT * FROM ${table} WHERE tenant_id=?`, tenantId)
-      : await app.db.all(`SELECT * FROM ${table}`);
+
+    let rows;
+    if (!tenantId || GLOBAL_TABLES.has(table)) {
+      rows = await app.db.all(`SELECT * FROM ${table}`);
+    } else {
+      const key = cols.includes('tenant_id') ? 'tenant_id' : TENANT_KEY[table];
+      if (!key || !cols.includes(key)) continue;   // لا رابط بالجهة ⇒ ليست بياناتها
+      rows = await app.db.all(`SELECT * FROM ${table} WHERE ${key}=?`, tenantId);
+    }
     if (!rows.length) continue;
 
     tableCount++;

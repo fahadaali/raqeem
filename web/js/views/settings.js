@@ -15,6 +15,7 @@ export async function render({ navigate }) {
   ];
   if (can('settings.manage')) items.push({ label: '🏛 هوية الجهة', build: tenantTab });
   if (can('settings.manage')) items.push({ label: '💾 النسخ الاحتياطي', build: backupTab });
+  items.push({ label: '🔐 التحقّق بخطوتين', build: twoFactorTab });
   if (can('api.keys.manage')) items.push({ label: '🔗 مفاتيح الربط', build: apiTab });
   const t = tabs(items, (it) => { const n = el('div'); Promise.resolve(it.build(navigate)).then(x => n.replaceChildren(x)); return n; });
   return t.node;
@@ -254,6 +255,98 @@ async function tenantTab() {
       })()
     ]) : null
   ]);
+}
+
+/* ═══════════ التحقّق بخطوتين ═══════════ */
+async function twoFactorTab() {
+  const body = el('div');
+  const load = async () => {
+    clear(body).append(skeleton(3));
+    const st = await api.get('/api/auth/2fa');
+
+    if (st.enabled) {
+      const pw = input({ type: 'password', autocomplete: 'current-password' });
+      clear(body).append(
+        el('div.alert.ok', { text: '✔ التحقّق بخطوتين مفعّل على حسابك' }),
+        el('p.hint', { text: `رموز الاسترداد المتبقية: ${AR_NUM(st.backup_codes_left)}` }),
+        st.required
+          ? el('div.alert.info', { text: 'التحقّق بخطوتين إلزامي على مالكي المنصة ولا يمكن تعطيله.' })
+          : card('تعطيل التحقّق', el('div.stack', {}, [
+              field('أكّد كلمة مرورك', pw, { required: true }),
+              el('button.btn.danger', { text: 'تعطيل التحقّق بخطوتين', onclick: async (e) => {
+                if (!await confirmDialog('سيصبح حسابك محمياً بكلمة المرور وحدها.', { danger: true, confirmText: 'تعطيل' })) return;
+                e.target.disabled = true;
+                try { await api.post('/api/auth/2fa/disable', { password: pw.value });
+                  toast('عُطّل التحقّق بخطوتين', 'ok'); await load();
+                } catch (err) { toast(err.message, 'warn'); e.target.disabled = false; }
+              } })
+            ]))
+      );
+      return;
+    }
+
+    clear(body).append(
+      st.required
+        ? el('div.alert.warn', { text: '⚠ التحقّق بخطوتين إلزامي على مالكي المنصة — فعّله الآن.' })
+        : el('div.alert.info', { text: 'طبقة حماية ثانية: رمز متغيّر كل ٣٠ ثانية من تطبيق مصادقة على جوالك.' }),
+      el('button.btn.gold', { text: '🔐 بدء التفعيل', onclick: async (e) => {
+        e.target.disabled = true;
+        try {
+          const setup = await api.post('/api/auth/2fa/setup', {});
+          setupDialog(setup, load);
+        } catch (err) { toast(err.message, 'warn'); }
+        finally { e.target.disabled = false; }
+      } })
+    );
+  };
+  load();
+  return el('div', {}, [el('h3', { text: 'التحقّق بخطوتين', style: { marginTop: 0 } }), body]);
+}
+
+function setupDialog(setup, done) {
+  const token = input({ dir: 'ltr', inputmode: 'numeric', maxlength: 6, placeholder: '******',
+    style: { textAlign: 'center', fontSize: '20px', letterSpacing: '6px' } });
+
+  const m = modal({
+    title: 'تفعيل التحقّق بخطوتين', size: 'lg',
+    body: el('div.stack', {}, [
+      el('p', { text: '١) افتح تطبيق مصادقة (Google Authenticator أو Microsoft Authenticator أو ما شابه).' }),
+      el('p', { text: '٢) أضف حساباً جديداً بإدخال هذا المفتاح يدوياً:' }),
+      card('المفتاح السرّي', el('div.stack', {}, [
+        el('code', { text: setup.secret, style: { direction: 'ltr', fontSize: '15px', letterSpacing: '2px', wordBreak: 'break-all' } }),
+        el('button.btn.sm.ghost', { text: '📋 نسخ المفتاح', onclick: async () => {
+          try { await navigator.clipboard.writeText(setup.secret); toast('نُسخ المفتاح', 'ok'); }
+          catch { toast('حدّد المفتاح وانسخه يدوياً', 'warn'); }
+        } })
+      ])),
+      el('details', {}, [
+        el('summary', { text: 'أو انسخ رابط الإعداد الكامل (otpauth)' }),
+        el('code', { text: setup.uri, style: { direction: 'ltr', fontSize: '10.5px', wordBreak: 'break-all' } })
+      ]),
+      el('p', { text: '٣) أدخل الرمز المعروض في التطبيق لتأكيد التفعيل:' }),
+      field('رمز التحقّق', token, { required: true })
+    ]),
+    footer: el('button.btn.gold', { text: 'تأكيد التفعيل', onclick: async (e) => {
+      e.target.disabled = true;
+      try {
+        const r = await api.post('/api/auth/2fa/enable', { token: token.value.trim() });
+        m.close();
+        modal({
+          title: '✔ فُعّل التحقّق بخطوتين',
+          body: el('div.stack', {}, [
+            el('div.alert.warn', { text: 'احفظ رموز الاسترداد التالية في مكان آمن — تُعرض مرة واحدة فقط، وكل رمز يُستخدم مرة واحدة عند فقد جوالك.' }),
+            el('div.grid-2', {}, r.backup_codes.map(c =>
+              el('code', { text: c, style: { direction: 'ltr', fontSize: '14px', letterSpacing: '2px', padding: '6px' } }))),
+            el('button.btn.ghost', { text: '📋 نسخ كل الرموز', onclick: async () => {
+              try { await navigator.clipboard.writeText(r.backup_codes.join('\n')); toast('نُسخت الرموز', 'ok'); }
+              catch { toast('انسخها يدوياً', 'warn'); }
+            } })
+          ])
+        });
+        await done();
+      } catch (err) { toast(err.message, 'warn'); e.target.disabled = false; }
+    } })
+  });
 }
 
 /* ═══════════ النسخ الاحتياطي (البند ١٠) ═══════════ */

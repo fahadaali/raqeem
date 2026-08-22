@@ -11,8 +11,21 @@ import {
   STATUS_AR, INVOICE_STATUS_AR, CYCLES
 } from '../billing.js';
 import { provisionTenant, purgeTenant, codeAvailable } from '../provision.js';
-import { periodic } from '../jobs/index.js';
+import { periodic, JOB_KEYS } from '../jobs/index.js';
 import { drain, requeueStuck } from '../queue.js';
+import { metricsSeries, trialConversion, revenueForecast, snapshotMetrics } from '../jobs/metrics.js';
+import { jobsHealth, jobRuns } from '../jobs/runner.js';
+import { tenantsHealth, tenantHealth, RISK_AR } from '../health.js';
+import { createAnnouncement, listAnnouncements, deleteAnnouncement, AUDIENCES, SEVERITY_AR, AUDIENCE_AR } from '../announce.js';
+import { loginSecurityReport } from '../security.js';
+import { couponsReport, normalizeCode as normalizeCouponCode, validateCoupon } from '../coupons.js';
+import { issueCreditNote, creditedAmount, effectiveLimits } from '../billing.js';
+import { GATEWAYS, handleWebhook } from '../payments.js';
+import { FEATURES, effectiveFeatures } from '../features.js';
+import { verifyChain, decodeQR } from '../zatca.js';
+import { dumpSQL } from '../jobs/backup.js';
+import { gzip } from '../zip.js';
+import { notifyUsers } from '../notify.js';
 
 /**
  * لوحة تحكم مالك المنصة (Super Admin — SaaS Owner).
@@ -84,9 +97,30 @@ router.get('/overview', h(async (req) => {
     pending_signups: await one(`SELECT COUNT(*) AS c FROM signups WHERE status IN ('pending','verified')`),
     pending_payments: await one(`SELECT COUNT(*) AS c FROM subscription_payments WHERE status='pending'`),
     per_plan: perPlan,
-    recent_tenants: recentTenants
+    recent_tenants: recentTenants,
+    /* ما يحتاج تدخّلاً الآن */
+    alerts: await overviewAlerts(req.app)
   };
 }));
+
+/** ملخّص ما يستدعي انتباه المالك: مخاطر التسرّب، فرص الترقية، وظائف متعثّرة، دعم مفتوح */
+async function overviewAlerts(app) {
+  const [health, jobs] = await Promise.all([
+    tenantsHealth(app).catch(() => null),
+    jobsHealth(app).catch(() => [])
+  ]);
+  const support = await app.db.get(
+    `SELECT COUNT(*) AS c FROM tickets WHERE vendor_escalated=1 AND vendor_status='open'`).catch(() => ({ c: 0 }));
+  return {
+    at_risk: health?.at_risk?.length || 0,
+    critical: health?.summary?.by_risk?.critical || 0,
+    average_health: health?.summary?.average_score ?? null,
+    upsell_opportunities: health?.summary?.upsell_opportunities || 0,
+    upsell_value: health?.summary?.upsell_value || 0,
+    failing_jobs: jobs.filter(x => x.status === 'failed').map(x => x.job),
+    open_support: support?.c || 0
+  };
+}
 
 /* ─────────────── الجهات ─────────────── */
 router.get('/tenants', h(async (req) => {
@@ -133,14 +167,33 @@ router.get('/tenants/:id', h(async (req) => {
   const activity = await app.db.get(
     'SELECT MAX(created_at) AS last FROM audit_logs WHERE tenant_id=?', t.id);
 
+  const notes = await app.db.all(
+    'SELECT * FROM tenant_notes WHERE tenant_id=? ORDER BY pinned DESC, id DESC LIMIT 20', t.id);
+
   return {
-    tenant: { ...t, settings: j(t.settings, {}) },
+    tenant: {
+      ...t, settings: j(t.settings, {}),
+      limit_overrides: j(t.limit_overrides, {}) || {},
+      feature_overrides: j(t.feature_overrides, {}) || {},
+      billing_entity: j(t.billing_entity, {}) || {}
+    },
     owner,
-    subscription: sub && { ...sub, status_label: STATUS_AR[sub.status], limits: sub.plan ? planLimits(sub.plan) : null },
+    subscription: sub && {
+      ...sub, status_label: STATUS_AR[sub.status],
+      limits: sub.plan ? effectiveLimits(sub.plan, t) : null,
+      plan_limits: sub.plan ? planLimits(sub.plan) : null
+    },
+    features: sub?.plan ? FEATURES.map(f => ({
+      ...f,
+      enabled: effectiveFeatures(sub.plan, t).includes(f.key),
+      in_plan: !(j(sub.plan.features, []) || []).length || (j(sub.plan.features, []) || []).includes(f.key)
+    })) : null,
     usage,
     balance: await outstandingBalance(app, t.id),
     invoices: invoices.map(i => ({ ...i, status_label: INVOICE_STATUS_AR[i.status] })),
-    last_activity: activity?.last || null
+    last_activity: activity?.last || null,
+    health: await tenantHealth(app, t.id),
+    notes
   };
 }));
 
@@ -526,7 +579,8 @@ router.put('/settings', h(async (req) => {
     `UPDATE platform_settings SET platform_name=?, platform_name_en=?, tagline=?, support_email=?,
       support_phone=?, saas_enabled=?, signup_enabled=?, signup_needs_review=?, default_plan_code=?,
       trial_days=?, grace_days=?, vat_rate=?, currency=?, vat_number=?, cr_number=?, bank_details=?,
-      invoice_prefix=?, updated_at=? WHERE id=1`,
+      invoice_prefix=?, seller_address=?, zatca_enabled=?, payment_gateway=?, gateway_config=?,
+      require_2fa_admins=?, health_idle_days=?, upsell_threshold=?, updated_at=? WHERE id=1`,
     b.platform_name?.trim() || cur.platform_name,
     b.platform_name_en ?? cur.platform_name_en,
     b.tagline ?? cur.tagline,
@@ -540,7 +594,15 @@ router.put('/settings', h(async (req) => {
     num(b.vat_rate, cur.vat_rate), b.currency || cur.currency,
     b.vat_number ?? cur.vat_number, b.cr_number ?? cur.cr_number,
     JSON.stringify(b.bank_details ?? cur.bank_details),
-    b.invoice_prefix || cur.invoice_prefix, nowUTC());
+    b.invoice_prefix || cur.invoice_prefix,
+    JSON.stringify(b.seller_address ?? cur.seller_address),
+    bool(b.zatca_enabled, cur.zatca_enabled),
+    b.payment_gateway && GATEWAYS[b.payment_gateway] ? b.payment_gateway : cur.payment_gateway,
+    JSON.stringify(b.gateway_config ?? j(cur.gateway_config, {}) ?? {}),
+    bool(b.require_2fa_admins, cur.require_2fa_admins),
+    num(b.health_idle_days, cur.health_idle_days),
+    num(b.upsell_threshold, cur.upsell_threshold),
+    nowUTC());
 
   await plog(req, { action: 'update', entity: 'platform_settings', entityId: 1,
     summary: `${req.ctx.userName} حدّث إعدادات المنصة`,
@@ -579,13 +641,24 @@ router.delete('/admins/:id', h(async (req) => {
 }));
 
 /* ─────────────── تشغيل وظائف الصيانة عند الطلب ─────────────── */
+const JOB_LABELS = {
+  subscriptions: 'دورة الاشتراكات والفوترة',
+  sla: 'تصعيد تذاكر مستوى الخدمة',
+  kpi: 'إعادة احتساب مؤشرات الأداء',
+  deadlines: 'تذكير المهام المستحقة',
+  backup: 'النسخ الاحتياطي اليومي',
+  metrics: 'لقطة مؤشرات المنصة والصيانة'
+};
+
 const JOBS = {
-  subscriptions: { label: 'دورة الاشتراكات والفوترة', run: (app) => periodic.subscriptions(app) },
-  sla: { label: 'تصعيد تذاكر مستوى الخدمة', run: (app) => periodic.sla(app) },
-  kpi: { label: 'إعادة احتساب مؤشرات الأداء', run: (app) => periodic.kpi(app) },
-  deadlines: { label: 'تذكير المهام المستحقة', run: (app) => periodic.deadlines(app) },
-  backup: { label: 'النسخ الاحتياطي اليومي', run: (app) => periodic.backup(app) },
-  queue: { label: 'تصريف طابور المعالجة', run: async (app) => ({ drained: await drain(app, { max: 50 }), requeued: await requeueStuck(app) }) }
+  ...Object.fromEntries(JOB_KEYS.map(k => [k, {
+    label: JOB_LABELS[k] || k,
+    run: (app, opts) => periodic[k](app, opts)
+  }])),
+  queue: {
+    label: 'تصريف طابور المعالجة',
+    run: async (app) => ({ drained: await drain(app, { max: 50 }), requeued: await requeueStuck(app) })
+  }
 };
 
 router.get('/jobs', h(async () =>
@@ -596,11 +669,342 @@ router.post('/jobs/:name/run', h(async (req) => {
   const job = JOBS[req.params.name];
   if (!job) throw notFound('وظيفة غير معروفة');
   const started = Date.now();
-  const result = await job.run(req.app);
+  const result = await job.run(req.app, {
+    trigger: 'manual', actorId: req.ctx.userId, actorName: req.ctx.userName });
   await plog(req, { action: 'update', entity: 'job', entityId: req.params.name,
     summary: `${req.ctx.userName} شغّل «${job.label}» يدوياً`, meta: result });
   return { job: req.params.name, label: job.label, ms: Date.now() - started, result };
 }));
+
+
+/* ═══════════════ المستوى ١: النمو وسجل التشغيل ═══════════════ */
+
+/** سلسلة المؤشرات الزمنية مع دلتا الفترة ونسبة التسرّب */
+router.get('/metrics', h(async (req) => {
+  const days = Math.min(365, Math.max(7, Number(req.query.days) || 30));
+  const [series, conversion, forecast] = await Promise.all([
+    metricsSeries(req.app, { days }),
+    trialConversion(req.app, { days: Math.max(30, days) }),
+    revenueForecast(req.app)
+  ]);
+  return { ...series, trial_conversion: conversion, forecast };
+}));
+
+/** التقاط لقطة الآن بدل انتظار المؤقّت اليومي */
+router.post('/metrics/snapshot', h(async (req) => {
+  const m = await snapshotMetrics(req.app);
+  await plog(req, { action: 'create', entity: 'metrics', entityId: m.date,
+    summary: `${req.ctx.userName} التقط لقطة مؤشرات ليوم ${m.date}` });
+  return created(m);
+}));
+
+/** صحة الوظائف الدورية: آخر تشغيل لكل وظيفة وإخفاقات اليوم */
+router.get('/jobs/health', h(async (req) => {
+  const health = await jobsHealth(req.app);
+  const known = new Set(health.map(h2 => h2.job));
+  const never = JOB_KEYS.filter(k => !known.has(k)).map(job => ({ job, status: 'never', failures_24h: 0 }));
+  return {
+    jobs: [...health, ...never],
+    failing: health.filter(h2 => h2.status === 'failed').length,
+    stale: health.filter(h2 => h2.started_at && Date.now() - new Date(h2.started_at) > 48 * 3600_000).length
+  };
+}));
+
+router.get('/jobs/runs', h(async (req) => jobRuns(req.app, {
+  job: req.query.job || null, status: req.query.status || null,
+  limit: Number(req.query.limit) || 100
+})));
+
+/* ═══════════════ المستوى ٢: صحة الجهات والبث والدعم ═══════════════ */
+
+router.get('/health', h(async (req) => tenantsHealth(req.app)));
+
+router.get('/health/risk-labels', h(async () => RISK_AR));
+
+/* الإعلانات والبث */
+router.get('/announcements', h(async (req) => ({
+  items: await listAnnouncements(req.app),
+  audiences: AUDIENCES.map(a => ({ key: a, label: AUDIENCE_AR[a] })),
+  severities: Object.entries(SEVERITY_AR).map(([key, label]) => ({ key, label }))
+})));
+
+router.post('/announcements', h(async (req) => {
+  const b = req.body || {};
+  const out = await createAnnouncement(req.app, {
+    title: b.title, body: b.body, url: b.url, severity: b.severity || 'info',
+    audience: b.audience || 'all', audienceValue: b.audience_value || null,
+    banner: !!b.banner, push: b.push !== false,
+    startsAt: b.starts_at || null, endsAt: b.ends_at || null,
+    send: b.send !== false,
+    createdBy: req.ctx.userId, createdByName: req.ctx.userName
+  });
+  await plog(req, { action: 'create', entity: 'announcement', entityId: out.id,
+    summary: `${req.ctx.userName} بثّ إعلان «${out.title}» إلى ${out.tenants} جهة (${out.recipients} مستخدم)`,
+    meta: { audience: out.audience, severity: out.severity } });
+  return created(out);
+}));
+
+router.delete('/announcements/:id', h(async (req) => {
+  const a = await req.app.db.get('SELECT * FROM announcements WHERE id=?', req.params.id);
+  if (!a) throw notFound('الإعلان غير موجود');
+  await deleteAnnouncement(req.app, a.id);
+  await plog(req, { action: 'delete', entity: 'announcement', entityId: a.id,
+    summary: `${req.ctx.userName} حذف الإعلان «${a.title}»` });
+  return { ok: true };
+}));
+
+/* صندوق الدعم الموحّد: التذاكر المُصعَّدة من الجهات إلى مزوّد المنصة */
+router.get('/support', h(async (req) => {
+  const status = req.query.status || null;
+  const rows = await req.app.db.all(
+    `SELECT k.id, k.number, k.subject, k.body, k.category, k.priority, k.status,
+            k.vendor_status, k.vendor_reply, k.vendor_escalated_at, k.vendor_replied_at, k.created_at,
+            t.id AS tenant_id, t.name AS tenant_name, t.code AS tenant_code,
+            u.name AS requester_name, u.email AS requester_email,
+            p.name AS plan_name
+     FROM tickets k
+     JOIN tenants t ON t.id = k.tenant_id
+     LEFT JOIN users u ON u.id = k.requester_id
+     LEFT JOIN subscriptions s ON s.tenant_id = t.id
+     LEFT JOIN plans p ON p.id = s.plan_id
+     WHERE k.vendor_escalated = 1 ${status ? 'AND k.vendor_status = ?' : ''}
+     ORDER BY (k.vendor_status='open') DESC, k.vendor_escalated_at DESC LIMIT 200`,
+    ...(status ? [status] : []));
+  const open = rows.filter(r => r.vendor_status === 'open').length;
+  return { items: rows, open, total: rows.length };
+}));
+
+router.post('/support/:id/reply', h(async (req) => {
+  const app = req.app;
+  const k = await app.db.get('SELECT * FROM tickets WHERE id=? AND vendor_escalated=1', req.params.id);
+  if (!k) throw notFound('التذكرة غير مُصعَّدة إلى المنصة');
+  const body = String(req.body?.reply || '').trim();
+  if (!body) throw badRequest('نص الرد إلزامي');
+  const close = req.body?.close !== false;
+
+  await app.db.run(
+    `UPDATE tickets SET vendor_reply=?, vendor_replied_at=?, vendor_status=? WHERE id=?`,
+    body, nowUTC(), close ? 'closed' : 'answered', k.id);
+
+  /* الرد يُحفظ على التذكرة نفسها فيظهر لصاحبها في شاشة الدعم داخل جهته */
+  await notifyUsers(app, k.tenant_id, [k.requester_id], {
+    type: 'ticket.vendor_reply', category: 'tickets',
+    title: `ردّ دعم المنصة على التذكرة ${k.number || k.id}`,
+    body: body.slice(0, 140), url: `/tickets?id=${k.id}`, urgency: 'high'
+  }).catch(() => {});
+
+  await plog(req, { action: 'update', entity: 'ticket', entityId: k.id, tenantId: k.tenant_id,
+    summary: `${req.ctx.userName} ردّ على تذكرة مُصعَّدة (${k.subject})` });
+  return { ok: true, closed: close };
+}));
+
+/* ملاحظات الجهة ومتابعتها التجارية */
+router.get('/tenants/:id/notes', h(async (req) => req.app.db.all(
+  'SELECT * FROM tenant_notes WHERE tenant_id=? ORDER BY pinned DESC, id DESC LIMIT 100', req.params.id)));
+
+router.post('/tenants/:id/notes', h(async (req) => {
+  const body = String(req.body?.body || '').trim();
+  if (!body) throw badRequest('نص الملاحظة إلزامي');
+  const r = await req.app.db.run(
+    'INSERT INTO tenant_notes(tenant_id,author_id,author_name,body,pinned) VALUES(?,?,?,?,?)',
+    req.params.id, req.ctx.userId, req.ctx.userName, body, req.body?.pinned ? 1 : 0);
+  return created(await req.app.db.get('SELECT * FROM tenant_notes WHERE id=?', r.lastId));
+}));
+
+router.delete('/tenants/:id/notes/:noteId', h(async (req) => {
+  await req.app.db.run('DELETE FROM tenant_notes WHERE id=? AND tenant_id=?', req.params.noteId, req.params.id);
+  return { ok: true };
+}));
+
+router.put('/tenants/:id/crm', h(async (req) => {
+  const app = req.app;
+  const t = await app.db.get('SELECT * FROM tenants WHERE id=?', req.params.id);
+  if (!t) throw notFound('الجهة غير موجودة');
+  const b = req.body || {};
+  const STAGES = ['lead', 'onboarding', 'active', 'at_risk', 'churned'];
+  /* مرحلة مجهولة تُرفض بدل أن تُتجاهَل صامتةً فيظن المستخدم أنها حُفظت */
+  if (b.crm_stage != null && b.crm_stage !== '' && !STAGES.includes(b.crm_stage)) {
+    throw badRequest(`مرحلة غير معروفة — المراحل المتاحة: ${STAGES.join('، ')}`);
+  }
+  await app.db.run(
+    'UPDATE tenants SET contact_name=?, contact_phone=?, crm_stage=?, crm_source=? WHERE id=?',
+    b.contact_name ?? t.contact_name, b.contact_phone ?? t.contact_phone,
+    b.crm_stage === '' ? null : (b.crm_stage ?? t.crm_stage),
+    b.crm_source ?? t.crm_source, t.id);
+  await plog(req, { action: 'update', entity: 'tenant', entityId: t.id, tenantId: t.id,
+    summary: `${req.ctx.userName} حدّث بيانات متابعة «${t.name}»` });
+  return app.db.get('SELECT * FROM tenants WHERE id=?', t.id);
+}));
+
+/* ═══════════════ المستوى ٣: الأمن والامتثال ═══════════════ */
+
+router.get('/security', h(async (req) => loginSecurityReport(req.app, {
+  hours: Math.min(720, Number(req.query.hours) || 24),
+  limit: Number(req.query.limit) || 100
+})));
+
+/** سلامة سلسلة تجزئة الفواتير الإلكترونية */
+router.get('/einvoice/chain', h(async (req) => verifyChain(req.app)));
+
+router.get('/einvoice/:id', h(async (req) => {
+  const inv = await req.app.db.get('SELECT * FROM subscription_invoices WHERE id=?', req.params.id);
+  if (!inv) throw notFound('الفاتورة غير موجودة');
+  if (!inv.zatca_qr) throw badRequest('لم تُختم هذه الفاتورة إلكترونياً');
+  return {
+    number: inv.number, uuid: inv.zatca_uuid, qr: inv.zatca_qr,
+    fields: decodeQR(inv.zatca_qr),
+    hash: inv.zatca_hash, previous_hash: inv.zatca_prev_hash, xml_key: inv.zatca_xml_key
+  };
+}));
+
+/** تصدير كامل لبيانات جهة — حق نقل البيانات في نظام حماية البيانات الشخصية */
+router.get('/tenants/:id/export', h(async (req) => {
+  const app = req.app;
+  const t = await app.db.get('SELECT * FROM tenants WHERE id=?', req.params.id);
+  if (!t) throw notFound('الجهة غير موجودة');
+
+  const { sql, tables, rows } = await dumpSQL(app, { tenantId: t.id });
+  const body = await gzip(new TextEncoder().encode(sql));
+  await plog(req, { action: 'export', entity: 'tenant', entityId: t.id, tenantId: t.id,
+    summary: `${req.ctx.userName} صدّر بيانات «${t.name}» كاملةً (${rows} سجل من ${tables} جدول)`,
+    meta: { tables, rows } });
+
+  return new Response(body, { headers: {
+    'Content-Type': 'application/gzip',
+    'Content-Disposition': `attachment; filename="${t.code}-export-${new Date().toISOString().slice(0, 10)}.sql.gz"`
+  } });
+}));
+
+/* ═══════════════ المستوى ٤: الكوبونات والدائن والبوابة والتجاوزات ═══════════════ */
+
+router.get('/coupons', h(async (req) => couponsReport(req.app)));
+
+router.post('/coupons', h(async (req) => {
+  const b = req.body || {};
+  const code = normalizeCouponCode(b.code);
+  if (!code) throw badRequest('رمز الكوبون إلزامي (إنجليزي وأرقام)');
+  if (!String(b.name || '').trim()) throw badRequest('اسم الكوبون إلزامي');
+  if (!['percent', 'fixed'].includes(b.type)) throw badRequest('نوع الخصم غير مدعوم');
+  const value = Number(b.value || 0);
+  if (!(value > 0)) throw badRequest('قيمة الخصم يجب أن تكون أكبر من صفر');
+  if (b.type === 'percent' && value > 100) throw badRequest('نسبة الخصم لا تتجاوز ١٠٠٪');
+  if (await req.app.db.get('SELECT id FROM coupons WHERE code=?', code)) throw conflict('رمز الكوبون مستخدم مسبقاً');
+
+  const r = await req.app.db.run(
+    `INSERT INTO coupons(code,name,type,value,currency,duration,duration_months,applies_to,
+       max_redemptions,valid_from,valid_until,is_active,created_by)
+     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    code, String(b.name).trim(), b.type, value, b.currency || 'SAR',
+    ['once', 'forever', 'months'].includes(b.duration) ? b.duration : 'once',
+    b.duration_months ? Number(b.duration_months) : null,
+    JSON.stringify(Array.isArray(b.applies_to) ? b.applies_to : []),
+    b.max_redemptions ? Number(b.max_redemptions) : null,
+    b.valid_from || null, b.valid_until || null,
+    b.is_active === false ? 0 : 1, req.ctx.userId);
+
+  await plog(req, { action: 'create', entity: 'coupon', entityId: r.lastId,
+    summary: `${req.ctx.userName} أنشأ كوبون «${code}» بخصم ${value}${b.type === 'percent' ? '٪' : ''}` });
+  return created(await req.app.db.get('SELECT * FROM coupons WHERE id=?', r.lastId));
+}));
+
+router.patch('/coupons/:id', h(async (req) => {
+  const app = req.app;
+  const c = await app.db.get('SELECT * FROM coupons WHERE id=?', req.params.id);
+  if (!c) throw notFound('الكوبون غير موجود');
+  const b = req.body || {};
+  await app.db.run(
+    `UPDATE coupons SET name=?, value=?, max_redemptions=?, valid_until=?, is_active=?, applies_to=? WHERE id=?`,
+    b.name?.trim() || c.name,
+    b.value !== undefined ? Number(b.value) : c.value,
+    b.max_redemptions !== undefined ? (b.max_redemptions === null || b.max_redemptions === '' ? null : Number(b.max_redemptions)) : c.max_redemptions,
+    b.valid_until !== undefined ? (b.valid_until || null) : c.valid_until,
+    b.is_active === undefined ? c.is_active : (b.is_active ? 1 : 0),
+    Array.isArray(b.applies_to) ? JSON.stringify(b.applies_to) : c.applies_to,
+    c.id);
+  await plog(req, { action: 'update', entity: 'coupon', entityId: c.id,
+    summary: `${req.ctx.userName} حدّث كوبون «${c.code}»` });
+  return app.db.get('SELECT * FROM coupons WHERE id=?', c.id);
+}));
+
+router.delete('/coupons/:id', h(async (req) => {
+  const app = req.app;
+  const c = await app.db.get('SELECT * FROM coupons WHERE id=?', req.params.id);
+  if (!c) throw notFound('الكوبون غير موجود');
+  if (c.redemptions > 0) throw conflict(`الكوبون مُستخدَم ${c.redemptions} مرة — عطّله بدل حذفه`);
+  await app.db.run('DELETE FROM coupons WHERE id=?', c.id);
+  await plog(req, { action: 'delete', entity: 'coupon', entityId: c.id,
+    summary: `${req.ctx.userName} حذف كوبون «${c.code}»` });
+  return { ok: true };
+}));
+
+/** إشعار دائن على فاتورة صادرة */
+router.post('/invoices/:id/credit-note', h(async (req) => {
+  const app = req.app;
+  const inv = await app.db.get('SELECT * FROM subscription_invoices WHERE id=?', req.params.id);
+  if (!inv) throw notFound('الفاتورة غير موجودة');
+  const note = await issueCreditNote(app, inv.id, {
+    amount: req.body?.amount !== undefined ? Number(req.body.amount) : null,
+    reason: req.body?.reason || '', createdBy: req.ctx.userId
+  });
+  await plog(req, { action: 'create', entity: 'credit_note', entityId: note.id, tenantId: inv.tenant_id,
+    summary: `${req.ctx.userName} أصدر إشعاراً دائناً ${note.number} بمبلغ ${note.total} على الفاتورة ${inv.number}` });
+  return created(note);
+}));
+
+/** حدود ومزايا خاصة بجهة (صفقات مخصّصة) */
+router.put('/tenants/:id/overrides', h(async (req) => {
+  const app = req.app;
+  const t = await app.db.get('SELECT * FROM tenants WHERE id=?', req.params.id);
+  if (!t) throw notFound('الجهة غير موجودة');
+
+  const limits = {};
+  for (const key of ['branches', 'users', 'storage_mb']) {
+    if (!(key in (req.body?.limits || {}))) continue;
+    const v = req.body.limits[key];
+    if (v === null || v === '' || v === 'unlimited') limits[key] = null;
+    else if (Number.isFinite(Number(v)) && Number(v) >= 0) limits[key] = Number(v);
+  }
+  const known = new Set(FEATURES.map(f => f.key));
+  const features = {};
+  for (const [k, v] of Object.entries(req.body?.features || {})) {
+    if (known.has(k)) features[k] = !!v;
+  }
+
+  await app.db.run('UPDATE tenants SET limit_overrides=?, feature_overrides=? WHERE id=?',
+    JSON.stringify(limits), JSON.stringify(features), t.id);
+  await plog(req, { action: 'update', entity: 'tenant', entityId: t.id, tenantId: t.id,
+    summary: `${req.ctx.userName} ضبط حدوداً ومزايا خاصة لـ«${t.name}»`,
+    meta: { limits, features } });
+
+  const sub = await tenantSubscription(app, t.id);
+  const fresh = await app.db.get('SELECT * FROM tenants WHERE id=?', t.id);
+  return {
+    limits: sub?.plan ? effectiveLimits(sub.plan, fresh) : null,
+    features: sub?.plan ? effectiveFeatures(sub.plan, fresh) : null,
+    overrides: { limits, features }
+  };
+}));
+
+/** كتالوج المزايا لبناء واجهة التجاوزات */
+router.get('/features', h(async () => FEATURES));
+
+/** بوابات الدفع المتاحة */
+router.get('/gateways', h(async (req) => {
+  const s = await platformSettings(req.app);
+  return {
+    current: s.payment_gateway,
+    configured: !!(j(s.gateway_config, {})?.secret_key),
+    options: Object.values(GATEWAYS)
+  };
+}));
+
+/** إشعار البوابة — مسار مفتوح تُناديه البوابة نفسها */
+export async function paymentWebhook(app, body) {
+  const ref = body?.data?.id || body?.id || body?.charge?.id;
+  const status = body?.data?.status || body?.status;
+  if (!ref) return { matched: false };
+  return handleWebhook(app, { gatewayRef: ref, status: status === 'paid' || status === 'CAPTURED' ? 'paid' : status });
+}
 
 /* ─────────────── سجل المنصة ─────────────── */
 router.get('/logs', h(async (req) => {

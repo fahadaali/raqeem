@@ -284,6 +284,28 @@ function updateBadges() {
   if ('setAppBadge' in navigator) navigator.setAppBadge?.(n).catch(() => {});
 }
 
+/** شرائط إعلانات المنصة — يقرؤها كل مستخدم في جهته، ويخفيها لنفسه */
+function buildBanners() {
+  const list = state.session?.banners || [];
+  const box = el('div.banners');
+  const dismissed = new Set(JSON.parse(localStorage.getItem('noor_dismissed_banners') || '[]'));
+  for (const b of list) {
+    if (dismissed.has(b.id)) continue;
+    box.append(el('div.platform-banner.' + (b.severity || 'info'), {}, [
+      el('div', {}, [
+        el('b', { text: b.title }),
+        b.body ? el('span', { text: ' — ' + b.body }) : null
+      ]),
+      el('button.x', { text: '✕', 'aria-label': 'إخفاء', onclick: (e) => {
+        dismissed.add(b.id);
+        localStorage.setItem('noor_dismissed_banners', JSON.stringify([...dismissed]));
+        e.currentTarget.closest('.platform-banner').remove();
+      } })
+    ]));
+  }
+  return box;
+}
+
 /* ═══════════════ العرض ═══════════════ */
 let currentView = null;
 
@@ -353,7 +375,7 @@ async function render() {
   if (!qs('.shell')) {
     clear(app).append(el('div.shell', {}, [
       buildSidebar(),
-      el('main.main', {}, [buildTopbar(), el('div.content#content')]),
+      el('main.main', {}, [buildTopbar(), buildBanners(), el('div.content#content')]),
     ]), buildBottomNav());
     app.hidden = false;
   }

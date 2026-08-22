@@ -2,6 +2,7 @@ import { signJWT, verifyJWT, hashPassword, verifyPassword, needsRehash,
   randomToken, uuid, sha256Hex, timingSafeEqual, parseDuration } from '../crypto.js';
 import { nowUTC, j } from '../sql.js';
 import { unauthorized, forbidden } from '../errors.js';
+import { effectiveFeatures } from '../features.js';
 
 /** يبني سياق التنفيذ (ctx) الذي تعتمد عليه طبقة العزل بالكامل */
 export async function buildContext(app, userId) {
@@ -10,10 +11,14 @@ export async function buildContext(app, userId) {
     SELECT u.*, r.key AS role_key, r.name AS role_name, r.level AS role_level,
            t.name AS tenant_name, t.code AS tenant_code, t.logo_url AS tenant_logo,
            t.primary_color, t.accent_color, t.calendar_default, t.settings AS tenant_settings,
-           t.status AS tenant_status, t.suspend_reason AS tenant_suspend_reason
+           t.status AS tenant_status, t.suspend_reason AS tenant_suspend_reason,
+           t.feature_overrides, t.limit_overrides,
+           s.status AS sub_status, p.code AS plan_code, p.name AS plan_name, p.features AS plan_features
     FROM users u
     JOIN roles r   ON r.id = u.role_id
     JOIN tenants t ON t.id = u.tenant_id
+    LEFT JOIN subscriptions s ON s.tenant_id = t.id
+    LEFT JOIN plans p ON p.id = s.plan_id
     WHERE u.id = ?`, userId);
   if (!user || user.status !== 'active') return null;
 
@@ -33,6 +38,13 @@ export async function buildContext(app, userId) {
     tenantLogo: user.tenant_logo,
     tenantStatus: user.tenant_status, tenantSuspendReason: user.tenant_suspend_reason,
     isPlatformAdmin: !!user.is_platform_admin,
+    /* مزايا الخطة النافذة — تُحسب مرة واحدة مع السياق فلا تكلّف استعلاماً إضافياً */
+    planCode: user.plan_code || null,
+    planName: user.plan_name || null,
+    subStatus: user.sub_status || null,
+    features: user.plan_code
+      ? effectiveFeatures({ features: user.plan_features }, { feature_overrides: user.feature_overrides })
+      : null,
     tenantColors: { primary: user.primary_color, accent: user.accent_color },
     tenantSettings: j(user.tenant_settings, {}) || {},
     userId: user.id, userName: user.name, email: user.email,

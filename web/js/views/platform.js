@@ -22,10 +22,17 @@ export async function render({ navigate }) {
 
   const t = tabs([
     { label: '📊 نظرة عامة', build: overviewTab },
+    { label: '📈 النمو', build: growthTab },
+    { label: '❤️ صحة الجهات', build: healthTab },
     { label: '🏛 الجهات', build: tenantsTab },
     { label: '💠 الخطط', build: plansTab },
+    { label: '🎟 الكوبونات', build: couponsTab },
     { label: '🧾 الفواتير', build: invoicesTab },
     { label: '📝 طلبات التسجيل', build: signupsTab },
+    { label: '📣 الإعلانات', build: announceTab },
+    { label: '🎧 صندوق الدعم', build: supportTab },
+    { label: '🔒 الأمن', build: securityTab },
+    { label: '⚡ التشغيل', build: opsTab },
     { label: '⚙️ إعدادات المنصة', build: settingsTab },
     { label: '🛡️ سجل المنصة', build: logsTab }
   ], (item) => {
@@ -43,10 +50,20 @@ async function overviewTab() {
   const d = await api.get('/api/platform/overview');
   const cur = d.platform.currency;
 
+  const a = d.alerts || {};
+  const alerts = [
+    a.critical ? { text: `${AR_NUM(a.critical)} جهة في وضع حرج — راجع تبويب صحة الجهات`, kind: 'danger' } : null,
+    a.at_risk ? { text: `${AR_NUM(a.at_risk)} جهة معرّضة للتسرّب`, kind: 'warn' } : null,
+    a.failing_jobs?.length ? { text: `وظائف متعثّرة: ${a.failing_jobs.join('، ')} — راجع تبويب التشغيل`, kind: 'danger' } : null,
+    a.open_support ? { text: `${AR_NUM(a.open_support)} تذكرة دعم مُصعَّدة بانتظار ردّك`, kind: 'warn' } : null,
+    a.upsell_opportunities ? { text: `${AR_NUM(a.upsell_opportunities)} فرصة ترقية — جهات بلغت حدود خطتها`, kind: 'info' } : null
+  ].filter(Boolean);
+
   return el('div.stack', {}, [
     !d.platform.saas_enabled
       ? el('div.alert.info', { text: 'طبقة الـ SaaS معطّلة — المنصة تعمل حالياً بواجهات أحادية المستأجر (المرحلة الأولى). فعّلها من إعدادات المنصة لإظهار صفحة الأسعار والتسجيل الذاتي.' })
       : null,
+    ...alerts.map(x => el('div.alert.' + x.kind, { text: x.text })),
     el('div.stat-grid', {}, [
       stat('الجهات المشتركة', AR_NUM(d.tenants_total), { icon: '🏛', hint: `${AR_NUM(d.tenants.active || 0)} نشطة · ${AR_NUM(d.tenants.suspended || 0)} موقوفة` }),
       stat('الإيراد الشهري المتكرر', `${money(d.mrr)} ${cur}`, { icon: '📈', kind: 'ok', hint: `سنوياً: ${money(d.arr)} ${cur}` }),
@@ -57,7 +74,10 @@ async function overviewTab() {
       stat('التخزين', gb(d.storage_mb), { icon: '🗄' }),
       stat('بانتظار الإجراء', AR_NUM(d.pending_signups + d.pending_payments), {
         icon: '🔔', kind: (d.pending_signups + d.pending_payments) ? 'warn' : '',
-        hint: `${AR_NUM(d.pending_signups)} طلب تسجيل · ${AR_NUM(d.pending_payments)} إشعار سداد` })
+        hint: `${AR_NUM(d.pending_signups)} طلب تسجيل · ${AR_NUM(d.pending_payments)} إشعار سداد` }),
+      stat('متوسط صحة الجهات', a.average_health === null ? '—' : `${AR_NUM(a.average_health)}٪`, {
+        icon: '❤️', kind: a.average_health >= 70 ? 'ok' : a.average_health >= 50 ? 'warn' : 'danger',
+        hint: `${AR_NUM(a.at_risk || 0)} معرّضة للتسرّب` })
     ]),
     card('حالات الاشتراك', el('div.row.wrap', { style: { gap: '8px' } },
       Object.entries(d.subscriptions).map(([k, v]) =>
@@ -182,6 +202,78 @@ async function tenantDialog(id, reload) {
       { header: 'الحالة', key: 'status', render: r => chip(r.status_label, INV_KIND[r.status]) },
       { header: 'التاريخ', key: 'issued_at', render: r => fmtDate(r.issued_at, state.calendar) }
     ], d.invoices) : empty('🧾', 'لا فواتير', '')),
+    /* صحة الجهة */
+    d.health ? card('مؤشّر الصحة', el('div.stack', {}, [
+      el('div.row', { style: { gap: '10px', alignItems: 'center' } }, [
+        el('b', { text: AR_NUM(d.health.health.score) + '٪',
+          style: { fontSize: '24px', color: `var(--${d.health.health.score >= 70 ? 'ok' : d.health.health.score >= 50 ? 'warn' : 'danger'})` } }),
+        chip(d.health.health.risk_label, d.health.health.score >= 70 ? 'ok' : d.health.health.score >= 50 ? 'warn' : 'danger')
+      ]),
+      el('div.grid-2', {}, [
+        el('div', {}, [el('span.hint', { text: 'النشاط' }), progressBar(d.health.health.parts.activity)]),
+        el('div', {}, [el('span.hint', { text: 'تبنّي المستخدمين' }), progressBar(d.health.health.parts.adoption)]),
+        el('div', {}, [el('span.hint', { text: 'اتساع الاستخدام' }), progressBar(d.health.health.parts.breadth)]),
+        el('div', {}, [el('span.hint', { text: 'انتظام السداد' }), progressBar(d.health.health.parts.billing)])
+      ]),
+      d.health.health.reasons.length
+        ? el('ul.plan-perks', {}, d.health.health.reasons.map(r => el('li', { text: r })))
+        : el('p.hint', { text: 'لا ملاحظات — الجهة في وضع سليم.' }),
+      el('p.hint', { text: `الوحدات المستخدَمة: ${d.health.health.modules_used.join('، ') || 'لا شيء'}` })
+    ])) : null,
+
+    /* حدود ومزايا خاصة */
+    card('حدود ومزايا خاصة بالجهة', el('div.stack', {}, [
+      el('p.hint', { text: 'تجاوزات تعلو على الخطة — للصفقات المخصّصة. اتركها فارغة لاعتماد حدود الخطة.' }),
+      el('button.btn.ghost', { text: '⚙ ضبط التجاوزات', onclick: () => overridesDialog(d, async () => { m.close(); await reload(); }) })
+    ])),
+
+    /* المتابعة التجارية */
+    card('المتابعة التجارية', (() => {
+      const cName = input({ value: t.contact_name || '', placeholder: 'جهة الاتصال' });
+      const cPhone = input({ value: t.contact_phone || '', dir: 'ltr', placeholder: '05xxxxxxxx' });
+      const stage = select([
+        { value: '', label: '—' }, { value: 'lead', label: 'عميل محتمل' },
+        { value: 'onboarding', label: 'قيد التهيئة' }, { value: 'active', label: 'نشط' },
+        { value: 'at_risk', label: 'معرّض للتسرّب' }, { value: 'churned', label: 'متسرّب' }
+      ], { value: t.crm_stage || '' });
+      const source = input({ value: t.crm_source || '', placeholder: 'مصدر العميل' });
+      const notes = el('div');
+      const noteInput = input({ placeholder: 'أضف ملاحظة…' });
+
+      const drawNotes = (list) => clear(notes).append(list.length ? el('div.stack', {},
+        list.map(n => el('div.alert.info', { style: { padding: '8px 12px' } }, [
+          el('div', { text: n.body }),
+          el('div.hint', { text: `${n.author_name || '—'} · ${timeAgo(n.created_at)}` })
+        ]))) : el('p.hint', { text: 'لا ملاحظات بعد' }));
+      drawNotes(d.notes || []);
+
+      return el('div.stack', {}, [
+        el('div.grid-2', {}, [field('جهة الاتصال', cName), field('الجوال', cPhone)]),
+        el('div.grid-2', {}, [field('مرحلة العميل', stage), field('المصدر', source)]),
+        el('button.btn.sm', { text: '💾 حفظ المتابعة', onclick: async (e) => {
+          e.target.disabled = true;
+          try {
+            await api.put(`/api/platform/tenants/${id}/crm`, {
+              contact_name: cName.value.trim(), contact_phone: cPhone.value.trim(),
+              crm_stage: stage.value || null, crm_source: source.value.trim() });
+            toast('حُفظت بيانات المتابعة', 'ok');
+          } catch (err) { toast(err.message, 'warn'); }
+          finally { e.target.disabled = false; }
+        } }),
+        el('h4.form-sec', { text: 'الملاحظات' }),
+        notes,
+        el('div.row', { style: { gap: '8px' } }, [
+          el('div', { style: { flex: 1 } }, [noteInput]),
+          el('button.btn.sm', { text: '＋ إضافة', onclick: async () => {
+            if (!noteInput.value.trim()) return;
+            await api.post(`/api/platform/tenants/${id}/notes`, { body: noteInput.value.trim() });
+            noteInput.value = '';
+            drawNotes(await api.get(`/api/platform/tenants/${id}/notes`));
+          } })
+        ])
+      ]);
+    })()),
+
     card('إجراءات إدارية', el('div.row.wrap', { style: { gap: '8px' } }, [
       el('button.btn.ghost', { text: '🔑 دخول إداري للمساندة', onclick: async () => {
         if (!await confirmDialog('ستدخل بحساب مدير هذه الجهة للمساندة الفنية، وسيُسجَّل ذلك في سجلّي المنصة والجهة.',
@@ -206,6 +298,10 @@ async function tenantDialog(id, reload) {
             await api.patch(`/api/platform/tenants/${id}`, { status: 'active' });
             toast('أُعيد تفعيل الجهة', 'ok'); m.close(); await reload();
           } }),
+      el('button.btn.ghost', { text: '⬇ تصدير بيانات الجهة', onclick: async () => {
+        try { await api.downloadGet(`/api/platform/tenants/${id}/export`, `${t.code}-export.sql.gz`);
+          toast('نُزّل التصدير الكامل', 'ok'); } catch (e) { toast(e.message, 'warn'); }
+      } }),
       el('button.btn.danger', { text: '🗑 محو الجهة نهائياً', onclick: async () => {
         if (!await confirmDialog(
           `سيُمحى كل ما يخص «${t.name}»: المستخدمون والفروع والمهام والفواتير والملفات وسجل التدقيق. لا يمكن التراجع.`,
@@ -394,6 +490,235 @@ function planDialog(plan, reload) {
   });
 }
 
+
+/* ═══════════ الكوبونات والخصومات (المستوى ٤) ═══════════ */
+const COUPON_DURATION = { once: 'مرة واحدة', months: 'عدة شهور', forever: 'دائم' };
+
+async function couponsTab() {
+  const body = el('div');
+  const load = async () => {
+    clear(body).append(skeleton(4));
+    const [rows, plans] = await Promise.all([
+      api.get('/api/platform/coupons'),
+      api.get('/api/platform/plans').catch(() => [])
+    ]);
+    const granted = rows.reduce((s, c) => s + Number(c.total_discount || 0), 0);
+    const live = rows.filter(c => c.is_active).length;
+
+    clear(body).append(
+      el('div.stat-grid', {}, [
+        stat('كوبونات مفعّلة', AR_NUM(live), { icon: '🎟' }),
+        stat('مرات الاستخدام', AR_NUM(rows.reduce((s, c) => s + Number(c.uses || 0), 0)), { icon: '🔁' }),
+        stat('إجمالي الخصم الممنوح', money(granted), { icon: '💸', kind: granted ? 'warn' : '' }),
+        stat('جهات مستفيدة', AR_NUM(rows.reduce((s, c) => s + Number(c.tenants || 0), 0)), { icon: '🏛' })
+      ]),
+      table([
+        { header: 'الرمز', key: 'code', render: r => el('div', {}, [
+          el('b', { text: r.code, style: { direction: 'ltr' } }),
+          el('div.hint', { text: r.name })]) },
+        { header: 'الخصم', key: 'value', num: true,
+          render: r => (r.type === 'percent' ? `${AR_NUM(r.value)}٪` : money(r.value)) },
+        { header: 'المدة', key: 'duration', render: r => chip(
+          r.duration === 'months' ? `${AR_NUM(r.duration_months || 0)} شهر` : COUPON_DURATION[r.duration] || r.duration) },
+        { header: 'يسري على', key: 'applies_to', render: (r) => {
+          const list = (() => { try { return JSON.parse(r.applies_to || '[]'); } catch { return []; } })();
+          return list.length ? el('div.hint', { text: list.join('، ') }) : chip('كل الخطط', 'info');
+        } },
+        { header: 'الاستخدام', key: 'uses', num: true, render: r =>
+          `${AR_NUM(r.uses)}${r.max_redemptions ? ` / ${AR_NUM(r.max_redemptions)}` : ''}` },
+        { header: 'الخصم الممنوح', key: 'total_discount', num: true, render: r => money(r.total_discount || 0) },
+        { header: 'ينتهي', key: 'valid_until', render: r => (r.valid_until ? fmtDate(r.valid_until, state.calendar) : '—') },
+        { header: 'الحالة', key: 'is_active', render: r => chip(r.is_active ? 'مفعّل' : 'معطّل', r.is_active ? 'ok' : '') },
+        { header: '', key: 'a', render: r => el('div.row', { style: { gap: '4px' } }, [
+          el('button.btn.sm.ghost', { text: r.is_active ? 'تعطيل' : 'تفعيل', onclick: async () => {
+            try {
+              await api.patch(`/api/platform/coupons/${r.id}`, { is_active: !r.is_active });
+              toast(r.is_active ? 'عُطّل الكوبون' : 'فُعّل الكوبون', 'ok'); await load();
+            } catch (e) { toast(e.message, 'warn'); }
+          } }),
+          el('button.btn.sm.ghost', { text: 'تحرير', onclick: () => couponDialog(r, plans, load) }),
+          !r.uses ? el('button.btn.sm.ghost', { text: '🗑', onclick: async () => {
+            if (!await confirmDialog(`حذف كوبون «${r.code}»؟`, { danger: true, confirmText: 'حذف' })) return;
+            try { await api.del(`/api/platform/coupons/${r.id}`); toast('حُذف الكوبون', 'ok'); await load(); }
+            catch (e) { toast(e.message, 'warn'); }
+          } }) : null
+        ]) }
+      ], rows, { emptyText: 'لا توجد كوبونات — أنشئ كوبوناً ترويجياً لتسريع التحوّل من التجربة إلى الاشتراك' })
+    );
+  };
+  load();
+  return el('div', {}, [
+    el('div.row', { style: { justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' } }, [
+      el('h3', { text: 'الكوبونات والخصومات', style: { margin: 0 } }),
+      el('button.btn.gold', { text: '＋ كوبون جديد', onclick: async () =>
+        couponDialog(null, await api.get('/api/platform/plans').catch(() => []), load) })
+    ]),
+    el('div.hint', { style: { marginBottom: '10px' },
+      text: 'الخصم يُطبَّق على المبلغ قبل ضريبة القيمة المضافة، والضريبة تُحسب على الصافي.' }),
+    body
+  ]);
+}
+
+function couponDialog(coupon, plans, reload) {
+  const existing = (() => { try { return JSON.parse(coupon?.applies_to || '[]'); } catch { return []; } })();
+  const f = {
+    code: input({ value: coupon?.code || '', dir: 'ltr', disabled: !!coupon, placeholder: 'RAMADAN25' }),
+    name: input({ value: coupon?.name || '', placeholder: 'عرض رمضان' }),
+    value: input({ type: 'number', step: '0.01', value: coupon?.value ?? 10, dir: 'ltr' }),
+    duration_months: input({ type: 'number', value: coupon?.duration_months ?? 3, dir: 'ltr' }),
+    max_redemptions: input({ type: 'number', value: coupon?.max_redemptions ?? '', placeholder: 'فارغ = بلا حد', dir: 'ltr' }),
+    valid_until: input({ type: 'date', value: (coupon?.valid_until || '').slice(0, 10) })
+  };
+  const type = select([{ value: 'percent', label: 'نسبة مئوية ٪' }, { value: 'fixed', label: 'مبلغ ثابت (ر.س)' }],
+    { value: coupon?.type || 'percent', disabled: !!coupon });
+  const duration = select(Object.entries(COUPON_DURATION).map(([value, label]) => ({ value, label })),
+    { value: coupon?.duration || 'once', disabled: !!coupon });
+  const monthsField = field('عدد الشهور', f.duration_months);
+  const syncMonths = () => { monthsField.hidden = duration.value !== 'months'; };
+  duration.addEventListener('change', syncMonths);
+  syncMonths();
+
+  const planBoxes = plans.map(p => {
+    const cb = input({ type: 'checkbox', checked: existing.includes(p.code) });
+    cb.dataset.code = p.code;
+    return el('label.row', { style: { gap: '6px' } }, [cb, el('span', { text: p.name })]);
+  });
+
+  const m = modal({
+    title: coupon ? `تحرير كوبون «${coupon.code}»` : 'كوبون جديد', size: 'lg',
+    body: el('div.stack', {}, [
+      el('div.grid-2', {}, [field('الرمز (إنجليزي وأرقام)', f.code, { required: true }), field('الاسم', f.name, { required: true })]),
+      el('div.grid-2', {}, [field('نوع الخصم', type), field('قيمة الخصم', f.value, { required: true })]),
+      el('div.grid-2', {}, [field('مدة السريان', duration), monthsField]),
+      el('div.grid-2', {}, [field('حد مرات الاستخدام', f.max_redemptions), field('تاريخ الانتهاء', f.valid_until)]),
+      planBoxes.length ? card('الخطط المشمولة (بلا تحديد = كل الخطط)',
+        el('div.row.wrap', { style: { gap: '14px' } }, planBoxes)) : null
+    ]),
+    footer: el('button.btn.gold', { text: coupon ? 'حفظ' : 'إنشاء', onclick: async (e) => {
+      e.target.disabled = true;
+      const applies_to = planBoxes
+        .map(b => b.querySelector('input[type=checkbox]'))
+        .filter(cb => cb.checked).map(cb => cb.dataset.code);
+      const payload = {
+        code: f.code.value.trim(), name: f.name.value.trim(),
+        type: type.value, value: Number(f.value.value || 0),
+        duration: duration.value,
+        duration_months: duration.value === 'months' ? Number(f.duration_months.value || 1) : null,
+        max_redemptions: f.max_redemptions.value === '' ? null : Number(f.max_redemptions.value),
+        valid_until: f.valid_until.value || null,
+        applies_to
+      };
+      try {
+        if (coupon) await api.patch(`/api/platform/coupons/${coupon.id}`, payload);
+        else await api.post('/api/platform/coupons', payload);
+        toast('حُفظ الكوبون', 'ok'); m.close(); await reload();
+      } catch (err) { toast(err.message, 'warn'); e.target.disabled = false; }
+    } })
+  });
+}
+
+/* ═══════════ الإعلانات والبث (المستوى ٢) ═══════════ */
+const SEV_KIND = { info: 'info', warning: 'warn', critical: 'danger' };
+
+async function announceTab() {
+  const body = el('div');
+  const load = async () => {
+    clear(body).append(skeleton(4));
+    const d = await api.get('/api/platform/announcements');
+    const sevLabel = Object.fromEntries(d.severities.map(s => [s.key, s.label]));
+    const audLabel = Object.fromEntries(d.audiences.map(a => [a.key, a.label]));
+
+    clear(body).append(table([
+      { header: 'الإعلان', key: 'title', render: r => el('div', {}, [
+        el('b', { text: r.title }),
+        r.body ? el('div.hint', { text: r.body.slice(0, 90) }) : null]) },
+      { header: 'الأهمية', key: 'severity', render: r => chip(sevLabel[r.severity] || r.severity, SEV_KIND[r.severity] || '') },
+      { header: 'الجمهور', key: 'audience', render: r => chip(
+        r.audience_value ? `${audLabel[r.audience] || r.audience}: ${r.audience_value}` : (audLabel[r.audience] || r.audience)) },
+      { header: 'الجهات', key: 'tenants_count', num: true, render: r => AR_NUM(r.tenants_count) },
+      { header: 'المستقبِلون', key: 'recipients', num: true, render: r => AR_NUM(r.recipients || 0) },
+      { header: 'شريط', key: 'banner', render: r => (r.banner ? chip('نعم', 'info') : '—') },
+      { header: 'ينتهي', key: 'ends_at', render: r => (r.ends_at ? fmtDate(r.ends_at, state.calendar) : 'بلا انتهاء') },
+      { header: 'أُرسل', key: 'sent_at', render: r => (r.sent_at ? timeAgo(r.sent_at) : chip('لم يُرسل', 'warn')) },
+      { header: '', key: 'a', render: r => el('button.btn.sm.ghost', { text: '🗑', onclick: async () => {
+        if (!await confirmDialog(`حذف إعلان «${r.title}»؟`, { danger: true, confirmText: 'حذف' })) return;
+        try { await api.del(`/api/platform/announcements/${r.id}`); toast('حُذف الإعلان', 'ok'); await load(); }
+        catch (e) { toast(e.message, 'warn'); }
+      } }) }
+    ], d.items, { emptyText: 'لا توجد إعلانات — ابثّ إشعاراً بالتحديثات أو أعمال الصيانة المجدولة' }));
+  };
+  load();
+  return el('div', {}, [
+    el('div.row', { style: { justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' } }, [
+      el('h3', { text: 'الإعلانات والبثّ', style: { margin: 0 } }),
+      el('button.btn.gold', { text: '＋ إعلان جديد', onclick: () => announceDialog(load) })
+    ]),
+    el('div.hint', { style: { marginBottom: '10px' },
+      text: 'الإعلان يصل كإشعار داخل المنصة وكإشعار دفع للجوال، ويظهر شريطاً أعلى شاشة الجهات المستهدفة.' }),
+    body
+  ]);
+}
+
+async function announceDialog(reload) {
+  const meta = await api.get('/api/platform/announcements');
+  const [plans, tenants] = await Promise.all([
+    api.get('/api/platform/plans').catch(() => []),
+    api.get('/api/platform/tenants').catch(() => ({ items: [] }))
+  ]);
+  const title = input({ placeholder: 'تحديث مجدول للمنصة' });
+  const bodyTxt = textarea({ rows: 4, placeholder: 'تفاصيل الإعلان كما ستصل للجهات...' });
+  const url = input({ placeholder: '/billing', dir: 'ltr' });
+  const severity = select(meta.severities.map(s => ({ value: s.key, label: s.label })), { value: 'info' });
+  const audience = select(meta.audiences.map(a => ({ value: a.key, label: a.label })), { value: 'all' });
+  const endsAt = input({ type: 'date' });
+  const banner = input({ type: 'checkbox', checked: true });
+  const push = input({ type: 'checkbox', checked: true });
+
+  const valueSel = select([], {});
+  const valueField = field('قيمة الجمهور', valueSel, { required: true });
+  const syncValue = () => {
+    const a = audience.value;
+    valueField.hidden = a === 'all';
+    if (a === 'plan') valueSel.replaceChildren(...plans.map(p => el('option', { value: p.code, text: p.name })));
+    else if (a === 'tenant') valueSel.replaceChildren(...(tenants.items || []).map(t => el('option', { value: String(t.id), text: t.name })));
+    else if (a === 'status') valueSel.replaceChildren(...['active', 'trialing', 'past_due', 'canceled']
+      .map(s => el('option', { value: s, text: s })));
+  };
+  audience.addEventListener('change', syncValue);
+  syncValue();
+
+  const m = modal({
+    title: 'بثّ إعلان جديد', size: 'lg',
+    body: el('div.stack', {}, [
+      field('العنوان', title, { required: true }),
+      field('النص', bodyTxt),
+      el('div.grid-2', {}, [field('الأهمية', severity), field('الجمهور', audience)]),
+      valueField,
+      el('div.grid-2', {}, [field('رابط الإجراء (اختياري)', url), field('تاريخ الانتهاء', endsAt)]),
+      el('div.row.wrap', { style: { gap: '16px' } }, [
+        el('label.row', { style: { gap: '6px' } }, [banner, el('span', { text: 'يظهر شريطاً أعلى الشاشة' })]),
+        el('label.row', { style: { gap: '6px' } }, [push, el('span', { text: 'يُرسَل إشعار دفع للجوال' })])
+      ])
+    ]),
+    footer: el('button.btn.gold', { text: 'بثّ الإعلان', onclick: async (e) => {
+      if (!title.value.trim()) return void toast('العنوان إلزامي', 'warn');
+      e.target.disabled = true;
+      try {
+        const out = await api.post('/api/platform/announcements', {
+          title: title.value.trim(), body: bodyTxt.value.trim() || null,
+          url: url.value.trim() || null, severity: severity.value,
+          audience: audience.value,
+          audience_value: audience.value === 'all' ? null : valueSel.value,
+          banner: banner.checked, push: push.checked,
+          ends_at: endsAt.value || null
+        });
+        toast(`بُثّ الإعلان إلى ${AR_NUM(out.tenants)} جهة (${AR_NUM(out.recipients)} مستخدم)`, 'ok');
+        m.close(); await reload();
+      } catch (err) { toast(err.message, 'warn'); e.target.disabled = false; }
+    } })
+  });
+}
+
 /* ═══════════ الفواتير والمدفوعات ═══════════ */
 async function invoicesTab() {
   const body = el('div');
@@ -493,8 +818,22 @@ async function settingsTab() {
     bank: input({ value: s.bank_details?.bank || '' }),
     beneficiary: input({ value: s.bank_details?.beneficiary || '' }),
     iban: input({ value: s.bank_details?.iban || '', dir: 'ltr' }),
-    bankNote: input({ value: s.bank_details?.note || '' })
+    bankNote: input({ value: s.bank_details?.note || '' }),
+    street: input({ value: s.seller_address?.street || '' }),
+    district: input({ value: s.seller_address?.district || '' }),
+    city: input({ value: s.seller_address?.city || '' }),
+    postal: input({ value: s.seller_address?.postal_code || '', dir: 'ltr' }),
+    idleDays: input({ type: 'number', value: s.health_idle_days, dir: 'ltr' }),
+    upsell: input({ type: 'number', value: s.upsell_threshold, dir: 'ltr' }),
+    gwSecret: input({ type: 'password', placeholder: '••••••••', dir: 'ltr' })
   };
+  const zatca = input({ type: 'checkbox', checked: !!s.zatca_enabled });
+  const require2fa = input({ type: 'checkbox', checked: !!s.require_2fa_admins });
+  const gateway = select([
+    { value: 'manual', label: 'تحويل بنكي يدوي' },
+    { value: 'moyasar', label: 'ميسر (مدى · فيزا · Apple Pay)' },
+    { value: 'tap', label: 'تاب (Tap Payments)' }
+  ], { value: s.payment_gateway });
   const defaultPlan = select(plans.map(p => ({ value: p.code, label: p.name })), { value: s.default_plan_code });
   const saas = input({ type: 'checkbox', checked: !!s.saas_enabled });
   const signup = input({ type: 'checkbox', checked: !!s.signup_enabled });
@@ -539,7 +878,30 @@ async function settingsTab() {
       el('h4.form-sec', { text: 'بيانات التحويل البنكي' }),
       el('div.grid-2', {}, [field('البنك', f.bank), field('المستفيد', f.beneficiary)]),
       field('الآيبان', f.iban),
-      field('ملاحظة للعميل', f.bankNote)
+      field('ملاحظة للعميل', f.bankNote),
+      el('h4.form-sec', { text: 'بوابة الدفع' }),
+      field('البوابة المفعّلة', gateway),
+      field('المفتاح السرّي للبوابة', f.gwSecret, {
+        hint: 'يُحفظ مشفَّراً في قاعدة البيانات ولا يُعاد عرضه. اتركه فارغاً للإبقاء على الحالي.' })
+    ])),
+    card('الفاتورة الإلكترونية (ZATCA)', el('div.stack', {}, [
+      el('label.row', { style: { gap: '8px' } }, [zatca,
+        el('span', { text: 'ختم الفواتير برمز QR ومستند XML وسلسلة تجزئة' })]),
+      el('h4.form-sec', { text: 'عنوان المنشأة (إلزامي في مستند الفاتورة)' }),
+      el('div.grid-2', {}, [field('الشارع', f.street), field('الحي', f.district)]),
+      el('div.grid-2', {}, [field('المدينة', f.city), field('الرمز البريدي', f.postal)]),
+      el('p.hint', { text: 'يُولَّد رمز QR بالحقول الإلزامية الخمسة ومستند UBL 2.1 وسلسلة تجزئة مترابطة. الختم التشفيري يتطلّب شهادة CSID من الهيئة بعد تسجيل المنشأة.' })
+    ])),
+    card('الأمن', el('div.stack', {}, [
+      el('label.row', { style: { gap: '8px' } }, [require2fa,
+        el('span', { text: 'إلزام مالكي المنصة بالتحقّق بخطوتين' })]),
+      el('p.hint', { text: 'هذه اللوحة تتجاوز عزل الجهات — الطبقة الثانية ليست ترفاً.' })
+    ])),
+    card('عتبات صحة الجهات', el('div.stack', {}, [
+      el('div.grid-2', {}, [
+        field('تُعدّ الجهة خاملة بعد (أيام)', f.idleDays),
+        field('فرصة الترقية عند بلوغ (٪ من الحدّ)', f.upsell)
+      ])
     ])),
     el('button.btn.gold.block', { text: '💾 حفظ إعدادات المنصة', onclick: async (e) => {
       e.target.disabled = true;
@@ -554,7 +916,15 @@ async function settingsTab() {
           vat_number: f.vat_number.value.trim() || null, cr_number: f.cr_number.value.trim() || null,
           invoice_prefix: f.invoice_prefix.value.trim(),
           bank_details: { bank: f.bank.value.trim(), beneficiary: f.beneficiary.value.trim(),
-            iban: f.iban.value.trim(), note: f.bankNote.value.trim() }
+            iban: f.iban.value.trim(), note: f.bankNote.value.trim() },
+          seller_address: { street: f.street.value.trim(), district: f.district.value.trim(),
+            city: f.city.value.trim(), postal_code: f.postal.value.trim() },
+          zatca_enabled: zatca.checked,
+          require_2fa_admins: require2fa.checked,
+          payment_gateway: gateway.value,
+          ...(f.gwSecret.value.trim() ? { gateway_config: { secret_key: f.gwSecret.value.trim() } } : {}),
+          health_idle_days: Number(f.idleDays.value),
+          upsell_threshold: Number(f.upsell.value)
         });
         toast('حُفظت إعدادات المنصة', 'ok');
       } catch (err) { toast(err.message, 'warn'); }
@@ -602,4 +972,462 @@ async function logsTab() {
     el('p.hint', { text: 'هذا السجل مقفل ضد التعديل والحذف على مستوى قاعدة البيانات — كسجل تدقيق الجهات تماماً.' }),
     body
   ]);
+}
+
+/* ═══════════ النمو والمؤشرات (المستوى ١) ═══════════ */
+
+/** رسم خطّي بسيط بـ SVG — بلا مكتبات، ويرث ألوان السمة */
+function sparkline(points, { height = 90, color = 'var(--brand)', fill = true } = {}) {
+  const vals = points.map(p => Number(p) || 0);
+  if (vals.length < 2) return el('div.hint', { text: 'تحتاج نقطتين على الأقل لرسم الاتجاه' });
+  const max = Math.max(...vals), min = Math.min(...vals);
+  const span = max - min || 1;
+  const w = 100, h = 100;
+  const xy = vals.map((v, i) => [(i / (vals.length - 1)) * w, h - ((v - min) / span) * (h - 8) - 4]);
+  const line = xy.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(2)},${y.toFixed(2)}`).join(' ');
+  const area = `${line} L${w},${h} L0,${h} Z`;
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.setAttribute('role', 'img');
+  svg.style.width = '100%';
+  svg.style.height = height + 'px';
+  if (fill) {
+    const a = document.createElementNS(svg.namespaceURI, 'path');
+    a.setAttribute('d', area); a.setAttribute('fill', color); a.setAttribute('opacity', '0.12');
+    svg.append(a);
+  }
+  const pth = document.createElementNS(svg.namespaceURI, 'path');
+  pth.setAttribute('d', line);
+  pth.setAttribute('fill', 'none');
+  pth.setAttribute('stroke', color);
+  pth.setAttribute('stroke-width', '2');
+  pth.setAttribute('vector-effect', 'non-scaling-stroke');
+  pth.setAttribute('stroke-linejoin', 'round');
+  svg.append(pth);
+  return svg;
+}
+
+const trend = (v, suffix = '') => {
+  const n = Number(v || 0);
+  const kind = n > 0 ? 'ok' : n < 0 ? 'danger' : '';
+  return chip(`${n > 0 ? '▲' : n < 0 ? '▼' : '—'} ${AR_NUM(Math.abs(n))}${suffix}`, kind);
+};
+
+async function growthTab() {
+  const body = el('div');
+  const range = select([
+    { value: '7', label: 'آخر ٧ أيام' }, { value: '30', label: 'آخر ٣٠ يوماً' },
+    { value: '90', label: 'آخر ٩٠ يوماً' }, { value: '365', label: 'آخر سنة' }
+  ], { value: '30' });
+
+  const load = async () => {
+    clear(body).append(skeleton(5));
+    const d = await api.get(`/api/platform/metrics?days=${range.value}`);
+    const c = d.change;
+    const pts = d.points;
+
+    clear(body).append(
+      pts.length < 2
+        ? el('div.alert.info', { text: 'اللقطات تُلتقط يومياً — سيظهر الاتجاه بعد يومين من التشغيل. يمكنك التقاط لقطة الآن من تبويب التشغيل.' })
+        : null,
+      el('div.stat-grid', {}, [
+        stat('الإيراد الشهري المتكرر', `${money(d.current.mrr)}`, {
+          icon: '📈', kind: c.mrr >= 0 ? 'ok' : 'danger',
+          hint: `${c.mrr >= 0 ? '+' : ''}${money(c.mrr)} خلال الفترة (${AR_NUM(c.mrr_growth)}٪)` }),
+        stat('الجهات', AR_NUM(d.current.tenants_total), {
+          icon: '🏛', hint: `+${AR_NUM(c.new_tenants)} جديدة · −${AR_NUM(c.churned_tenants)} متسرّبة` }),
+        stat('معدّل التسرّب', `${AR_NUM(c.churn_rate)}٪`, {
+          icon: '📉', kind: c.churn_rate > 5 ? 'danger' : c.churn_rate > 0 ? 'warn' : 'ok',
+          hint: 'خلال الفترة المختارة' }),
+        stat('تحوّل التجارب', `${AR_NUM(d.trial_conversion.rate)}٪`, {
+          icon: '🎯', kind: d.trial_conversion.rate >= 25 ? 'ok' : 'warn',
+          hint: `${AR_NUM(d.trial_conversion.converted)} من ${AR_NUM(d.trial_conversion.started)} تجربة` }),
+        stat('متوسط الإيراد لكل جهة', money(d.current.arpu), { icon: '💵' }),
+        stat('تجديدات الشهر القادم', `${money(d.forecast.expected)}`, {
+          icon: '🔮', hint: `${AR_NUM(d.forecast.renewals)} تجديد · معرّض للفقد ${money(d.forecast.at_risk)}` })
+      ]),
+      card('اتجاه الإيراد الشهري المتكرر', el('div', {}, [
+        sparkline(pts.map(p => p.mrr)),
+        el('div.row', { style: { justifyContent: 'space-between', marginTop: '6px' } }, [
+          el('span.hint', { text: fmtDate(pts[0]?.date, state.calendar) }),
+          trend(c.mrr_growth, '٪'),
+          el('span.hint', { text: fmtDate(pts[pts.length - 1]?.date, state.calendar) })
+        ])
+      ])),
+      el('div.grid.g2', {}, [
+        card('عدد الجهات', sparkline(pts.map(p => p.tenants_total), { color: 'var(--gold)' })),
+        card('المستخدمون', sparkline(pts.map(p => p.users_total), { color: 'var(--info)' }))
+      ]),
+      card('اللقطات', table([
+        { header: 'التاريخ', key: 'date', render: r => fmtDate(r.date, state.calendar) },
+        { header: 'الجهات', key: 'tenants_total', num: true, render: r => AR_NUM(r.tenants_total) },
+        { header: 'الإيراد المتكرر', key: 'mrr', num: true, render: r => money(r.mrr) },
+        { header: 'المستخدمون', key: 'users_total', num: true, render: r => AR_NUM(r.users_total) },
+        { header: 'جديدة', key: 'new_tenants', num: true, render: r => AR_NUM(r.new_tenants) },
+        { header: 'متسرّبة', key: 'churned_tenants', num: true, render: r => AR_NUM(r.churned_tenants) },
+        { header: 'نشطة (٧ أيام)', key: 'active_tenants_7d', num: true, render: r => AR_NUM(r.active_tenants_7d) }
+      ], pts.slice().reverse()))
+    );
+  };
+  range.addEventListener('change', load);
+  load();
+  return el('div', {}, [
+    el('div.row', { style: { justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' } }, [
+      el('h3', { text: 'نمو المنصة', style: { margin: 0 } }),
+      el('div', { style: { minWidth: '160px' } }, [range])
+    ]),
+    body
+  ]);
+}
+
+/* ═══════════ صحة الجهات (المستوى ٢) ═══════════ */
+
+const HEALTH_KIND = (score) => (score >= 70 ? 'ok' : score >= 50 ? 'warn' : 'danger');
+
+async function healthTab() {
+  const d = await api.get('/api/platform/health');
+  const s = d.summary;
+
+  const scoreCell = (t) => el('div', {}, [
+    el('div.row', { style: { gap: '6px' } }, [
+      el('b', { text: AR_NUM(t.health.score), style: { color: `var(--${HEALTH_KIND(t.health.score)})` } }),
+      chip(t.health.risk_label, HEALTH_KIND(t.health.score))
+    ]),
+    progressBar(t.health.score, HEALTH_KIND(t.health.score))
+  ]);
+
+  const tenantRow = (t) => el('div', {}, [
+    el('b', { text: t.name }),
+    el('div.hint', { text: t.health.reasons.join(' · ') || 'لا ملاحظات' })
+  ]);
+
+  return el('div.stack', {}, [
+    el('div.stat-grid', {}, [
+      stat('متوسط الصحة', `${AR_NUM(s.average_score)}٪`, { icon: '❤️', kind: HEALTH_KIND(s.average_score) }),
+      stat('سليمة', AR_NUM(s.by_risk.healthy), { icon: '✅', kind: 'ok' }),
+      stat('تحت المراقبة', AR_NUM(s.by_risk.watch), { icon: '👀', kind: s.by_risk.watch ? 'warn' : '' }),
+      stat('معرّضة للتسرّب', AR_NUM(s.by_risk.at_risk + s.by_risk.critical), {
+        icon: '⚠️', kind: (s.by_risk.at_risk + s.by_risk.critical) ? 'danger' : 'ok' }),
+      stat('فرص الترقية', AR_NUM(s.upsell_opportunities), {
+        icon: '⬆️', kind: s.upsell_opportunities ? 'ok' : '',
+        hint: s.upsell_value ? `قيمة شهرية ${money(s.upsell_value)}` : 'جهات بلغت حدود خطتها' })
+    ]),
+
+    d.at_risk.length ? card(`تحتاج تدخّلاً (${AR_NUM(d.at_risk.length)})`, table([
+      { header: 'الجهة', key: 'name', render: tenantRow },
+      { header: 'الدرجة', key: 'score', render: scoreCell },
+      { header: 'آخر نشاط', key: 'la', render: t => (t.last_activity ? timeAgo(t.last_activity) : 'لا يوجد') },
+      { header: 'المستخدمون النشطون', key: 'ua', render: t => `${AR_NUM(t.users_active_30d)} / ${AR_NUM(t.users)}` },
+      { header: 'الخطة', key: 'plan_name', render: t => t.plan_name || '—' },
+      { header: '', key: 'a', render: t => el('button.btn.sm.ghost', { text: 'إدارة', onclick: () => tenantDialog(t.id, () => {}) }) }
+    ], d.at_risk)) : el('div.alert.ok', { text: '✔ لا توجد جهات معرّضة للتسرّب حالياً' }),
+
+    d.upsells.length ? card(`فرص ترقية (${AR_NUM(d.upsells.length)})`, table([
+      { header: 'الجهة', key: 'name', render: t => el('div', {}, [
+        el('b', { text: t.name }), el('div.hint', { text: `${t.plan_name || '—'} · ${t.owner_email || ''}` })]) },
+      { header: 'الضغط على الحدود', key: 'u', render: t => el('div.row', { style: { gap: '4px' } },
+        t.upsell.resources.map(r => chip(`${r.label} ${AR_NUM(r.percent)}٪`, r.percent >= 100 ? 'danger' : 'warn'))) },
+      { header: 'قيمة الاشتراك', key: 'v', render: t => (t.upsell.monthly_value ? money(t.upsell.monthly_value) : 'مجانية') },
+      { header: '', key: 'a', render: t => el('button.btn.sm', { text: 'ترقية', onclick: () => tenantDialog(t.id, () => {}) }) }
+    ], d.upsells)) : null,
+
+    card('كل الجهات مرتّبة بالصحة', table([
+      { header: 'الجهة', key: 'name', render: tenantRow },
+      { header: 'الدرجة', key: 'score', render: scoreCell },
+      { header: 'النشاط', key: 'p1', render: t => `${AR_NUM(t.health.parts.activity)}٪` },
+      { header: 'التبنّي', key: 'p2', render: t => `${AR_NUM(t.health.parts.adoption)}٪` },
+      { header: 'الاتساع', key: 'p3', render: t => `${AR_NUM(t.health.parts.breadth)}٪` },
+      { header: 'السداد', key: 'p4', render: t => `${AR_NUM(t.health.parts.billing)}٪` },
+      { header: 'الوحدات', key: 'm', render: t => el('div.hint', { text: t.health.modules_used.join('، ') || 'لا شيء' }) }
+    ], d.items)),
+    el('p.hint', { text: `تُحتسب «الخاملة» بعد ${AR_NUM(d.settings.idle_days)} يوماً بلا نشاط، وفرصة الترقية عند بلوغ ${AR_NUM(d.settings.upsell_threshold)}٪ من الحدّ — كلاهما قابل للضبط من إعدادات المنصة.` })
+  ]);
+}
+
+/* ═══════════ صندوق الدعم الموحّد (المستوى ٢) ═══════════ */
+
+async function supportTab() {
+  const body = el('div');
+  const load = async () => {
+    clear(body).append(skeleton(3));
+    const d = await api.get('/api/platform/support');
+    clear(body).append(
+      el('div.row.wrap', { style: { gap: '8px', marginBottom: '12px' } }, [
+        chip(`مفتوحة: ${AR_NUM(d.open)}`, d.open ? 'warn' : 'ok'),
+        chip(`الإجمالي: ${AR_NUM(d.total)}`)
+      ]),
+      d.items.length ? table([
+        { header: 'التذكرة', key: 'subject', render: r => el('div', {}, [
+          el('b', { text: r.subject }),
+          el('div.hint', { text: (r.body || '').slice(0, 110) })]) },
+        { header: 'الجهة', key: 'tenant_name', render: r => el('div', {}, [
+          el('span', { text: r.tenant_name }),
+          el('div.hint', { text: `${r.plan_name || '—'} · ${r.requester_name || ''}` })]) },
+        { header: 'الأولوية', key: 'priority', render: r => chip(
+          ({ low: 'منخفضة', medium: 'متوسطة', high: 'عالية', urgent: 'عاجلة' })[r.priority] || r.priority,
+          ({ high: 'warn', urgent: 'danger' })[r.priority] || '') },
+        { header: 'الحالة لدى المنصة', key: 'vendor_status', render: r => chip(
+          ({ open: 'بانتظار الرد', answered: 'أُجيبت', closed: 'مغلقة' })[r.vendor_status] || r.vendor_status,
+          ({ open: 'warn', answered: 'info', closed: 'ok' })[r.vendor_status] || '') },
+        { header: 'صُعّدت', key: 'vendor_escalated_at', render: r => timeAgo(r.vendor_escalated_at) },
+        { header: '', key: 'a', render: r => el('button.btn.sm', {
+          text: r.vendor_status === 'open' ? '✍ الرد' : 'عرض',
+          onclick: () => supportDialog(r, load) }) }
+      ], d.items) : empty('🎧', 'لا توجد تذاكر مُصعَّدة', 'تظهر هنا التذاكر التي يصعّدها مدراء الجهات إلى دعم المنصة.'));
+  };
+  load();
+  return el('div', {}, [
+    el('h3', { text: 'صندوق الدعم الموحّد', style: { marginTop: 0 } }),
+    el('p.hint', { text: 'التذاكر تُدار داخل كل جهة، وما يُصعَّد منها إلى مزوّد المنصة يظهر هنا.' }),
+    body
+  ]);
+}
+
+function supportDialog(t, reload) {
+  const reply = textarea({ rows: 5, value: t.vendor_reply || '', placeholder: 'اكتب ردّك لصاحب التذكرة…' });
+  const close = input({ type: 'checkbox', checked: true });
+
+  const m = modal({
+    title: `تذكرة ${t.number || t.id} — ${t.tenant_name}`, size: 'lg',
+    body: el('div.stack', {}, [
+      el('div.kv', {}, [
+        el('span.k', { text: 'الموضوع' }), el('span.v', { text: t.subject }),
+        el('span.k', { text: 'مقدّمها' }), el('span.v', { text: `${t.requester_name || '—'} (${t.requester_email || ''})` }),
+        el('span.k', { text: 'الخطة' }), el('span.v', { text: t.plan_name || '—' }),
+        el('span.k', { text: 'صُعّدت' }), el('span.v', { text: fmtDateTime(t.vendor_escalated_at, state.calendar) })
+      ]),
+      card('نص التذكرة', el('p', { text: t.body || '—', style: { whiteSpace: 'pre-wrap', margin: 0 } })),
+      t.vendor_reply ? el('div.alert.info', {}, [
+        el('b', { text: 'ردّك السابق: ' }),
+        el('span', { text: t.vendor_reply })
+      ]) : null,
+      field('الرد', reply, { required: true }),
+      el('label.row', { style: { gap: '6px' } }, [close, el('span', { text: 'إغلاق التذكرة بعد الرد' })])
+    ]),
+    footer: el('button.btn.gold', { text: '📨 إرسال الرد', onclick: async (e) => {
+      if (!reply.value.trim()) return void toast('نص الرد إلزامي', 'warn');
+      e.target.disabled = true;
+      try {
+        await api.post(`/api/platform/support/${t.id}/reply`, { reply: reply.value.trim(), close: close.checked });
+        toast('أُرسل الرد وأُشعر صاحب التذكرة', 'ok'); m.close(); await reload();
+      } catch (err) { toast(err.message, 'warn'); e.target.disabled = false; }
+    } })
+  });
+}
+
+/* ═══════════ الأمن (المستوى ٣) ═══════════ */
+
+async function securityTab() {
+  const body = el('div');
+  const range = select([
+    { value: '24', label: 'آخر ٢٤ ساعة' }, { value: '168', label: 'آخر ٧ أيام' }, { value: '720', label: 'آخر ٣٠ يوماً' }
+  ], { value: '24' });
+
+  const load = async () => {
+    clear(body).append(skeleton(4));
+    const [d, chain] = await Promise.all([
+      api.get(`/api/platform/security?hours=${range.value}`),
+      api.get('/api/platform/einvoice/chain').catch(() => null)
+    ]);
+    const failRate = d.total ? Math.round((d.failed / d.total) * 100) : 0;
+
+    clear(body).append(
+      el('div.stat-grid', {}, [
+        stat('محاولات الدخول', AR_NUM(d.total), { icon: '🔑' }),
+        stat('محاولات فاشلة', AR_NUM(d.failed), {
+          icon: '🚫', kind: failRate > 30 ? 'danger' : failRate > 10 ? 'warn' : 'ok',
+          hint: `${AR_NUM(failRate)}٪ من الإجمالي` }),
+        stat('دخول ناجح', AR_NUM(d.succeeded), { icon: '✅', kind: 'ok' }),
+        stat('عناوين مختلفة', AR_NUM(d.distinct_ips), { icon: '🌐' }),
+        stat('حسابات موقوفة', AR_NUM(d.suspended_accounts), { icon: '⏸', kind: d.suspended_accounts ? 'warn' : '' })
+      ]),
+
+      chain ? el('div.alert.' + (chain.intact ? 'ok' : 'danger'), {
+        text: chain.intact
+          ? `✔ سلسلة تجزئة الفواتير الإلكترونية سليمة (${AR_NUM(chain.checked)} فاتورة)`
+          : `✘ انقطاع في سلسلة التجزئة عند ${chain.breaks.length} فاتورة — راجع فوراً` }) : null,
+
+      d.top_failed_accounts.length ? card('حسابات بأكثر محاولات فاشلة', table([
+        { header: 'البريد', key: 'email', render: r => el('code', { text: r.email, style: { direction: 'ltr', fontSize: '11px' } }) },
+        { header: 'المحاولات', key: 'attempts', num: true, render: r => el('b', {
+          text: AR_NUM(r.attempts), style: { color: r.attempts >= 8 ? 'var(--danger)' : 'inherit' } }) },
+        { header: 'عناوين', key: 'ips', num: true, render: r => AR_NUM(r.ips) },
+        { header: 'آخر محاولة', key: 'last_at', render: r => timeAgo(r.last_at) }
+      ], d.top_failed_accounts)) : null,
+
+      d.top_failed_ips.length ? card('عناوين شبكة مشبوهة', table([
+        { header: 'العنوان', key: 'ip', render: r => el('code', { text: r.ip, style: { direction: 'ltr', fontSize: '11px' } }) },
+        { header: 'المحاولات', key: 'attempts', num: true, render: r => AR_NUM(r.attempts) },
+        { header: 'حسابات مستهدفة', key: 'emails', num: true, render: r => el('b', {
+          text: AR_NUM(r.emails), style: { color: r.emails > 3 ? 'var(--danger)' : 'inherit' } }) },
+        { header: 'آخر محاولة', key: 'last_at', render: r => timeAgo(r.last_at) }
+      ], d.top_failed_ips)) : null,
+
+      card('آخر المحاولات', d.recent.length ? table([
+        { header: 'الوقت', key: 'created_at', render: r => timeAgo(r.created_at) },
+        { header: 'البريد', key: 'email', render: r => el('code', { text: r.email, style: { direction: 'ltr', fontSize: '11px' } }) },
+        { header: 'الجهة', key: 'tenant_name', render: r => r.tenant_name || '—' },
+        { header: 'النتيجة', key: 'success', render: r => chip(r.success ? 'نجح' : 'فشل', r.success ? 'ok' : 'danger') },
+        { header: 'السبب', key: 'reason', render: r => r.reason || '—' },
+        { header: 'العنوان', key: 'ip', render: r => el('code', { text: r.ip || '—', style: { direction: 'ltr', fontSize: '11px' } }) }
+      ], d.recent) : empty('🔒', 'لا توجد محاولات مسجّلة', ''))
+    );
+  };
+  range.addEventListener('change', load);
+  load();
+
+  return el('div', {}, [
+    el('div.row', { style: { justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' } }, [
+      el('h3', { text: 'الأمن والامتثال', style: { margin: 0 } }),
+      el('div', { style: { minWidth: '160px' } }, [range])
+    ]),
+    body
+  ]);
+}
+
+/* ═══════════ التشغيل والصيانة (المستوى ١) ═══════════ */
+
+const JOB_AR = {
+  subscriptions: 'دورة الاشتراكات والفوترة', sla: 'تصعيد تذاكر مستوى الخدمة',
+  kpi: 'إعادة احتساب مؤشرات الأداء', deadlines: 'تذكير المهام المستحقة',
+  backup: 'النسخ الاحتياطي اليومي', metrics: 'لقطة المؤشرات والصيانة', queue: 'تصريف طابور المعالجة'
+};
+
+async function opsTab() {
+  const body = el('div');
+  const load = async () => {
+    clear(body).append(skeleton(4));
+    const [health, runs] = await Promise.all([
+      api.get('/api/platform/jobs/health'),
+      api.get('/api/platform/jobs/runs?limit=40')
+    ]);
+
+    clear(body).append(
+      health.failing ? el('div.alert.danger', { text: `${AR_NUM(health.failing)} وظيفة فشلت في آخر تشغيل — راجع الخطأ أدناه` }) : null,
+      health.stale ? el('div.alert.warn', { text: `${AR_NUM(health.stale)} وظيفة لم تعمل منذ أكثر من ٤٨ ساعة` }) : null,
+
+      card('الوظائف الدورية', table([
+        { header: 'الوظيفة', key: 'job', render: r => el('div', {}, [
+          el('b', { text: JOB_AR[r.job] || r.job }),
+          el('code.hint', { text: r.job, style: { direction: 'ltr', fontSize: '10.5px' } })]) },
+        { header: 'آخر تشغيل', key: 'started_at', render: r => (r.started_at ? el('div', {}, [
+          el('span', { text: timeAgo(r.started_at) }),
+          el('div.hint', { text: fmtDateTime(r.started_at, state.calendar) })
+        ]) : el('span.hint', { text: 'لم تعمل بعد' })) },
+        { header: 'الحالة', key: 'status', render: r => chip(
+          ({ success: 'نجحت', failed: 'فشلت', running: 'قيد التنفيذ', never: 'لم تعمل' })[r.status] || r.status,
+          ({ success: 'ok', failed: 'danger', running: 'info' })[r.status] || '') },
+        { header: 'المدة', key: 'duration_ms', render: r => (r.duration_ms != null ? `${AR_NUM(r.duration_ms)} ms` : '—') },
+        { header: 'إخفاقات ٢٤س', key: 'failures_24h', num: true, render: r => (r.failures_24h
+          ? el('b', { text: AR_NUM(r.failures_24h), style: { color: 'var(--danger)' } }) : '—') },
+        { header: 'الخطأ', key: 'error', render: r => (r.error ? el('span.hint', {
+          text: String(r.error).slice(0, 70), style: { color: 'var(--danger)' } }) : '—') },
+        { header: '', key: 'a', render: r => el('button.btn.sm.ghost', { text: '▶ تشغيل', onclick: async (e) => {
+          e.target.disabled = true;
+          try {
+            const out = await api.post(`/api/platform/jobs/${r.job}/run`, {});
+            toast(`${out.label}: تمّت في ${AR_NUM(out.ms)} ms`, 'ok');
+            await load();
+          } catch (err) { toast(err.message, 'warn'); e.target.disabled = false; }
+        } }) }
+      ], health.jobs)),
+
+      card('سجل التشغيل', runs.length ? table([
+        { header: 'الوقت', key: 'started_at', render: r => timeAgo(r.started_at) },
+        { header: 'الوظيفة', key: 'job', render: r => JOB_AR[r.job] || r.job },
+        { header: 'المصدر', key: 'trigger', render: r => chip(
+          ({ cron: 'مؤقّت', manual: 'يدوي', system: 'النظام' })[r.trigger] || r.trigger,
+          r.trigger === 'manual' ? 'info' : '') },
+        { header: 'المنفّذ', key: 'actor_name', render: r => r.actor_name || '—' },
+        { header: 'الحالة', key: 'status', render: r => chip(
+          ({ success: 'نجحت', failed: 'فشلت', running: 'جارية' })[r.status] || r.status,
+          ({ success: 'ok', failed: 'danger' })[r.status] || '') },
+        { header: 'المدة', key: 'duration_ms', render: r => (r.duration_ms != null ? `${AR_NUM(r.duration_ms)} ms` : '—') },
+        { header: 'النتيجة', key: 'result', render: r => el('span.hint', {
+          text: r.error || (typeof r.result === 'object' ? JSON.stringify(r.result) : String(r.result || '—')).slice(0, 80),
+          style: r.error ? { color: 'var(--danger)' } : {} }) }
+      ], runs) : empty('⚡', 'لا سجلّ تشغيل بعد', 'شغّل وظيفة يدوياً أو انتظر مؤقّتها.'))
+    );
+  };
+  load();
+
+  return el('div', {}, [
+    el('div.row', { style: { justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' } }, [
+      el('h3', { text: 'التشغيل والصيانة', style: { margin: 0 } }),
+      el('button.btn.ghost', { text: '📸 التقاط لقطة مؤشرات', onclick: async (e) => {
+        e.target.disabled = true;
+        try { const m = await api.post('/api/platform/metrics/snapshot', {});
+          toast(`التُقطت لقطة ${m.date}`, 'ok'); } catch (err) { toast(err.message, 'warn'); }
+        finally { e.target.disabled = false; }
+      } })
+    ]),
+    el('p.hint', { text: 'كل تشغيل يُحفظ بنتيجته ومدّته وخطئه — فتُعرف حالة النظام دون تخمين.' }),
+    body
+  ]);
+}
+
+/* ═══════════ تجاوزات الحدود والمزايا (المستوى ٤) ═══════════ */
+
+function overridesDialog(d, done) {
+  const t = d.tenant;
+  const over = t.limit_overrides || {};
+  const planLimits = d.subscription?.plan_limits || {};
+  const AR = { branches: 'الفروع', users: 'المستخدمون', storage_mb: 'التخزين (ميجابايت)' };
+
+  const fields = {};
+  for (const key of ['branches', 'users', 'storage_mb']) {
+    fields[key] = input({
+      type: 'number', dir: 'ltr',
+      value: over[key] === null ? '' : (over[key] ?? ''),
+      placeholder: planLimits[key] === null ? 'بلا حدود في الخطة' : `حدّ الخطة: ${planLimits[key]}`
+    });
+  }
+  const unlimited = {};
+  for (const key of ['branches', 'users', 'storage_mb']) {
+    unlimited[key] = input({ type: 'checkbox', checked: key in over && over[key] === null });
+  }
+
+  const featureBoxes = (d.features || []).map(f => {
+    const cb = input({ type: 'checkbox', checked: f.enabled });
+    return { key: f.key, cb, node: el('label.row', { style: { gap: '6px' } }, [
+      cb, el('span', { text: f.label }),
+      f.in_plan ? chip('في الخطة', 'ok') : chip('خارج الخطة', 'warn')
+    ]) };
+  });
+
+  const m = modal({
+    title: `تجاوزات خاصة — ${t.name}`, size: 'lg',
+    body: el('div.stack', {}, [
+      el('div.alert.info', { text: 'التجاوزات تعلو على الخطة لهذه الجهة وحدها، ولا تغيّر الخطة ولا سعرها. تُستخدم للصفقات المخصّصة.' }),
+      el('h4.form-sec', { text: 'الحدود' }),
+      ...['branches', 'users', 'storage_mb'].map(key => el('div', {}, [
+        field(AR[key], fields[key]),
+        el('label.row', { style: { gap: '6px', marginTop: '-6px' } }, [
+          unlimited[key], el('span.hint', { text: 'بلا حدود لهذه الجهة' })])
+      ])),
+      el('h4.form-sec', { text: 'المزايا' }),
+      el('div.grid-2', {}, featureBoxes.map(f => f.node))
+    ]),
+    footer: el('button.btn.gold', { text: '💾 حفظ التجاوزات', onclick: async (e) => {
+      e.target.disabled = true;
+      const limits = {};
+      for (const key of ['branches', 'users', 'storage_mb']) {
+        if (unlimited[key].checked) limits[key] = null;
+        else if (fields[key].value !== '') limits[key] = Number(fields[key].value);
+      }
+      /* لا تُرسَل إلا المزايا المختلفة عن الخطة، فلا تتجمّد الجهة على قائمة قديمة */
+      const features = {};
+      for (const f of featureBoxes) {
+        const inPlan = (d.features.find(x => x.key === f.key) || {}).in_plan;
+        if (f.cb.checked !== inPlan) features[f.key] = f.cb.checked;
+      }
+      try {
+        const out = await api.put(`/api/platform/tenants/${t.id}/overrides`, { limits, features });
+        toast('حُفظت التجاوزات', 'ok');
+        m.close(); await done(out);
+      } catch (err) { toast(err.message, 'warn'); e.target.disabled = false; }
+    } })
+  });
 }

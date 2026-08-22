@@ -1,5 +1,7 @@
 import { nowUTC, j } from './sql.js';
 import { badRequest, quotaExceeded } from './errors.js';
+import { stampZatca } from './zatca.js';
+import { activeCoupon } from './coupons.js';
 
 /**
  * محرّك الاشتراكات والفوترة (المرحلة الثانية).
@@ -56,7 +58,11 @@ export async function platformSettings(app) {
       ...cols.map(c => DEFAULT_SETTINGS[c]));
     row = await app.db.get('SELECT * FROM platform_settings WHERE id=1');
   }
-  return { ...row, bank_details: j(row.bank_details, {}) || {} };
+  return {
+    ...row,
+    bank_details: j(row.bank_details, {}) || {},
+    seller_address: j(row.seller_address, {}) || {}
+  };
 }
 
 /* ─────────────────────────── الخطط والحدود ─────────────────────────── */
@@ -66,6 +72,23 @@ export const planLimits = (plan) => ({
   users: plan?.max_users ?? null,
   storage_mb: plan?.max_storage_mb ?? null
 });
+
+/**
+ * الحدود النافذة = حدود الخطة، معدَّلة بتجاوزات الجهة.
+ * التجاوز {users: 250} يرفع الحدّ لجهة بعينها دون تغيير الخطة — للصفقات الخاصة.
+ * القيمة null في التجاوز تعني «بلا حدّ لهذه الجهة».
+ */
+export function effectiveLimits(plan, tenant) {
+  const base = planLimits(plan);
+  const over = j(tenant?.limit_overrides, {}) || {};
+  const out = { ...base };
+  for (const key of Object.keys(base)) {
+    if (!(key in over)) continue;
+    const v = over[key];
+    out[key] = (v === null || v === '' || v === 'unlimited') ? null : Number(v);
+  }
+  return out;
+}
 
 export const planFeatures = (plan) => j(plan?.features, []) || [];
 
@@ -112,7 +135,8 @@ export async function assertQuota(app, tenantId, resource, adding = 1) {
   const sub = await tenantSubscription(app, tenantId);
   if (!sub?.plan) return { ok: true, unlimited: true };
 
-  const limit = planLimits(sub.plan)[resource];
+  const tenant = await app.db.get('SELECT limit_overrides FROM tenants WHERE id=?', tenantId);
+  const limit = effectiveLimits(sub.plan, tenant)[resource];
   if (limit === null || limit === undefined) return { ok: true, unlimited: true };
 
   const usage = await tenantUsage(app, tenantId);
@@ -123,6 +147,55 @@ export async function assertQuota(app, tenantId, resource, adding = 1) {
       { resource, limit, current: usage[resource], plan: sub.plan.code });
   }
   return { ok: true, limit, current: usage[resource] };
+}
+
+/* ─────────────────────────── التناسب (Proration) ─────────────────────────── */
+
+const DAY = 86400000;
+
+/**
+ * يحسب رصيد الجزء غير المستهلَك من الفترة الحالية عند تغيير الخطة في منتصفها.
+ * بلا هذا الحساب يُحاسَب العميل مرتين على الأيام نفسها.
+ *
+ * الرصيد يُبنى على ما **دُفع فعلاً** عن الفترة الجارية لا على سعر الخطة المعلن،
+ * وإلا لأمكن تكديس رصيد بتغيير الخطة ذهاباً وإياباً بلا سداد فاتورة واحدة.
+ *
+ * @param {number} paidForPeriod صافي ما سُدِّد عن الفترة الحالية (قبل الضريبة)
+ */
+export function prorationCredit(sub, plan, { paidForPeriod = 0, at = null } = {}) {
+  const now = at ? new Date(at) : new Date();
+  const start = new Date(sub.current_period_start);
+  const end = new Date(sub.current_period_end);
+  const totalDays = Math.max(1, Math.round((end - start) / DAY));
+  const unusedDays = Math.max(0, Math.min(totalDays, Math.ceil((end - now) / DAY)));
+
+  /* الفترة التجريبية أو فترة لم يُسدَّد عنها شيء: لا رصيد */
+  const paid = Math.max(0, Number(paidForPeriod || 0));
+  if (sub.status === 'trialing' || !plan || paid <= 0) {
+    return { unusedDays, totalDays, credit: 0, dailyRate: 0, paid_for_period: paid };
+  }
+  const dailyRate = paid / totalDays;
+  return {
+    unusedDays, totalDays, paid_for_period: paid,
+    dailyRate: Math.round(dailyRate * 10000) / 10000,
+    credit: Math.round(dailyRate * unusedDays * 100) / 100
+  };
+}
+
+/** صافي ما سُدِّد فعلاً عن الفترة الجارية لاشتراك (قبل الضريبة، بعد الإشعارات الدائنة) */
+export async function paidForCurrentPeriod(app, sub) {
+  const r = await app.db.get(
+    `SELECT COALESCE(SUM(subtotal),0) AS paid FROM subscription_invoices
+     WHERE subscription_id=? AND doc_type='invoice' AND status='paid'
+       AND period_start=? AND period_end=?`,
+    sub.id, sub.current_period_start, sub.current_period_end);
+  const credited = await app.db.get(
+    `SELECT COALESCE(SUM(n.subtotal),0) AS c FROM subscription_invoices n
+     JOIN subscription_invoices i ON i.id = n.parent_id
+     WHERE n.doc_type='credit_note' AND n.status<>'void'
+       AND i.subscription_id=? AND i.period_start=?`,
+    sub.id, sub.current_period_start);
+  return Math.max(0, Math.round((Number(r?.paid || 0) - Number(credited?.c || 0)) * 100) / 100);
 }
 
 /* ─────────────────────────── الاشتراك ─────────────────────────── */
@@ -216,29 +289,82 @@ export function computeTotals(amount, vatRate) {
   return { subtotal, vat_amount: vat, total: Math.round((subtotal + vat) * 100) / 100 };
 }
 
-/** يُصدر فاتورة اشتراك لفترة محددة */
-export async function issueInvoice(app, tenantId, sub, { periodStart, periodEnd: pEnd, note = null } = {}) {
+/**
+ * يُصدر فاتورة اشتراك لفترة محددة.
+ * يخصم الكوبون أولاً ثم الرصيد المُرحَّل من التناسب، ويحسب الضريبة على الصافي،
+ * ويثبّت بيانات المشتري وأمر الشراء وقت الإصدار (لا تتغير بتغيير بيانات الجهة لاحقاً).
+ */
+export async function issueInvoice(app, tenantId, sub, {
+  periodStart, periodEnd: pEnd, note = null, amount: forced = null, proration = null,
+  coupon, applyCredit = true, poNumber = null
+} = {}) {
   const plan = sub.plan || await app.db.get('SELECT * FROM plans WHERE id=?', sub.plan_id);
   const settings = await platformSettings(app);
-  const amount = planPrice(plan, sub.cycle);
-  const { subtotal, vat_amount, total } = computeTotals(amount, settings.vat_rate);
+  const tenant = await app.db.get('SELECT * FROM tenants WHERE id=?', tenantId);
+  const billing = j(tenant?.billing_entity, {}) || {};
+
+  const gross = forced !== null ? Number(forced) : planPrice(plan, sub.cycle);
+
+  /*
+   * ① الكوبون — يُستنبَط من الاشتراك متى لم يُمرَّر صراحةً، فيسري على
+   * التجديدات الدورية والفواتير اليدوية لا على الاشتراك الأول وحده.
+   * تمرير null صراحةً يعطّله (كما في الفواتير التسويّة).
+   */
+  const cp = coupon === undefined ? await activeCoupon(app, sub) : coupon;
+  const discount = cp ? Math.min(gross, couponDiscount(cp, gross)) : 0;
+  let net = Math.round((gross - discount) * 100) / 100;
+
+  /* ② الرصيد المُرحَّل من تغيير خطة سابق */
+  const balance = applyCredit ? Number(sub.credit_balance || 0) : 0;
+  const creditApplied = Math.min(balance, net);
+  net = Math.round((net - creditApplied) * 100) / 100;
+
+  const { subtotal, vat_amount, total } = computeTotals(net, settings.vat_rate);
   const number = await nextInvoiceNumber(app);
   const issued = nowUTC();
 
   const r = await app.db.run(
     `INSERT INTO subscription_invoices(tenant_id,subscription_id,number,status,plan_code,plan_name,cycle,
-      period_start,period_end,subtotal,vat_rate,vat_amount,total,currency,issued_at,due_at,notes)
-     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      period_start,period_end,subtotal,discount,vat_rate,vat_amount,total,currency,issued_at,due_at,notes,
+      doc_type,credit_applied,proration,coupon_code,po_number,buyer)
+     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'invoice',?,?,?,?,?)`,
     tenantId, sub.id, number, total > 0 ? 'open' : 'paid',
     plan.code, plan.name, sub.cycle,
     periodStart || sub.current_period_start, pEnd || sub.current_period_end,
-    subtotal, settings.vat_rate, vat_amount, total, plan.currency || settings.currency,
-    issued, addDays(issued, settings.grace_days), note);
+    subtotal, discount, settings.vat_rate, vat_amount, total, plan.currency || settings.currency,
+    issued, addDays(issued, settings.grace_days), note,
+    creditApplied, proration ? JSON.stringify(proration) : null,
+    cp?.code || null, poNumber || billing.po_number || null,
+    JSON.stringify({
+      name: billing.name || tenant?.name, vat_number: billing.vat_number || null,
+      cr_number: billing.cr_number || null, po_number: poNumber || billing.po_number || null,
+      email: billing.email || null,
+      address: billing.address || null, tenant_code: tenant?.code
+    }));
 
-  if (total === 0) {
-    await app.db.run('UPDATE subscription_invoices SET paid_at=? WHERE id=?', issued, r.lastId);
+  const ops = [];
+  if (creditApplied > 0) {
+    ops.push(['UPDATE subscriptions SET credit_balance = MAX(0, credit_balance - ?), updated_at=? WHERE id=?',
+      [creditApplied, issued, sub.id]]);
   }
-  return app.db.get('SELECT * FROM subscription_invoices WHERE id=?', r.lastId);
+  if (cp && discount > 0) {
+    ops.push(['UPDATE coupons SET redemptions = redemptions + 1 WHERE id=?', [cp.id]]);
+    ops.push(['INSERT INTO coupon_redemptions(coupon_id,tenant_id,invoice_id,amount_off) VALUES(?,?,?,?)',
+      [cp.id, tenantId, r.lastId, discount]]);
+  }
+  if (total === 0) ops.push(['UPDATE subscription_invoices SET paid_at=? WHERE id=?', [issued, r.lastId]]);
+  if (ops.length) await app.db.batch(ops);
+
+  const invoice = await app.db.get('SELECT * FROM subscription_invoices WHERE id=?', r.lastId);
+  return stampZatca(app, invoice, settings);
+}
+
+/** خصم الكوبون على مبلغ معيّن */
+export function couponDiscount(coupon, amount) {
+  if (!coupon) return 0;
+  const v = Number(coupon.value || 0);
+  const off = coupon.type === 'percent' ? (Number(amount) * v) / 100 : v;
+  return Math.max(0, Math.round(off * 100) / 100);
 }
 
 /** يعتمد سداد فاتورة ويعيد الاشتراك إلى الحالة النشطة */
@@ -269,4 +395,78 @@ export async function outstandingBalance(app, tenantId) {
     `SELECT COALESCE(SUM(total),0) AS due, COUNT(*) AS n
      FROM subscription_invoices WHERE tenant_id=? AND status='open'`, tenantId);
   return { due: r?.due || 0, invoices: r?.n || 0 };
+}
+
+/* ─────────────────────────── الإشعارات الدائنة ─────────────────────────── */
+
+/**
+ * إشعار دائن على فاتورة (المستوى ٤).
+ * الإلغاء وحده لا يكفي محاسبياً بعد إصدار الفاتورة للعميل — النظام يوجب
+ * إصدار مستند دائن يشير إلى الفاتورة الأصلية ويحمل رقمه الخاص.
+ * القيمة تُضاف إلى رصيد الجهة فتُخصم تلقائياً من فاتورتها التالية.
+ */
+export async function issueCreditNote(app, invoiceId, { amount = null, reason = '', createdBy = null } = {}) {
+  const original = await app.db.get('SELECT * FROM subscription_invoices WHERE id=?', invoiceId);
+  if (!original) throw badRequest('الفاتورة غير موجودة');
+  if (original.doc_type === 'credit_note') throw badRequest('لا يُصدر إشعار دائن على إشعار دائن');
+
+  const already = await app.db.get(
+    `SELECT COALESCE(SUM(total),0) AS c FROM subscription_invoices
+     WHERE parent_id=? AND doc_type='credit_note' AND status<>'void'`, invoiceId);
+  const remaining = Math.round((Number(original.total) - Number(already.c || 0)) * 100) / 100;
+  if (remaining <= 0) throw badRequest('صدرت إشعارات دائنة تغطي كامل الفاتورة');
+
+  const gross = amount === null ? remaining : Math.min(remaining, Number(amount));
+  if (!(gross > 0)) throw badRequest('قيمة الإشعار الدائن غير صالحة');
+
+  /* المبلغ المُدخل شامل الضريبة — نستخرج منه الأصل والضريبة */
+  const rate = Number(original.vat_rate || 0);
+  const subtotal = Math.round((gross / (1 + rate / 100)) * 100) / 100;
+  const vat = Math.round((gross - subtotal) * 100) / 100;
+
+  const settings = await platformSettings(app);
+  const number = await nextInvoiceNumber(app);
+  const issued = nowUTC();
+
+  const r = await app.db.run(
+    `INSERT INTO subscription_invoices(tenant_id,subscription_id,number,status,plan_code,plan_name,cycle,
+      period_start,period_end,subtotal,vat_rate,vat_amount,total,currency,issued_at,paid_at,notes,
+      doc_type,parent_id,buyer)
+     VALUES(?,?,?,'paid',?,?,?,?,?,?,?,?,?,?,?,?,?,'credit_note',?,?)`,
+    original.tenant_id, original.subscription_id, number,
+    original.plan_code, original.plan_name, original.cycle,
+    original.period_start, original.period_end,
+    subtotal, rate, vat, gross, original.currency, issued, issued,
+    reason || `إشعار دائن على الفاتورة ${original.number}`,
+    original.id, original.buyer || '{}');
+
+  /*
+   * فاتورة مسددة: القيمة تُرحَّل رصيداً يُخصم من الفاتورة التالية.
+   * فاتورة غير مسددة: الإشعار يخفّض المستحق فقط — ولا يُمنح رصيد لم يُدفع أصلاً.
+   */
+  if (original.status === 'paid') {
+    const sub = await app.db.get('SELECT * FROM subscriptions WHERE tenant_id=?', original.tenant_id);
+    if (sub) {
+      await app.db.run('UPDATE subscriptions SET credit_balance = credit_balance + ?, updated_at=? WHERE id=?',
+        subtotal, issued, sub.id);
+    }
+  } else if (original.status === 'open') {
+    const covered = await creditedAmount(app, original.id) + gross;
+    if (covered >= Number(original.total) - 0.01) {
+      await app.db.run(
+        `UPDATE subscription_invoices SET status='void', void_reason=? WHERE id=?`,
+        `أُلغيت بإشعار دائن ${number}`, original.id);
+    }
+  }
+
+  const note = await app.db.get('SELECT * FROM subscription_invoices WHERE id=?', r.lastId);
+  return stampZatca(app, note, settings);
+}
+
+/** إجمالي ما صدر من إشعارات دائنة على فاتورة */
+export async function creditedAmount(app, invoiceId) {
+  const r = await app.db.get(
+    `SELECT COALESCE(SUM(total),0) AS c FROM subscription_invoices
+     WHERE parent_id=? AND doc_type='credit_note' AND status<>'void'`, invoiceId);
+  return Number(r?.c || 0);
 }

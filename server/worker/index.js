@@ -133,7 +133,9 @@ const CRON_JOBS = {
   /* ٠٥:٠٠ بتوقيت الرياض = ٠٢:٠٠ عالمياً: النسخ الاحتياطي اليومي إلى R2 (البند ١٠) */
   '0 2 * * *': async (app) => periodic.backup(app),
   /* ٠٤:٠٠ بتوقيت الرياض = ٠١:٠٠ عالمياً: دورة الاشتراكات والفوترة (المرحلة الثانية) */
-  '0 1 * * *': async (app) => periodic.subscriptions(app)
+  '0 1 * * *': async (app) => periodic.subscriptions(app),
+  /* ٠٣:٠٠ بتوقيت الرياض = ٠٠:٠٠ عالمياً: لقطة مؤشرات المنصة وتقليم السجلات */
+  '0 0 * * *': async (app) => periodic.metrics(app)
 };
 
 async function runCron(cron, container) {

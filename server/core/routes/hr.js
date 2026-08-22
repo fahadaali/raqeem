@@ -7,6 +7,7 @@ import { audit } from '../middleware/audit.js';
 import { scoped, assertBranch, findScoped, currentTerm, termIsClosed } from '../scope.js';
 import { haversine } from '../geo.js';
 import { notifyUsers, notifyByPermission } from '../notify.js';
+import { requireFeature } from '../features.js';
 
 const router = new Hono();
 const RIYADH_OFFSET_MIN = 180; // +03:00
@@ -20,6 +21,19 @@ function localMinutes(iso = new Date()) {
 const hhmmToMin = (s) => { const [hh, mm] = String(s || '07:30').split(':').map(Number); return hh * 60 + (mm || 0); };
 
 /* ─────────────── زر التحضير الذكي (البند ٥) ─────────────── */
+/*
+ * كل وحدة فرعية تُحرَس بميزتها لا بميزة الوحدة الأم:
+ * خطة قد تمنح الحضور دون مسير الرواتب — والعكس وارد في الصفقات المخصّصة.
+ */
+router.use('/attendance', requireFeature('attendance'));
+router.use('/attendance/*', requireFeature('attendance'));
+router.use('/employees', requireFeature('attendance'));
+router.use('/employees/*', requireFeature('attendance'));
+router.use('/leaves', requireFeature('attendance'));
+router.use('/leaves/*', requireFeature('attendance'));
+router.use('/advances', requireFeature('payroll'));
+router.use('/advances/*', requireFeature('payroll'));
+
 router.get('/attendance/today', can('hr.attendance.self'), h(async (req) => {
   const app = req.app;
   const date = localDate();
@@ -281,6 +295,9 @@ router.post('/advances', can('hr.payroll.manage'), h(async (req) => {
 }));
 
 /* ─────────────── محرك احتساب الرواتب (البند ٥) ─────────────── */
+router.use('/payroll', requireFeature('payroll'));
+router.use('/payroll/*', requireFeature('payroll'));
+
 router.get('/payroll', can('hr.payroll.view'), h(async (req) => {
   const sc = scoped(req.ctx, { alias: 'p' });
   return req.app.db.all(`SELECT p.*, b.name AS branch_name, u.name AS generated_by_name,

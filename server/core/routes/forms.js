@@ -7,12 +7,13 @@ import { audit } from '../middleware/audit.js';
 import { scoped, findScoped, currentTerm } from '../scope.js';
 import { notifyUsers } from '../notify.js';
 import { recomputeKPIs } from '../jobs/kpi.js';
+import { requireFeature } from '../features.js';
 
 const router = new Hono();
 const FIELD_TYPES = ['text', 'textarea', 'number', 'date', 'select', 'multiselect', 'checkbox', 'rating', 'file', 'section'];
 
 /* ─────────────── منشئ النماذج المرئي ─────────────── */
-router.get('/', can('forms.view', 'forms.submit'), h(async (req) => {
+router.get('/', requireFeature('forms'), can('forms.view', 'forms.submit'), h(async (req) => {
   const rows = await req.app.db.all(`SELECT f.*, u.name AS created_by_name,
       (SELECT COUNT(*) FROM form_submissions s WHERE s.form_id=f.id) AS submissions_count
     FROM forms f LEFT JOIN users u ON u.id=f.created_by
@@ -22,6 +23,8 @@ router.get('/', can('forms.view', 'forms.submit'), h(async (req) => {
 }));
 
 /* لوحات مؤشرات الأداء — قبل /:id حتى لا يبتلعها التوجيه */
+router.use('/kpi/*', requireFeature('kpi'));
+
 router.get('/kpi/overview', can('kpi.view', 'kpi.view_all'), h(async (req) => {
   const app = req.app;
   const viewAll = has(req.ctx, 'kpi.view_all');
@@ -67,7 +70,7 @@ router.post('/kpi/recompute', can('kpi.view_all'), h(async (req) => {
   return { ok: true, updated: n };
 }));
 
-router.get('/:id', can('forms.view', 'forms.submit'), h(async (req) => {
+router.get('/:id', requireFeature('forms'), can('forms.view', 'forms.submit'), h(async (req) => {
   const f = await findScoped(req.app, req.ctx, 'forms', req.params.id);
   if (!f) throw notFound('النموذج غير موجود');
   return { ...f, schema: j(f.schema_json, { fields: [] }) };
@@ -85,7 +88,7 @@ function validateSchema(schema) {
   return { fields };
 }
 
-router.post('/', can('forms.manage'), h(async (req) => {
+router.post('/', requireFeature('forms'), can('forms.manage'), h(async (req) => {
   const { title, description, type, schema, target_role } = req.body || {};
   if (!title) throw badRequest('عنوان النموذج إلزامي');
   const clean = validateSchema(schema);
@@ -98,7 +101,7 @@ router.post('/', can('forms.manage'), h(async (req) => {
   return created({ id: r.lastId });
 }));
 
-router.patch('/:id', can('forms.manage'), h(async (req) => {
+router.patch('/:id', requireFeature('forms'), can('forms.manage'), h(async (req) => {
   const f = await findScoped(req.app, req.ctx, 'forms', req.params.id);
   if (!f) throw notFound('النموذج غير موجود');
   const p = req.body || {};
@@ -110,7 +113,7 @@ router.patch('/:id', can('forms.manage'), h(async (req) => {
   return { ok: true };
 }));
 
-router.delete('/:id', can('forms.manage'), h(async (req) => {
+router.delete('/:id', requireFeature('forms'), can('forms.manage'), h(async (req) => {
   const f = await findScoped(req.app, req.ctx, 'forms', req.params.id);
   if (!f) throw notFound('النموذج غير موجود');
   await req.app.db.run('UPDATE forms SET is_active=0 WHERE id=? AND tenant_id=?', f.id, req.ctx.tenantId);
@@ -136,7 +139,7 @@ function scoreSubmission(schema, answers) {
   return max ? { score: Number(score.toFixed(1)), max_score: max } : { score: null, max_score: null };
 }
 
-router.post('/:id/submit', can('forms.submit'), h(async (req) => {
+router.post('/:id/submit', requireFeature('forms'), can('forms.submit'), h(async (req) => {
   const app = req.app;
   const f = await findScoped(app, req.ctx, 'forms', req.params.id);
   if (!f) throw notFound('النموذج غير موجود');
@@ -172,7 +175,7 @@ router.post('/:id/submit', can('forms.submit'), h(async (req) => {
   return created({ id: r.lastId, score, max_score });
 }));
 
-router.get('/:id/submissions', can('forms.results'), h(async (req) => {
+router.get('/:id/submissions', requireFeature('forms'), can('forms.results'), h(async (req) => {
   const app = req.app;
   const f = await findScoped(app, req.ctx, 'forms', req.params.id);
   if (!f) throw notFound('النموذج غير موجود');

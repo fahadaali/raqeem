@@ -21,6 +21,7 @@ import publicSaasRoutes from './routes/public.js';
 import billingRoutes from './routes/billing.js';
 import platformRoutes from './routes/platform.js';
 import { subscriptionGate } from './middleware/saas.js';
+import { requireFeature } from './features.js';
 
 registerAllJobs();
 
@@ -63,33 +64,41 @@ export function createApi(container) {
   /* الواجهات العامة للمرحلة الثانية: الأسعار والتسجيل الآلي وهوية النطاق */
   api.route('/public', publicSaasRoutes);
 
+  /* إشعار بوابة الدفع — تُناديه البوابة نفسها بلا جلسة */
+  api.post('/webhooks/payments', h(async (req) => {
+    const { paymentWebhook } = await import('./routes/platform.js');
+    return paymentWebhook(req.app, req.body || {});
+  }));
+
   /* المصادقة */
   api.route('/auth', authRoutes);
 
   /* المسارات المحمية — كل مجموعة تُغلَّف بحارسها الخاص داخل بادئتها فقط،
      حتى لا تتسرَّب مصادقة الجلسة إلى الواجهة العامة /api/v1 */
-  const guard = (routes, { gate = true } = {}) => {
+  const guard = (routes, { gate = true, feature = null } = {}) => {
     const g = new Hono();
     g.use('*', authenticate());
     g.use('*', rateLimit({ key: (r) => `u:${r.ctx?.userId || r.ip}` }));
     /* بوابة الاشتراك: تمنع الكتابة عند توقف الاشتراك وتُبقي القراءة والسداد */
     if (gate) g.use('*', subscriptionGate());
+    /* حارس الميزة: يجعل قائمة مزايا الخطة نافذة لا تزيينية */
+    if (feature) g.use('*', requireFeature(feature));
     g.route('/', routes);
     return g;
   };
 
   api.route('/org', guard(orgRoutes));
   api.route('/terms', guard(termRoutes));
-  api.route('/tasks', guard(taskRoutes));
-  api.route('/hr', guard(hrRoutes));
-  api.route('/finance', guard(financeRoutes));
-  api.route('/forms', guard(formRoutes));
-  api.route('/comms', guard(commsRoutes));
+  api.route('/tasks', guard(taskRoutes, { feature: 'tasks' }));
+  api.route('/hr', guard(hrRoutes));    /* الحضور والرواتب ميزتان منفصلتان */
+  api.route('/finance', guard(financeRoutes, { feature: 'finance' }));
+  api.route('/forms', guard(formRoutes)); /* النماذج ومؤشرات الأداء ميزتان منفصلتان */
+  api.route('/comms', guard(commsRoutes)); /* البوابة داخل الوحدة: التذاكر والمحادثات ميزتان منفصلتان */
   api.route('/files', guard(fileRoutes));
   api.route('/notifications', guard(notificationRoutes));
-  api.route('/api-keys', guard(keysRouter));
-  api.route('/imports', guard(importsRouter));
-  api.route('/reports', guard(reportsRouter));
+  api.route('/api-keys', guard(keysRouter, { feature: 'api' }));
+  api.route('/imports', guard(importsRouter, { feature: 'imports' }));
+  api.route('/reports', guard(reportsRouter, { feature: 'reports' }));
   api.route('/audit', guard(auditRouter));
   api.route('/dashboard', guard(dashboardRouter));
 

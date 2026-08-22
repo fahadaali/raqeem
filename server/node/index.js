@@ -64,11 +64,12 @@ const slaJob = safe('sla', periodic.sla);
 const kpiJob = safe('kpi', periodic.kpi);
 const dueJob = safe('deadlines', periodic.deadlines);
 const subsJob = safe('subscriptions', periodic.subscriptions);
+const metricsJob = safe('metrics', periodic.metrics);
 const backupJob = safe('backup', async () => (cfg.backup.enabled
   ? { snapshot: await runBackup(container), logical: await periodic.backup(container) }
   : null));
 
-setTimeout(() => { kpiJob(); slaJob(); requeueStuck(container).catch(() => {}); }, 10_000).unref?.();
+setTimeout(() => { kpiJob(); slaJob(); metricsJob(); requeueStuck(container).catch(() => {}); }, 10_000).unref?.();
 setInterval(() => drain(container).catch(e => console.error('[queue]', e.message)), 5_000).unref?.();
 setInterval(slaJob, 15 * 60_000).unref?.();
 setInterval(kpiJob, 60 * 60_000).unref?.();
@@ -80,6 +81,7 @@ setInterval(() => {
   if (now.getUTCHours() === 6 && lastDaily !== today + 'd') { lastDaily = today + 'd'; dueJob(); }
   if (now.getUTCHours() === cfg.backup.hour && lastDaily !== today + 'b') { lastDaily = today + 'b'; backupJob(); }
   if (now.getUTCHours() === 4 && lastDaily !== today + 's') { lastDaily = today + 's'; subsJob(); }
+  if (now.getUTCHours() === 5 && lastDaily !== today + 'm') { lastDaily = today + 'm'; metricsJob(); }
 }, 5 * 60_000).unref?.();
 
 console.log('✔ تم تشغيل مجدول الوظائف الخلفية (الترحيل، الاستيراد، المؤشرات، مستوى الخدمة، النسخ الاحتياطي)');

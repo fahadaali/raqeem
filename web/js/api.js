@@ -40,6 +40,14 @@ async function doRefresh() {
   return refreshing;
 }
 
+/* ترتفع عند بدء مغادرة الصفحة، فتُصنَّف الطلبات المقطوعة بعدها إلغاءً لا انقطاعاً */
+let leaving = false;
+if (typeof window !== 'undefined') {
+  const mark = () => { leaving = true; };
+  window.addEventListener('pagehide', mark);
+  window.addEventListener('beforeunload', mark);
+}
+
 async function request(method, url, { body, raw, retry = true, silent = false } = {}) {
   const isForm = body instanceof FormData;
   let res;
@@ -49,8 +57,14 @@ async function request(method, url, { body, raw, retry = true, silent = false } 
       body: isForm ? body : (body !== undefined ? JSON.stringify(body) : undefined)
     });
   } catch (e) {
-    /* طلب أُلغي لأن المستخدم انتقل لشاشة أخرى ليس انقطاعاً في الشبكة */
-    const aborted = e?.name === 'AbortError' || /aborted|cancell?ed/i.test(String(e?.message || ''));
+    /*
+     * طلب أُلغي لأن المستخدم انتقل لصفحة أخرى ليس انقطاعاً في الشبكة.
+     * المتصفّح يرفع للطلبات الملغاة عند مغادرة الصفحة خطأ شبكة عادياً
+     * (TypeError: Failed to fetch) لا AbortError — فنستدلّ على المغادرة
+     * براية pagehide بدل أن نُفزع المستخدم برسالة انقطاع كاذبة.
+     */
+    const aborted = leaving || e?.name === 'AbortError'
+      || /aborted|cancell?ed/i.test(String(e?.message || ''));
     if (!silent && !aborted) toast('تعذّر الاتصال بالخادم — تحقق من اتصالك بالإنترنت', 'err');
     throw new ApiError(aborted ? 'aborted' : 'offline', 0, aborted ? 'ABORTED' : 'OFFLINE');
   }
@@ -86,8 +100,9 @@ export const api = {
   put: (url, body, opts) => request('PUT', url, { ...opts, body }),
   del: (url, opts) => request('DELETE', url, opts),
 
-  async login(email, password) {
-    const data = await request('POST', '/api/auth/login', { body: { email, password }, retry: false });
+  async login(email, password, totp) {
+    const data = await request('POST', '/api/auth/login', {
+      body: { email, password, ...(totp ? { totp } : {}) }, retry: false });
     saveTokens(data.accessToken, data.refreshToken);
     state.session = data;
     return data;
