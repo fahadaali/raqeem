@@ -79,6 +79,28 @@ npm run cf:link -- --name نور-الرياض   # اسم عامل مختلف
 > ⚠ احتفظ بـ `.cf-secrets.json`: مفتاحا VAPID لا يمكن استرجاعهما من Cloudflare،
 > وتغييرهما يُبطل كل اشتراكات الإشعارات على أجهزة المستخدمين.
 
+### ٣.٠-ب الطريق بلا وحدة طرفية — من المتصفّح وحده
+
+كل الخطوات تُنفَّذ من لوحة Cloudflare ومحرّر GitHub على الويب:
+
+| # | أين | ماذا |
+|---|---|---|
+| ١ | Cloudflare ← R2 | `Enable R2` (تُطلب بطاقة حتى في الحد المجاني) ثم `Create bucket` باسم `noor-files` |
+| ٢ | Cloudflare ← Storage and Databases ← D1 | `Create database` باسم `noor-db`، وانسخ `Database ID` |
+| ٣ | GitHub ← `wrangler.toml` ← ✏️ | الصق المعرّف في `database_id` (السطر ٣١) ثم `Commit changes` |
+| ٤ | Cloudflare ← Workers & Pages | `Create` ← `Import a repository` ← اختر المستودع والفرع `main` |
+| ٥ | العامل ← Settings ← Variables and Secrets | أضِف الأسرار الأربعة **من نوع Secret**: `JWT_SECRET` · `VAPID_PUBLIC_KEY` · `VAPID_PRIVATE_KEY` · `BOOTSTRAP_TOKEN` |
+| ٦ | المتصفّح | افتح `https://‹رابطك›/__bootstrap` والصق رمز التهيئة واضغط الزر |
+| ٧ | GitHub ← `wrangler.toml` | اضبط `APP_URL` (السطر ٧٠) على رابطك، والحفظ يُعيد النشر تلقائياً |
+
+**لا حاجة لتطبيق المخطط يدوياً**: صفحة `/__bootstrap` تنشئ الجداول الـ ٥٧ وتعبّئ الجهة
+رقم ١ في خطوة واحدة. وهي محميّة برمز التهيئة، ولا تعمل ما لم يُضبط السرّ.
+
+بعد نجاحها: غيّر كلمات المرور الافتراضية، ثم **احذف السرّ `BOOTSTRAP_TOKEN`** من
+إعدادات العامل فتتعطّل الصفحة نهائياً.
+
+---
+
 أمّا ما يلي فهو التفصيل اليدوي لكل خطوة، لمن أراد التحكّم الدقيق أو التشخيص.
 
 ---

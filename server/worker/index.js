@@ -95,6 +95,94 @@ async function handleWebSocket(request, container) {
   }
 }
 
+/* ───────────────── صفحة التهيئة من المتصفّح ─────────────────
+ * التهيئة تحتاج POST برأس x-bootstrap-token، وهذا لا يُنفَّذ من شريط العنوان.
+ * فتُقدَّم هنا صفحة صغيرة قائمة بذاتها تأخذ الرمز وتُرسله كما هو — فيتم النشر
+ * كاملاً من المتصفّح دون وحدة طرفية. الرمز يبقى شرطاً، ولا تكشف الصفحة شيئاً.
+ */
+function bootstrapPage(hasToken) {
+  const html = `<!doctype html><html dir="rtl" lang="ar"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><title>تهيئة منصة نور</title>
+<style>
+ :root{--brand:#0F5132;--gold:#C9A227;--bg:#f6f7f5;--card:#fff;--line:#e3e6e1;--txt:#1c2320;--dim:#6b736e}
+ *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--txt);
+  font:15px/1.9 system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif;
+  display:grid;place-items:center;min-height:100dvh;padding:20px}
+ .card{background:var(--card);border:1px solid var(--line);border-radius:16px;
+  padding:28px;max-width:560px;width:100%;box-shadow:0 6px 24px rgba(0,0,0,.06)}
+ h1{margin:0 0 4px;font-size:20px;color:var(--brand)} p.sub{margin:0 0 20px;color:var(--dim);font-size:13.5px}
+ label{display:block;font-size:13px;font-weight:600;margin:14px 0 6px}
+ input[type=text]{width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:10px;
+  font:inherit;direction:ltr;text-align:left}
+ .row{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;font-size:13.5px}
+ .row label{display:flex;align-items:center;gap:7px;font-weight:400;margin:0}
+ button{margin-top:20px;width:100%;padding:13px;border:0;border-radius:11px;background:var(--brand);
+  color:#fff;font:600 15px/1 inherit;cursor:pointer;min-height:48px}
+ button:disabled{opacity:.55;cursor:default}
+ pre{background:#0f1613;color:#d6e4dc;padding:14px;border-radius:11px;overflow:auto;
+  font-size:12.5px;direction:ltr;text-align:left;margin-top:18px;white-space:pre-wrap;word-break:break-word}
+ .msg{margin-top:16px;padding:12px 14px;border-radius:11px;font-size:13.5px;display:none}
+ .ok{background:#e7f4ec;color:#15633a;border:1px solid #bfe0cd}
+ .err{background:#fdeaea;color:#a32020;border:1px solid #f3c4c4}
+ .warn{background:#fdf6e3;color:#8a6d1f;border:1px solid #ecdcae}
+ ol{margin:10px 0 0;padding-inline-start:20px;font-size:13.5px;color:var(--dim)}
+ code{background:#eef1ee;padding:1px 6px;border-radius:5px;font-size:12.5px;direction:ltr;display:inline-block}
+</style></head><body><div class="card">
+ <h1>تهيئة منصة نور</h1>
+ <p class="sub">تُنفَّذ مرّة واحدة: تُنشئ جداول قاعدة البيانات وتعبّئ الجهة رقم ١.</p>
+ ${hasToken ? '' : '<div class="msg warn" style="display:block">لم يُضبط السرّ <code>BOOTSTRAP_TOKEN</code> على العامل. أضِفه من لوحة Cloudflare ← العامل ← Settings ← Variables and Secrets، ثم أعِد تحميل هذه الصفحة.</div>'}
+ <form id="f" ${hasToken ? '' : 'style="opacity:.45;pointer-events:none"'}>
+  <label for="t">رمز التهيئة (BOOTSTRAP_TOKEN)</label>
+  <input id="t" type="text" autocomplete="off" spellcheck="false" placeholder="الصق الرمز هنا">
+  <div class="row">
+   <label><input type="checkbox" id="schema"> المخطط فقط بلا بيانات تجريبية</label>
+   <label><input type="checkbox" id="force"> إعادة التعبئة رغم وجود بيانات</label>
+  </div>
+  <button id="b" type="submit">تهيئة المنصة</button>
+ </form>
+ <div class="msg" id="m"></div>
+ <pre id="o" style="display:none"></pre>
+</div><script>
+const f=document.getElementById('f'),b=document.getElementById('b'),
+      m=document.getElementById('m'),o=document.getElementById('o');
+const show=(k,h)=>{m.className='msg '+k;m.innerHTML=h;m.style.display='block';};
+f.addEventListener('submit',async(e)=>{
+ e.preventDefault();
+ const tok=document.getElementById('t').value.trim();
+ if(!tok)return show('err','الصق رمز التهيئة أولاً.');
+ b.disabled=true;b.textContent='جارٍ التهيئة…';m.style.display='none';o.style.display='none';
+ const q=new URLSearchParams();
+ if(document.getElementById('schema').checked)q.set('schema-only','1');
+ if(document.getElementById('force').checked)q.set('force','1');
+ try{
+  const r=await fetch('/__bootstrap'+(q.toString()?'?'+q:''),
+    {method:'POST',headers:{'x-bootstrap-token':tok}});
+  const d=await r.json().catch(()=>({}));
+  o.textContent=JSON.stringify(d,null,1);o.style.display='block';
+  if(r.ok){
+   show('ok','<b>تمّت التهيئة.</b><ol>'
+    +'<li>افتح <code>/</code> وادخل بـ <code>admin@riyadh-qu.sa</code> / <code>Admin@123</code></li>'
+    +'<li>غيّر كل كلمات المرور الافتراضية فوراً</li>'
+    +'<li>احذف السرّ <code>BOOTSTRAP_TOKEN</code> من إعدادات العامل</li></ol>');
+   b.textContent='تمّت التهيئة ✔';
+  }else{
+   show('err',(d.error||'فشلت التهيئة')+' — رمز الاستجابة '+r.status);
+   b.disabled=false;b.textContent='إعادة المحاولة';
+  }
+ }catch(err){
+  show('err','تعذّر الاتصال بالعامل: '+err.message);
+  b.disabled=false;b.textContent='إعادة المحاولة';
+ }
+});
+</script></body></html>`;
+  return new Response(html, { headers: {
+    'content-type': 'text/html; charset=utf-8',
+    'cache-control': 'no-store',
+    'x-robots-tag': 'noindex, nofollow'
+  } });
+}
+
 /* ───────────────── تهيئة أولية آمنة: المخطط + بيانات المستأجر رقم ١ ───────────────── */
 async function handleBootstrap(request, container) {
   const secret = container.env.BOOTSTRAP_TOKEN;
@@ -155,6 +243,11 @@ async function runCron(cron, container) {
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+
+    /* صفحة التهيئة تُفتح بـ GET من المتصفّح، والتنفيذ يبقى POST برأس الرمز */
+    if (url.pathname === '/__bootstrap' && request.method === 'GET') {
+      return bootstrapPage(!!env.BOOTSTRAP_TOKEN);
+    }
 
     if (url.pathname === '/ws' || (url.pathname === '/__bootstrap' && request.method === 'POST')) {
       const container = createWorkerContainer(env, ctx);
