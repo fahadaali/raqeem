@@ -28,7 +28,7 @@ run_worker_first = ["/api/*", "/ws", "/__bootstrap"]
 [[d1_databases]]
 binding = "DB"
 database_name = "raqeem-db"
-database_id = "00000000-0000-0000-0000-000000000000"   # ← استبدله بمعرّف قاعدتك بعد إنشائها
+database_id = "94db7e8a-8014-472e-b115-426c53f4d811"   # ← استبدله بمعرّف قاعدتك بعد إنشائها
 migrations_dir = "migrations"
 
 # ─── تخزين الملفات R2 (الفواتير والمرفقات — البند ٦) ───
