@@ -26,6 +26,7 @@
     "cf:migrate:local": "wrangler d1 migrations apply noor-db --local",
     "cf:tail": "wrangler tail",
     "cf:build:migrations": "node scripts/build-migrations.js",
+    "cf:link": "node scripts/cf-deploy.js",
     "cf:bootstrap": "node scripts/cf-bootstrap.js",
     "cf:secrets": "node scripts/cf-secrets.js",
     "cf:build:headers": "node scripts/build-headers.js",

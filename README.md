@@ -38,16 +38,16 @@ npm start            # تشغيل الخادم على http://localhost:3000
 ### ب) على Cloudflare (كل المزوّدات من كلاود فلير)
 
 ```bash
-npx wrangler login
-npx wrangler d1 create noor-db            # ضع database_id في wrangler.toml
-npx wrangler r2 bucket create noor-files
-npm run cf:secrets -- --put               # يولّد الأسرار ويرفعها
-npm run cf:build && npm run cf:migrate    # المخطط على D1
-npm run cf:deploy                         # نشر العامل والواجهة
-npm run cf:bootstrap -- https://‹نطاقك›   # تهيئة الجهة رقم ١
+npx wrangler login     # أو:  export CLOUDFLARE_API_TOKEN=…
+npm run cf:link        # يتولّى السلسلة كاملةً
 ```
 
-الدليل الكامل: **[docs/CLOUDFLARE.md](docs/CLOUDFLARE.md)**
+`cf:link` ينشئ قاعدة D1 ودلو R2، ويكتب معرّف القاعدة في `wrangler.toml` تلقائياً،
+ويولّد الأسرار ويرفعها، ويطبّق المخطط، وينشر العامل، ويضبط `APP_URL` على رابطه،
+ثم يهيّئ الجهة رقم ١ ويفحص صحة الخدمة. وهو صالح لإعادة التشغيل: يكتشف ما أُنشئ
+سابقاً فلا يكرّره. جرّبه أولاً بـ `npm run cf:link -- --dry`.
+
+الخطوات اليدوية المفصّلة والتشخيص: **[docs/CLOUDFLARE.md](docs/CLOUDFLARE.md)**
 
 ### الحسابات التجريبية
 

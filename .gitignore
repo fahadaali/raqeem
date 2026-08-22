@@ -13,3 +13,4 @@ npm-debug.log*
 !storage/.gitkeep
 .dev.vars
 .wrangler/
+.cf-secrets.json
