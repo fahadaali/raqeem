@@ -1902,6 +1902,8 @@ section('٢٣. الشاشة الرئيسية العامة ومحرّرها', asy
   /* ── الإطفاء يعيد «/» إلى شاشة الدخول ── */
   await call('PUT', '/api/admin/landing', { token: ADM, body: { landing: { enabled: false } } });
   ok('الإطفاء يظهر في المسار العام', (await call('GET', '/api/public/landing')).data.enabled === false);
+  /* ثم تُعاد للنشر: هي الحال الافتراضية للمنصة */
+  await call('PUT', '/api/admin/landing', { token: ADM, body: { landing: { enabled: true } } });
   ok('التحرير يُسجَّل في سجل المنصة',
     (await call('GET', '/api/admin/logs?entity=landing', { token: ADM })).data.items.length > 0);
 
@@ -1910,9 +1912,20 @@ section('٢٣. الشاشة الرئيسية العامة ومحرّرها', asy
   const appJs = readFileSync('web/js/app.js', 'utf8');
   const land = readFileSync('web/js/views/landing.js', 'utf8');
   ok('«/» يتفرّع على حال النشر', appJs.includes('landingPublished'));
+  ok('الشاشة الرئيسية تُشحن منشورة',
+    (await import('../server/core/landing.js')).DEFAULT_LANDING.enabled === true);
+  ok('الجذر صفحةٌ رئيسية للزائر وللمسجَّل معاً',
+    (appJs.match(/path === '\/' && await showLanding\(app\)/g) || []).length === 2);
+  ok('لوحة المجمّع انتقلت إلى امتدادها',
+    appJs.includes("{ path: '/dashboard'") && !/\{ path: '\/', label: 'لوحة التحكم'/.test(appJs));
+  ok('الدخول ينقل إلى لوحة المجمّع لا إلى الجذر',
+    appJs.includes("history.replaceState({}, '', '/dashboard')"));
+  ok('التطبيق المثبَّت يقلع على اللوحة',
+    JSON.parse(readFileSync('web/manifest.webmanifest', 'utf8')).start_url.startsWith('/dashboard'));
+  ok('الصفحة الرئيسية تعرف المسجَّل',
+    land.includes('signedIn') && land.includes("'/dashboard'"));
   ok('الرجوع الافتراضي شاشة الدخول عند التعذّر', /catch \{ landingState = false; \}/.test(appJs));
-  ok('مسارات الزائر تُستبدل بالجذر بعد الدخول', appJs.includes("['/login', '/signup', '/pricing']"));
-  ok('التطبيق المثبَّت يتخطّى الصفحة التعريفية', appJs.includes('!pwa.isStandalone()'));
+  ok('مسارات الدخول تُستبدل بعد الدخول', appJs.includes("['/login', '/signup']"));
   ok('الصفحة تبني نصاً لا وسماً', !/\.innerHTML\s*=|insertAdjacentHTML/.test(land));
   ok('الصفحة العامة تُخزَّن في عامل الخدمة',
     readFileSync('web/sw.js', 'utf8').includes('/js/views/landing.js'));

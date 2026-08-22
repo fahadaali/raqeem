@@ -5,7 +5,7 @@
   "description": "منصة إدارة متكاملة للمجمعات القرآنية: المهام واللجان، الحضور الذكي، الدورة المالية، التقييم والتقارير.",
   "lang": "ar",
   "dir": "rtl",
-  "start_url": "/?source=pwa",
+  "start_url": "/dashboard?source=pwa",
   "scope": "/",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],

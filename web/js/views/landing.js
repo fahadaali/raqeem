@@ -18,7 +18,7 @@ const link = (label, href, cls, navigate) => {
   });
 };
 
-export async function render({ navigate }) {
+export async function render({ navigate, signedIn = false }) {
   const d = await api.get('/api/public/landing', { silent: true });
   const p = d.platform || {};
   const h = d.hero || {};
@@ -32,9 +32,12 @@ export async function render({ navigate }) {
     (href === '/signup' && !p.signup_enabled ? 'تسجيل الدخول' : text);
   const cta = (text, href, cls) => link(label(text, href), dest(href), cls, navigate);
 
-  const primary = cta(h.cta_label, h.cta_href, 'btn.gold.lg');
+  /* الداخل لا يُدعى للتسجيل ولا للدخول: بابه من هنا إلى لوحته */
+  const primary = signedIn
+    ? link('لوحتي', '/dashboard', 'btn.gold.lg', navigate)
+    : cta(h.cta_label, h.cta_href, 'btn.gold.lg');
   /* ولا يُكرَّر زران إلى الوجهة نفسها بعد التحويل */
-  const secondary = dest(h.secondary_href) === dest(h.cta_href)
+  const secondary = signedIn || dest(h.secondary_href) === dest(h.cta_href)
     ? null : cta(h.secondary_label, h.secondary_href, 'btn.ghost.lg');
 
   const section = (s) => el('section.land-sec' + (s.type === 'cta' ? '.cta' : ''), {}, [
@@ -53,7 +56,8 @@ export async function render({ navigate }) {
       ]),
       el('nav.land-nav', {}, [
         p.saas_enabled ? link('الأسعار', '/pricing', 'land-link', navigate) : null,
-        link('دخول', '/login', 'btn.sm.ghost', navigate)
+        signedIn ? link('لوحتي', '/dashboard', 'btn.sm.ghost', navigate)
+                 : link('دخول', '/login', 'btn.sm.ghost', navigate)
       ])
     ]),
 

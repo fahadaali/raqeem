@@ -271,7 +271,7 @@ async function tenantDialog(id, reload) {
            * المجمّع أصلاً، وتبقى جلسة الادمن قائمة في تبويبها.
            */
           toast(`فتح جلسة مساندة في ${r.tenant.name}`, 'ok');
-          const w = window.open(`/?impersonate=${encodeURIComponent(r.accessToken)}`, '_blank');
+          const w = window.open(`/dashboard?impersonate=${encodeURIComponent(r.accessToken)}`, '_blank');
           if (!w) toast('يرجى السماح بالنوافذ المنبثقة لفتح جلسة المساندة', 'warn');
         } catch (err) { toast(err.message, 'warn'); }
       } }),
