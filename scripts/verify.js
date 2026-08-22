@@ -1924,6 +1924,112 @@ section('٢٣. الشاشة الرئيسية العامة ومحرّرها', asy
   }
 });
 
+/* ═════════ ٢٤. قوالب الفصول الدراسية ═════════ */
+section('٢٤. قوالب الفصول الافتراضية وفرضها', async () => {
+  const ADM = (await adminLogin()).data.accessToken;
+  const stamp = Date.now().toString().slice(-6);
+
+  /* ── القراءة والصلاحية ── */
+  const list = await call('GET', '/api/admin/terms', { token: ADM });
+  ok('قوالب الفصول تُقرأ من اللوحة', list.status === 200 && Array.isArray(list.data.items));
+  ok('القوالب مزروعة في التهيئة الأولى', list.data.items.length >= 3);
+  ok('كل قالب يعرض تطبيقه القادم',
+    list.data.items.every(t => /^\d{4}-\d{2}-\d{2}$/.test(t.preview?.start_date)
+      && t.preview.end_date > t.preview.start_date));
+  ok('التطبيق القادم لا يقع في الماضي',
+    list.data.items.every(t => t.preview.end_date >= new Date().toISOString().slice(0, 10)));
+  ok('القوالب محجوبة عن رمز المجمّع',
+    (await call('GET', '/api/admin/terms', { token: S.owner })).status === 403);
+  ok('القوالب محجوبة بلا مصادقة', (await call('GET', '/api/admin/terms')).status === 401);
+
+  /* ── التحقّق من المدخلات ── */
+  const bad = [
+    [{ code: 'ب-١', name: 'س' }, 'رمز عربي مرفوض'],
+    [{ code: `X${stamp}`, name: '' }, 'اسم فارغ مرفوض']
+  ];
+  for (const [body, label] of bad) {
+    ok(label, (await call('POST', '/api/admin/terms', { token: ADM, body })).status === 400);
+  }
+
+  const CODE = `TT${stamp}`.slice(0, 12);
+  const mk = await call('POST', '/api/admin/terms', { token: ADM, body: {
+    code: CODE, name: 'فصل الاختبار', start_month: 3, start_day: 5, duration_days: 90, sort_order: 9 } });
+  ok('إنشاء قالب فصل', mk.status === 201 && mk.data.code === CODE);
+  ok('تكرار الرمز مرفوض',
+    (await call('POST', '/api/admin/terms', { token: ADM, body: {
+      code: CODE, name: 'مكرر', start_month: 3, start_day: 5, duration_days: 90 } })).status === 409);
+  const TID = mk.data.id;
+
+  const clamp = await call('PATCH', `/api/admin/terms/${TID}`, { token: ADM,
+    body: { start_month: 99, start_day: 0, duration_days: 9999 } });
+  ok('القيم خارج المدى تُردّ للقيمة القائمة',
+    clamp.data.start_month === 3 && clamp.data.start_day === 5 && clamp.data.duration_days === 90);
+  ok('تحرير القالب', (await call('PATCH', `/api/admin/terms/${TID}`,
+    { token: ADM, body: { name: 'فصل محرَّر' } })).data.name === 'فصل محرَّر');
+
+  /* ── مجمّع جديد يُنشأ بالقوالب لا بالفصل المكتوب في الشيفرة ── */
+  const code = `tpl${stamp}`.slice(0, 12);
+  const nt = await call('POST', '/api/admin/tenants', { token: ADM, body: {
+    code, name: 'مجمّع القوالب', admin_name: 'مدير', email: `t${stamp}@tpl.sa`, password: 'Admin@2026' } });
+  ok('إنشاء مجمّع من القوالب', nt.status === 201);
+  const NT = nt.data.tenant.id;
+  const terms = (await call('GET', `/api/admin/tenants/${NT}`, { token: ADM })).data?.terms;
+  if (Array.isArray(terms)) {
+    ok('المجمّع الجديد أخذ كل القوالب النشطة', terms.length === list.data.items.length + 1);
+    ok('فصوله مرتّبة صاعدة بلا تداخل ترتيب',
+      terms.slice().sort((a, b) => a.start_date < b.start_date ? -1 : 1)
+        .every((t, i, arr) => i === 0 || t.start_date > arr[i - 1].start_date));
+    ok('فصل جارٍ واحد لا أكثر', terms.filter(t => t.is_current).length === 1);
+    ok('لا فصل بلا رمز أو تاريخ',
+      terms.every(t => t.code && /^\d{4}-\d{2}-\d{2}$/.test(t.start_date) && t.end_date > t.start_date));
+  } else {
+    ok('المجمّع الجديد أخذ فصول القوالب', false);
+  }
+
+  /* ── الفرض على المجمّعات القائمة ── */
+  const ap = await call('POST', `/api/admin/terms/${TID}/apply`, { token: ADM, body: {} });
+  ok('فرض القالب على المجمّعات', ap.status === 200 && ap.data.added.length > 0);
+  ok('التقرير يطابق ما نُظر فيه',
+    ap.data.considered === ap.data.added.length + ap.data.skipped.length);
+  const again = await call('POST', `/api/admin/terms/${TID}/apply`, { token: ADM, body: {} });
+  ok('الفرض ثانيةً يتخطّى الموجود ولا يكرّره',
+    again.data.added.length === 0 && again.data.skipped.length === ap.data.considered);
+  ok('سبب التخطّي مذكور', again.data.skipped.every(x => !!x.reason));
+  ok('الفرض المحصور يمسّ المختار وحده',
+    (await call('POST', `/api/admin/terms/${TID}/apply`,
+      { token: ADM, body: { tenant_ids: [NT] } })).data.considered === 1);
+  ok('الفرض على قالب غير موجود يردّ ٤٠٤',
+    (await call('POST', '/api/admin/terms/999999/apply', { token: ADM, body: {} })).status === 404);
+  ok('الفرض يُسجَّل في سجل المنصة',
+    (await call('GET', '/api/admin/logs?entity=term_template', { token: ADM })).data.items
+      .some(x => x.action === 'apply'));
+
+  /* الفصل المفروض لا يُنصَّب جارياً: نصب فصلٍ جارٍ قرار المجمّع لا المنصة */
+  const t1 = (await call('GET', '/api/terms', { token: S.owner })).data;
+  const forced = t1.find(t => t.code === CODE);
+  ok('الفصل المفروض أُضيف للمجمّع القائم', !!forced);
+  ok('الفصل المفروض لا يُنصَّب جارياً', forced ? !forced.is_current : false);
+  ok('الفصل الجاري في المجمّع لم يتغيّر', t1.filter(t => t.is_current).length === 1);
+
+  ok('حذف القالب', (await call('DELETE', `/api/admin/terms/${TID}`, { token: ADM })).status === 200);
+  ok('حذف القالب لا يمسّ فصول المجمّعات',
+    (await call('GET', '/api/terms', { token: S.owner })).data.some(t => t.code === CODE));
+  ok('حذف قالب غير موجود يردّ ٤٠٤',
+    (await call('DELETE', `/api/admin/terms/${TID}`, { token: ADM })).status === 404);
+
+  /* ── المصدر: القوالب لا الشيفرة، والجدول الفارغ لا يعطّل ── */
+  const { readFileSync } = await import('node:fs');
+  const prov = readFileSync('server/core/provision.js', 'utf8');
+  const tt = readFileSync('server/core/term-templates.js', 'utf8');
+  ok('الإنشاء يقرأ القوالب لا فصلاً مكتوباً', prov.includes('termsForNewTenant')
+    && !prov.includes("'الفصل الحالي'"));
+  ok('الجدول الفارغ يرجع للسلوك القديم فلا يتعطّل الإنشاء',
+    tt.includes("if (!tpls.length)") && tt.includes("'الفصل الحالي'"));
+  ok('التواريخ نسبية لا مطلقة', tt.includes('start_month') && tt.includes('duration_days'));
+  ok('شاشة القوالب في قائمة اللوحة',
+    readFileSync('web/js/admin-shell.js', 'utf8').includes("'/admin/terms'"));
+});
+
 /* ═════════ التشغيل ═════════ */
 (async () => {
   console.log(`\n╔═══════════════════════════════════════════════════════════╗`);

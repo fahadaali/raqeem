@@ -26,7 +26,8 @@ const ALLSRV = routes + bRoutes + aRoutes + cRoutes
   + R('server/core/zatca.js') + R('server/core/health.js') + R('server/core/billing.js')
   + R('server/core/coupons.js') + R('server/core/announce.js') + R('server/core/payments.js')
   + R('server/core/features.js') + R('server/core/security.js') + R('server/core/jobs/backup.js')
-  + R('server/core/routes/public.js') + R('server/core/landing.js');
+  + R('server/core/routes/public.js') + R('server/core/landing.js')
+  + R('server/core/provision.js') + R('server/core/term-templates.js');
 
 let pass = 0, fail = 0;
 const check = (level, item, srvNeedle, uiNeedle) => {
@@ -103,6 +104,15 @@ check('٣', 'تطهير روابط المحتوى العام', 'export function 
 check('٣', 'مفتاح النشر يفصل التحرير عن العرض', 'enabled: !!b.enabled', 'منشورة للزوّار');
 check('٣', 'الصفحة العامة مربوطة بالجذر', null, 'landingPublished');
 check('٣', 'محرّر الشاشة في قائمة اللوحة', null, "'/admin/landing'");
+
+console.log('\n▸ اكتمال المرحلة ٤ — قوالب الفصول');
+check('٤', 'قوالب الفصول تُقرأ وتُنشأ', ["router.get('/terms'", "router.post('/terms'"], '/api/admin/terms');
+check('٤', 'تحرير القالب وحذفه', ["router.patch('/terms/:id'", "router.delete('/terms/:id'"], 'terms/${row.id}');
+check('٤', 'فرض القالب على المجمّعات', "router.post('/terms/:id/apply'", '/apply');
+check('٤', 'الإنشاء يقرأ القوالب لا فصلاً مكتوباً', 'termsForNewTenant', null);
+check('٤', 'المعاينة تُقرأ من الخادم', 'preview: expandTemplate', 'r.preview.start_date');
+check('٤', 'فصول المجمّع ظاهرة في اللوحة', 'terms: terms.map', 'الفصول الدراسية');
+check('٤', 'شاشة القوالب في قائمة اللوحة', null, "'/admin/terms'");
 
 console.log(`\n  ${fail ? '✘' : '✔'} ${pass} مكتمل · ${fail} ناقص\n`);
 process.exit(fail ? 1 : 0);

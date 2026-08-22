@@ -4,7 +4,7 @@ import {
   el, clear, card, chip, stat, table, toast, modal, field, input, select, textarea, tabs,
   AR_NUM, money, empty, skeleton, confirmDialog, timeAgo, progressBar
 } from '../../util.js';
-import { fmtDate, fmtDateTime } from '../../hijri.js';
+import { fmtDate, fmtDateTime, fmtBoth } from '../../hijri.js';
 
 /**
  * لوحة تحكم مالك المنصة (SaaS Owner Console) — المرحلة الثانية.
@@ -243,6 +243,21 @@ async function tenantDialog(id, reload) {
         ])
       ]);
     })()),
+
+    /* فصول المجمّع: بها يُرى أن القالب المفروض وصل فعلاً */
+    card('الفصول الدراسية', (d.terms || []).length
+      ? table([
+          { header: 'الرمز', key: 'code',
+            render: r => el('span', { text: r.code, style: { direction: 'ltr' } }) },
+          { header: 'الاسم', key: 'name', render: r => el('div', {}, [
+            el('span', { text: r.name }), r.is_current ? chip('جارٍ', 'ok') : null]) },
+          { header: 'من', key: 'start_date', render: r => el('span.hint', { text: fmtBoth(r.start_date) }) },
+          { header: 'إلى', key: 'end_date', render: r => el('span.hint', { text: fmtBoth(r.end_date) }) },
+          { header: 'الحالة', key: 'status', render: r =>
+            chip(r.status === 'open' ? 'مفتوح' : r.status === 'closed' ? 'مغلق' : 'مؤرشف',
+              r.status === 'open' ? 'ok' : '') }
+        ], d.terms)
+      : el('p.hint', { text: 'لا فصول' })),
 
     card('إجراءات إدارية', el('div.row.wrap', { style: { gap: '8px' } }, [
       el('button.btn.ghost', { text: '🔑 دخول إداري للمساندة', onclick: async () => {
@@ -1720,4 +1735,137 @@ function landingEditor(L, defaults, redraw) {
       el('button.btn.gold', { text: 'حفظ', onclick: save })
     ])
   ]);
+}
+
+/* ═══════════ قوالب الفصول الدراسية ═══════════ */
+const MONTHS_AR = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
+  'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+
+/**
+ * تعريف عام يُنسخ إلى كل مجمّع جديد، ويُفرَض على القائم منها عند الطلب.
+ * والمعاينة تُقرأ من الخادم لا تُحسب هنا — فما يُعرض هو ما سيُنشأ فعلاً.
+ */
+export async function termsTab() {
+  const body = el('div');
+  const load = async () => {
+    clear(body).append(skeleton(3));
+    const d = await api.get('/api/admin/terms');
+    clear(body).append(
+      d.items.length ? table([
+        { header: 'الرمز', key: 'code',
+          render: r => el('span', { text: r.code, style: { direction: 'ltr', fontWeight: '600' } }) },
+        { header: 'الاسم', key: 'name' },
+        { header: 'يبدأ', key: 'start_month',
+          render: r => `${AR_NUM(r.start_day)} ${MONTHS_AR[r.start_month - 1]}` },
+        { header: 'المدّة', key: 'duration_days', render: r => `${AR_NUM(r.duration_days)} يوماً` },
+        /* بالميلادي كتعريف القالب نفسه: صفٌّ يعرّف «٢٤ أغسطس» ثم يعاينه هجرياً يربك */
+        { header: 'التطبيق القادم', key: 'preview', render: r => el('span.hint', {
+          text: `${fmtDate(r.preview.start_date, 'gregorian', 'short')} — `
+            + `${fmtDate(r.preview.end_date, 'gregorian', 'short')}` }) },
+        { header: 'الحالة', key: 'is_active',
+          render: r => chip(r.is_active ? 'نشط' : 'معطّل', r.is_active ? 'ok' : '') },
+        { header: '', key: 'a', render: r => el('div.row', { style: { gap: '4px' } }, [
+          el('button.btn.sm.ghost', { text: 'تحرير', onclick: () => termDialog(r, load) }),
+          el('button.btn.sm.ghost', { text: '⇪ فرض', title: 'إضافته للمجمّعات القائمة',
+            onclick: () => applyTermDialog(r, d.tenants) }),
+          el('button.btn.sm.ghost', { text: '🗑', onclick: async () => {
+            if (!await confirmDialog(`حذف قالب «${r.name}»؟ لا يمسّ فصول المجمّعات القائمة.`,
+              { danger: true, confirmText: 'حذف' })) return;
+            try { await api.del(`/api/admin/terms/${r.id}`); toast('حُذف القالب', 'ok'); await load(); }
+            catch (e) { toast(e.message, 'warn'); }
+          } })
+        ]) }
+      ], d.items)
+        : empty('🗓', 'لا قوالب فصول',
+          'المجمّعات الجديدة تُنشأ بفصل واحد افتراضي. أضف قوالب لتُنشأ بفصولك أنت.'));
+  };
+  load();
+
+  return el('div', {}, [
+    el('div.row', { style: { justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' } }, [
+      el('h3', { text: 'قوالب الفصول الدراسية', style: { margin: 0 } }),
+      el('button.btn.gold', { text: '＋ قالب جديد', onclick: () => termDialog(null, load) })
+    ]),
+    el('div.hint', { style: { marginBottom: '10px' },
+      text: 'تُنسخ إلى كل مجمّع جديد. والتواريخ نسبية (شهر ويوم البداية + المدّة) فيصلح القالب لكل سنة دون تحرير.' }),
+    body
+  ]);
+}
+
+function termDialog(row, reload) {
+  const code = input({ value: row?.code || '', dir: 'ltr', disabled: !!row, placeholder: 'T-1' });
+  const name = input({ value: row?.name || '' });
+  const month = select(MONTHS_AR.map((m, i) => ({ value: i + 1, label: m })),
+    { value: row?.start_month || 8 });
+  const day = input({ type: 'number', min: 1, max: 31, value: row?.start_day || 1 });
+  const dur = input({ type: 'number', min: 1, max: 366, value: row?.duration_days || 120 });
+  const sort = input({ type: 'number', min: 0, max: 999, value: row?.sort_order ?? 0 });
+  const active = el('input', { type: 'checkbox', checked: row ? !!row.is_active : true });
+
+  const m = modal({
+    title: row ? `تحرير «${row.name}»` : 'قالب فصل جديد',
+    body: el('div.stack', {}, [
+      el('div.grid-2', {}, [
+        field('الرمز', code, { required: !row, hint: row ? 'الرمز لا يُغيَّر بعد الإنشاء' : 'يُستعمل رمزاً للفصل داخل المجمّع' }),
+        field('الاسم', name, { required: true })
+      ]),
+      el('div.grid-2', {}, [field('شهر البداية', month), field('يوم البداية', day)]),
+      el('div.grid-2', {}, [
+        field('المدّة بالأيام', dur),
+        field('الترتيب', sort, { hint: 'ترتيب الفصل داخل السنة الدراسية' })
+      ]),
+      el('label.row', { style: { alignItems: 'center', gap: '8px' } }, [active, el('span', { text: 'نشط' })])
+    ]),
+    footer: [
+      el('button.btn.ghost', { text: 'إلغاء', onclick: () => m.close() }),
+      el('button.btn.gold', { text: row ? 'حفظ' : 'إنشاء', onclick: async (e) => {
+        e.target.disabled = true;
+        const payload = { name: name.value.trim(), start_month: Number(month.value),
+          start_day: Number(day.value), duration_days: Number(dur.value),
+          sort_order: Number(sort.value), is_active: active.checked };
+        try {
+          if (row) await api.patch(`/api/admin/terms/${row.id}`, payload);
+          else await api.post('/api/admin/terms', { ...payload, code: code.value.trim() });
+          toast('حُفظ القالب', 'ok'); m.close(); await reload();
+        } catch (err) { toast(err.message, 'warn'); e.target.disabled = false; }
+      } })
+    ]
+  });
+}
+
+/**
+ * الفرض على المجمّعات القائمة — والنتيجة تقرير صريح لا رقم مجرّد:
+ * من أُضيف له ومن تُخطّي ولماذا، فيرى الادمن ما جرى فعلاً لا ما نوى.
+ */
+function applyTermDialog(tpl, tenantsCount) {
+  const out = el('div');
+  const m = modal({
+    title: `فرض «${tpl.name}» على المجمّعات`,
+    body: el('div.stack', {}, [
+      el('p', { text: `سيُضاف الفصل ${fmtBoth(tpl.preview.start_date)} — ${fmtBoth(tpl.preview.end_date)} `
+        + `إلى ${AR_NUM(tenantsCount)} مجمّعاً نشطاً.` }),
+      el('div.hint', { text: 'المجمّع الذي فيه فصل بالرمز نفسه يُتخطّى بلا مساس — ولا يُنصَّب الفصل المفروض جارياً.' }),
+      out
+    ]),
+    footer: [
+      el('button.btn.ghost', { text: 'إغلاق', onclick: () => m.close() }),
+      el('button.btn.gold', { text: 'فرض الآن', onclick: async (e) => {
+        e.target.disabled = true; clear(out).append(skeleton(2));
+        try {
+          const r = await api.post(`/api/admin/terms/${tpl.id}/apply`, {});
+          clear(out).append(el('div.stack', {}, [
+            el('div.row', { style: { gap: '8px', flexWrap: 'wrap' } }, [
+              chip(`أُضيف لـ ${AR_NUM(r.added.length)}`, 'ok'),
+              chip(`تُخطّي ${AR_NUM(r.skipped.length)}`, r.skipped.length ? 'warn' : '')
+            ]),
+            r.skipped.length ? table([
+              { header: 'المجمّع', key: 'name' }, { header: 'السبب', key: 'reason' }
+            ], r.skipped) : null
+          ]));
+          toast(`أُضيف الفصل إلى ${r.added.length} مجمّعاً`, 'ok');
+        } catch (err) { toast(err.message, 'warn'); clear(out); }
+        e.target.disabled = false;
+      } })
+    ]
+  });
 }

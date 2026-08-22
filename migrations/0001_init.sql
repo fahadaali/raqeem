@@ -1045,3 +1045,19 @@ CREATE TABLE IF NOT EXISTS admin_sessions (
 );
 
 CREATE INDEX IF NOT EXISTS ix_admin_sessions ON admin_sessions(admin_id, revoked);
+
+CREATE TABLE IF NOT EXISTS term_templates (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  code          TEXT NOT NULL,                 
+  name          TEXT NOT NULL,
+  start_month   INTEGER NOT NULL CHECK (start_month BETWEEN 1 AND 12),
+  start_day     INTEGER NOT NULL CHECK (start_day BETWEEN 1 AND 31),
+  duration_days INTEGER NOT NULL CHECK (duration_days BETWEEN 1 AND 366),
+  sort_order    INTEGER NOT NULL DEFAULT 0,
+  is_active     INTEGER NOT NULL DEFAULT 1,
+  created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_term_templates_code ON term_templates(code);
+
+CREATE INDEX IF NOT EXISTS ix_term_templates_active ON term_templates(is_active, sort_order);

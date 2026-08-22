@@ -19,6 +19,7 @@ const NAV = [
 
   { group: 'المجمّعات' },
   { path: '/admin/tenants', label: 'المجمّعات', icon: '🏛', build: S.tenantsTab },
+  { path: '/admin/terms', label: 'قوالب الفصول', icon: '🗓', build: S.termsTab },
   { path: '/admin/signups', label: 'طلبات التسجيل', icon: '📝', build: S.signupsTab },
 
   { group: 'الواجهة العامة' },

@@ -35,6 +35,7 @@ import { notifyUsers } from '../notify.js';
  */
 import { plog } from '../plog.js';
 import { readLanding, normalizeLanding, DEFAULT_LANDING } from '../landing.js';
+import { expandTemplate, DEFAULT_TEMPLATES } from '../term-templates.js';
 
 const router = new Hono();
 /* الحارس يقبل رمز الادمن وحده — رمز المستأجر يُرفض قبل أي مسار */
@@ -162,6 +163,11 @@ router.get('/tenants/:id', h(async (req) => {
   const notes = await app.db.all(
     'SELECT * FROM tenant_notes WHERE tenant_id=? ORDER BY pinned DESC, id DESC LIMIT 20', t.id);
 
+  /* فصول المجمّع: بها يُتحقّق أن القالب المفروض وصل فعلاً */
+  const terms = await app.db.all(
+    `SELECT id,code,name,start_date,end_date,status,is_current FROM terms
+     WHERE tenant_id=? ORDER BY start_date`, t.id);
+
   return {
     tenant: {
       ...t, settings: j(t.settings, {}),
@@ -185,6 +191,7 @@ router.get('/tenants/:id', h(async (req) => {
     invoices: invoices.map(i => ({ ...i, status_label: INVOICE_STATUS_AR[i.status] })),
     last_activity: activity?.last || null,
     health: await tenantHealth(app, t.id),
+    terms: terms.map(x => ({ ...x, is_current: !!x.is_current })),
     notes
   };
 }));
@@ -600,6 +607,127 @@ router.put('/settings', h(async (req) => {
     summary: `${req.ctx.adminName} حدّث إعدادات المنصة`,
     meta: { saas_enabled: bool(b.saas_enabled, cur.saas_enabled), signup_enabled: bool(b.signup_enabled, cur.signup_enabled) } });
   return platformSettings(app);
+}));
+
+/* ─────────────── قوالب الفصول الدراسية ─────────────── */
+/**
+ * تعريف عام يُنسخ إلى كل مجمّع جديد، ويُفرَض على القائم منها عند الطلب.
+ * التواريخ نسبية (شهر/يوم + مدّة) فيصلح القالب لكل سنة دون تحرير.
+ */
+const tplInt = (v, min, max, dflt) => {
+  const n = Number(v);
+  return Number.isInteger(n) && n >= min && n <= max ? n : dflt;
+};
+
+router.get('/terms', h(async (req) => {
+  const items = await req.app.db.all(
+    'SELECT * FROM term_templates ORDER BY sort_order, start_month, start_day, id');
+  const today = new Date().toISOString().slice(0, 10);
+  return {
+    items: items.map(t => ({ ...t, is_active: !!t.is_active,
+      preview: expandTemplate(t, today, { prefer: 'upcoming' }) })),
+    suggestions: DEFAULT_TEMPLATES,
+    tenants: (await req.app.db.get(`SELECT COUNT(*) AS c FROM tenants WHERE status='active'`)).c
+  };
+}));
+
+router.post('/terms', h(async (req) => {
+  const b = req.body || {};
+  const code = String(b.code || '').trim().toUpperCase();
+  const name = String(b.name || '').trim();
+  if (!/^[A-Z0-9-]{1,16}$/.test(code)) throw badRequest('رمز الفصل حروف إنجليزية وأرقام وشرطات فقط');
+  if (!name) throw badRequest('اسم الفصل مطلوب');
+  if (await req.app.db.get('SELECT id FROM term_templates WHERE code=?', code)) {
+    throw conflict('رمز القالب مستخدم');
+  }
+  const r = await req.app.db.run(
+    `INSERT INTO term_templates(code,name,start_month,start_day,duration_days,sort_order,is_active)
+     VALUES(?,?,?,?,?,?,?)`,
+    code, name,
+    tplInt(b.start_month, 1, 12, 1), tplInt(b.start_day, 1, 31, 1),
+    tplInt(b.duration_days, 1, 366, 120), tplInt(b.sort_order, 0, 999, 0),
+    b.is_active === false ? 0 : 1);
+  await plog(req, { action: 'create', entity: 'term_template', entityId: r.lastId,
+    summary: `${req.ctx.adminName} أضاف قالب الفصل «${name}»` });
+  return created(await req.app.db.get('SELECT * FROM term_templates WHERE id=?', r.lastId));
+}));
+
+router.patch('/terms/:id', h(async (req) => {
+  const cur = await req.app.db.get('SELECT * FROM term_templates WHERE id=?', req.params.id);
+  if (!cur) throw notFound('القالب غير موجود');
+  const b = req.body || {};
+  const name = b.name === undefined ? cur.name : String(b.name).trim();
+  if (!name) throw badRequest('اسم الفصل مطلوب');
+  await req.app.db.run(
+    `UPDATE term_templates SET name=?, start_month=?, start_day=?, duration_days=?,
+      sort_order=?, is_active=? WHERE id=?`,
+    name,
+    tplInt(b.start_month, 1, 12, cur.start_month), tplInt(b.start_day, 1, 31, cur.start_day),
+    tplInt(b.duration_days, 1, 366, cur.duration_days),
+    tplInt(b.sort_order, 0, 999, cur.sort_order),
+    b.is_active === undefined ? cur.is_active : (b.is_active ? 1 : 0),
+    cur.id);
+  await plog(req, { action: 'update', entity: 'term_template', entityId: cur.id,
+    summary: `${req.ctx.adminName} حدّث قالب الفصل «${name}»` });
+  return req.app.db.get('SELECT * FROM term_templates WHERE id=?', cur.id);
+}));
+
+router.delete('/terms/:id', h(async (req) => {
+  const cur = await req.app.db.get('SELECT * FROM term_templates WHERE id=?', req.params.id);
+  if (!cur) throw notFound('القالب غير موجود');
+  await req.app.db.run('DELETE FROM term_templates WHERE id=?', cur.id);
+  await plog(req, { action: 'delete', entity: 'term_template', entityId: cur.id,
+    summary: `${req.ctx.adminName} حذف قالب الفصل «${cur.name}»` });
+  return { ok: true };
+}));
+
+/**
+ * فرض قالب على المجمّعات القائمة.
+ *
+ * يُنشئ الفصل حيث لا يوجد رمزه، ويتخطّى الموجود بلا مساس — والتخطّي مقصود:
+ * مجمّعٌ سمّى فصله أو عدّل تواريخه لا يُداس عليه من المنصة. والنتيجة تقرير صريح
+ * بمن أُضيف له ومن تُخطّي ولماذا، لا رقمٌ مجرّد.
+ */
+router.post('/terms/:id/apply', h(async (req) => {
+  const app = req.app;
+  const tpl = await app.db.get('SELECT * FROM term_templates WHERE id=?', req.params.id);
+  if (!tpl) throw notFound('القالب غير موجود');
+
+  const ids = Array.isArray(req.body?.tenant_ids) ? req.body.tenant_ids.map(Number).filter(Boolean) : null;
+  const tenants = ids?.length
+    ? await app.db.all(`SELECT id,name,code FROM tenants WHERE id IN (${ids.map(() => '?').join(',')})`, ...ids)
+    : await app.db.all(`SELECT id,name,code FROM tenants WHERE status='active' ORDER BY id`);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const t = expandTemplate(tpl, today, { prefer: 'upcoming' });
+  const added = [], skipped = [];
+
+  for (const tn of tenants) {
+    const exists = await app.db.get('SELECT id,status FROM terms WHERE tenant_id=? AND code=?', tn.id, tpl.code);
+    if (exists) {
+      skipped.push({ tenant_id: tn.id, name: tn.name,
+        reason: exists.status === 'open' ? 'الفصل موجود' : `الفصل موجود وحالته ${exists.status}` });
+      continue;
+    }
+    try {
+      /* الفصل المفروض لا يُنصَّب جارياً: نصب فصلٍ جارٍ قرارُ المجمّع لا المنصة */
+      await app.db.run(
+        `INSERT INTO terms(tenant_id,code,name,start_date,end_date,status,is_current)
+         VALUES(?,?,?,?,?, 'open', 0)`,
+        tn.id, t.code, t.name, t.start_date, t.end_date);
+      added.push({ tenant_id: tn.id, name: tn.name });
+    } catch (e) {
+      skipped.push({ tenant_id: tn.id, name: tn.name, reason: e.message.slice(0, 120) });
+    }
+  }
+
+  await plog(req, { action: 'apply', entity: 'term_template', entityId: tpl.id,
+    summary: `${req.ctx.adminName} فرض قالب «${tpl.name}» على ${added.length} مجمّعاً`,
+    meta: { added: added.length, skipped: skipped.length, start: t.start_date, end: t.end_date } });
+
+  return { template: { code: tpl.code, name: tpl.name },
+    dates: { start_date: t.start_date, end_date: t.end_date },
+    considered: tenants.length, added, skipped };
 }));
 
 /* ─────────────── الشاشة الرئيسية العامة ─────────────── */

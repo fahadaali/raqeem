@@ -1,6 +1,7 @@
 import { hashPassword } from './crypto.js';
 import { nowUTC } from './sql.js';
 import { platformSettings, startSubscription } from './billing.js';
+import { DEFAULT_TEMPLATES } from './term-templates.js';
 
 /**
  * تعبئة طبقة الـ SaaS (المرحلة الثانية): خطط الأسعار وإعدادات المنصة.
@@ -69,6 +70,19 @@ export async function seedSaaS(app, { tenantOneOwnerEmail = 'admin@riyadh-qu.sa'
       'SAR', p.trial_days, p.max_branches, p.max_users, p.max_storage_mb,
       JSON.stringify(p.features), JSON.stringify(p.perks), p.is_public, 1, p.highlight, p.sort]
   ]));
+
+  /*
+   * ── قوالب الفصول ──
+   * تُزرع مرّة واحدة ولا تُحدَّث بعدها: ما عدّله الادمن ملكُه لا يُداس عليه
+   * في كل ترحيل. والجدول الفارغ عن قصدٍ يبقى فارغاً — الزرع للتهيئة الأولى.
+   */
+  if (!(await db.get('SELECT COUNT(*) AS c FROM term_templates')).c) {
+    await db.batch(DEFAULT_TEMPLATES.map(t => [
+      `INSERT OR IGNORE INTO term_templates(code,name,start_month,start_day,duration_days,sort_order,is_active)
+       VALUES(?,?,?,?,?,?,1)`,
+      [t.code, t.name, t.start_month, t.start_day, t.duration_days, t.sort_order]
+    ]));
+  }
 
   /* ── إعدادات المنصة (تُنشأ بقيمها الافتراضية) ── */
   const settings = await platformSettings(app);

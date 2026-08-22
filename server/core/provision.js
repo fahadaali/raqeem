@@ -3,6 +3,7 @@ import { hashPassword } from './crypto.js';
 import { PERMISSIONS, DEFAULT_ROLES } from './permissions.js';
 import { badRequest, conflict } from './errors.js';
 import { startSubscription } from './billing.js';
+import { termsForNewTenant } from './term-templates.js';
 
 /**
  * تجهيز جهة تعليمية جديدة (المرحلة الثانية — التسجيل الآلي).
@@ -98,14 +99,13 @@ export async function provisionTenant(app, {
      VALUES(?,?,?,?,?,1)`,
     T, 'B01', branchName || `${String(name).trim()} — الفرع الرئيسي`, null, 50);
 
-  /* ── الفصل الدراسي الجاري ── */
-  const today = new Date();
-  const day = (d) => d.toISOString().slice(0, 10);
-  const end = new Date(today.getTime() + 150 * 86400000);
-  await db.run(
-    `INSERT INTO terms(tenant_id,code,name,start_date,end_date,status,is_current)
-     VALUES(?,?,?,?,?, 'open', 1)`,
-    T, 'T-1', 'الفصل الحالي', day(today), day(end));
+  /* ── الفصول الدراسية من قوالب المنصة ── */
+  for (const t of await termsForNewTenant(app)) {
+    await db.run(
+      `INSERT INTO terms(tenant_id,code,name,start_date,end_date,status,is_current)
+       VALUES(?,?,?,?,?, 'open', ?)`,
+      T, t.code, t.name, t.start_date, t.end_date, t.is_current ? 1 : 0);
+  }
 
   /* ── حساب مدير الجهة ── */
   const hash = passwordHash || await hashPassword(String(password));
