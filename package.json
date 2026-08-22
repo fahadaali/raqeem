@@ -19,6 +19,7 @@
     "backup": "node scripts/backup.js",
     "setup": "npm run migrate && npm run seed && npm run gen:icons",
     "verify": "node scripts/verify.js",
+    "verify:wiring": "node scripts/verify-wiring.js",
     "cf:dev": "wrangler dev",
     "cf:deploy": "npm run cf:build && wrangler deploy",
     "cf:migrate": "wrangler d1 migrations apply noor-db --remote",
@@ -30,7 +31,7 @@
     "cf:build:headers": "node scripts/build-headers.js",
     "cf:build": "npm run cf:build:migrations && npm run cf:build:headers",
     "verify:realtime": "node scripts/verify-realtime.js",
-    "verify:all": "npm run verify && npm run verify:realtime"
+    "verify:all": "npm run verify:wiring && npm run verify && npm run verify:realtime"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.0",

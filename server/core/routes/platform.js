@@ -790,7 +790,8 @@ router.post('/support/:id/reply', h(async (req) => {
   await notifyUsers(app, k.tenant_id, [k.requester_id], {
     type: 'ticket.vendor_reply', category: 'tickets',
     title: `ردّ دعم المنصة على التذكرة ${k.number || k.id}`,
-    body: body.slice(0, 140), url: `/tickets?id=${k.id}`, urgency: 'high'
+    body: body.slice(0, 140), url: `/tickets?id=${k.id}`, urgency: 'high',
+    data: { id: k.id, ticket_number: k.number }
   }).catch(() => {});
 
   await plog(req, { action: 'update', entity: 'ticket', entityId: k.id, tenantId: k.tenant_id,

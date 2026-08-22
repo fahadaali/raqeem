@@ -128,7 +128,8 @@ router.post('/subscribe', can('billing.manage'), h(async (req) => {
     const paid = await paidForCurrentPeriod(app, before);
     const p = prorationCredit(before, before.plan, { paidForPeriod: paid });
     if (p.credit > 0) {
-      proration = { ...p, from_plan: before.plan.code, from_cycle: before.cycle };
+      proration = { ...p, from_plan: before.plan.code, from_plan_name: before.plan.name,
+        from_cycle: before.cycle };
       await app.db.run('UPDATE subscriptions SET credit_balance = credit_balance + ?, updated_at=? WHERE id=?',
         p.credit, nowUTC(), before.id);
     }

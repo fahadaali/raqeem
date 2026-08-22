@@ -70,7 +70,8 @@ export async function createAnnouncement(app, {
         title: String(title).trim(), body: body || '', url: url || '/',
         urgency: severity === 'critical' ? 'high' : 'normal',
         silent: !push,
-        data: { announcement_id: r.lastId, severity }
+        /* المعرّف في data.id يجعل وسم الإشعار فريداً، فلا يحلّ إعلان محلّ آخر على الجهاز */
+        data: { id: r.lastId, announcement_id: r.lastId, severity }
       }).catch(() => ({ created: 0 }));
       recipients += out.created || 0;
     }

@@ -752,20 +752,87 @@ async function invoicesTab() {
         { header: 'الإجمالي', key: 'total', num: true, render: r => money(r.total) },
         { header: 'الحالة', key: 'status', render: r => chip(r.status_label, INV_KIND[r.status]) },
         { header: 'التاريخ', key: 'issued_at', render: r => fmtDate(r.issued_at, state.calendar) },
-        { header: '', key: 'a', render: r => (r.status === 'open' ? el('div.row', { style: { gap: '4px' } }, [
-          el('button.btn.sm', { text: 'تسديد', onclick: async () => {
+        { header: '', key: 'a', render: r => el('div.row', { style: { gap: '4px' } }, [
+          r.status === 'open' ? el('button.btn.sm', { text: 'تسديد', onclick: async () => {
             if (!await confirmDialog(`اعتماد سداد الفاتورة ${r.number} بمبلغ ${money(r.total)}؟`, { confirmText: 'اعتماد' })) return;
-            await api.post(`/api/platform/invoices/${r.id}/mark-paid`, {}); toast('اعتُمد السداد', 'ok'); await load(); } }),
-          el('button.btn.sm.ghost', { text: 'إلغاء', onclick: async () => {
+            await api.post(`/api/platform/invoices/${r.id}/mark-paid`, {}); toast('اعتُمد السداد', 'ok'); await load(); } }) : null,
+          r.status === 'open' ? el('button.btn.sm.ghost', { text: 'إلغاء', onclick: async () => {
             const reason = prompt('سبب الإلغاء:'); if (reason === null) return;
-            await api.post(`/api/platform/invoices/${r.id}/void`, { reason }); toast('أُلغيت الفاتورة', 'ok'); await load(); } })
-        ]) : '—') }
+            await api.post(`/api/platform/invoices/${r.id}/void`, { reason }); toast('أُلغيت الفاتورة', 'ok'); await load(); } }) : null,
+          /* الإشعار الدائن يصلح على المسدَّدة والمفتوحة، لا على الملغاة ولا على إشعار دائن */
+          r.doc_type !== 'credit_note' && ['open', 'paid'].includes(r.status)
+            ? el('button.btn.sm.ghost', { text: '↩ إشعار دائن', onclick: () => creditNoteDialog(r, load) }) : null,
+          r.zatca_qr ? el('button.btn.sm.ghost', { text: '🧾', title: 'الفاتورة الإلكترونية',
+            onclick: () => eInvoiceDialog(r) }) : null
+        ]) }
       ], d.items) : empty('🧾', 'لا توجد فواتير', ''),
       { sub: `المحصّل ${money(d.totals.paid)} · المستحق ${money(d.totals.due)}` })
     );
   };
   load();
   return body;
+}
+
+/** إشعار دائن على فاتورة صادرة — يفرّق بين المسدَّدة وغير المسدَّدة */
+function creditNoteDialog(inv, reload) {
+  const amount = input({ type: 'number', step: '0.01', value: inv.total, dir: 'ltr' });
+  const reason = textarea({ rows: 3, placeholder: 'سبب الإشعار الدائن — يظهر على المستند' });
+  const m = modal({
+    title: `إشعار دائن على ${inv.number}`,
+    body: el('div.stack', {}, [
+      el('div.kv', {}, [
+        el('span.k', { text: 'الجهة' }), el('span.v', { text: inv.tenant_name || '—' }),
+        el('span.k', { text: 'إجمالي الفاتورة' }), el('span.v', { text: money(inv.total) }),
+        el('span.k', { text: 'حالتها' }), el('span.v', {}, [chip(inv.status_label, INV_KIND[inv.status])])
+      ]),
+      field('المبلغ (شامل الضريبة)', amount, { required: true }),
+      field('السبب', reason),
+      el('div.alert.' + (inv.status === 'paid' ? 'info' : 'warn'), {
+        text: inv.status === 'paid'
+          ? 'الفاتورة مسدَّدة: القيمة تُرحَّل رصيداً للجهة يُخصم من فاتورتها التالية.'
+          : 'الفاتورة غير مسدَّدة: الإشعار يخفّض المستحق فقط، وتُلغى الفاتورة متى غُطّيت بالكامل — ولا يُمنح رصيد لم يُدفع.' })
+    ]),
+    footer: [
+      el('button.btn.ghost', { text: 'إلغاء', onclick: () => m.close() }),
+      el('button.btn.gold', { text: 'إصدار الإشعار', onclick: async (e) => {
+        const v = Number(amount.value);
+        if (!(v > 0)) return void toast('أدخل مبلغاً أكبر من صفر', 'warn');
+        e.target.disabled = true;
+        try {
+          const note = await api.post(`/api/platform/invoices/${inv.id}/credit-note`,
+            { amount: v, reason: reason.value.trim() });
+          toast(`صدر الإشعار الدائن ${note.number} بمبلغ ${money(note.total)}`, 'ok');
+          m.close(); await reload();
+        } catch (err) { toast(err.message, 'warn'); e.target.disabled = false; }
+      } })
+    ]
+  });
+}
+
+/** عرض الفاتورة الإلكترونية المختومة: الوسوم المفكوكة ورمز QR وسلسلة التجزئة */
+async function eInvoiceDialog(inv) {
+  let d;
+  try { d = await api.get(`/api/platform/einvoice/${inv.id}`); }
+  catch (e) { return void toast(e.message, 'warn'); }
+  const LABELS = { 1: 'اسم البائع', 2: 'الرقم الضريبي', 3: 'تاريخ ووقت الإصدار',
+    4: 'الإجمالي شامل الضريبة', 5: 'قيمة الضريبة', 6: 'تجزئة المستند', 7: 'التوقيع', 8: 'المفتاح العام' };
+  modal({
+    title: `الفاتورة الإلكترونية — ${d.number}`, size: 'lg',
+    body: el('div.stack', {}, [
+      el('div.kv', {}, Object.entries(d.fields).flatMap(([tag, v]) => [
+        el('span.k', { text: LABELS[tag] || `الوسم ${tag}` }),
+        el('span.v', { text: v, style: Number(tag) >= 6 ? { direction: 'ltr', fontSize: '11px', wordBreak: 'break-all' } : {} })
+      ])),
+      card('رمز QR (TLV بترميز Base64)',
+        el('code', { text: d.qr, style: { direction: 'ltr', fontSize: '10.5px', wordBreak: 'break-all', lineHeight: '1.8' } })),
+      el('div.kv', {}, [
+        el('span.k', { text: 'المعرّف الفريد' }),
+        el('span.v', { text: d.uuid, style: { direction: 'ltr', fontSize: '11px' } }),
+        el('span.k', { text: 'تجزئة السابقة (PIH)' }),
+        el('span.v', { text: d.previous_hash, style: { direction: 'ltr', fontSize: '11px', wordBreak: 'break-all' } })
+      ])
+    ])
+  });
 }
 
 /* ═══════════ طلبات التسجيل ═══════════ */
@@ -802,6 +869,8 @@ async function signupsTab() {
 async function settingsTab() {
   const s = await api.get('/api/platform/settings');
   const plans = await api.get('/api/platform/plans');
+  /* قائمة البوابات من الخادم لا مكرّرة في الواجهة، فلا تتباعد النسختان */
+  const gw = await api.get('/api/platform/gateways').catch(() => ({ options: [], configured: false }));
 
   const f = {
     platform_name: input({ value: s.platform_name }),
@@ -829,11 +898,10 @@ async function settingsTab() {
   };
   const zatca = input({ type: 'checkbox', checked: !!s.zatca_enabled });
   const require2fa = input({ type: 'checkbox', checked: !!s.require_2fa_admins });
-  const gateway = select([
-    { value: 'manual', label: 'تحويل بنكي يدوي' },
-    { value: 'moyasar', label: 'ميسر (مدى · فيزا · Apple Pay)' },
-    { value: 'tap', label: 'تاب (Tap Payments)' }
-  ], { value: s.payment_gateway });
+  const gateway = select(
+    (gw.options.length ? gw.options : [{ key: 'manual', label: 'تحويل بنكي يدوي' }])
+      .map(o => ({ value: o.key, label: o.label })),
+    { value: s.payment_gateway });
   const defaultPlan = select(plans.map(p => ({ value: p.code, label: p.name })), { value: s.default_plan_code });
   const saas = input({ type: 'checkbox', checked: !!s.saas_enabled });
   const signup = input({ type: 'checkbox', checked: !!s.signup_enabled });
@@ -881,6 +949,12 @@ async function settingsTab() {
       field('ملاحظة للعميل', f.bankNote),
       el('h4.form-sec', { text: 'بوابة الدفع' }),
       field('البوابة المفعّلة', gateway),
+      el('div.row', {}, [
+        chip(gw.configured ? '✅ البوابة مهيّأة بمفتاحها السرّي' : '⚠️ لم يُدخَل المفتاح السرّي بعد',
+          gw.configured ? 'ok' : 'warn'),
+        (gw.options.find(o => o.key === gateway.value)?.redirects)
+          ? chip('السداد يتم على صفحة البوابة') : null
+      ]),
       field('المفتاح السرّي للبوابة', f.gwSecret, {
         hint: 'يُحفظ مشفَّراً في قاعدة البيانات ولا يُعاد عرضه. اتركه فارغاً للإبقاء على الحالي.' })
     ])),

@@ -815,6 +815,20 @@ section('١٨. الواجهة وتطبيق PWA', async () => {
   ok('عامل الخدمة يستقبل الدفع', sw.includes("addEventListener('push'"));
   ok('عامل الخدمة يعالج النقر على الإشعار', sw.includes('notificationclick'));
   ok('عامل الخدمة يخزّن هيكل التطبيق', sw.includes('SHELL'));
+  /*
+   * حارس انحدار: استجابة موجَّهة (redirected) لا يقبلها المتصفّح داخل respondWith
+   * لطلب تنقّل فيسقط التنقّل كلياً دون اتصال — وهو ما يحدث على المستضيفات التي
+   * تعيد توجيه /index.html إلى / (منها Cloudflare Static Assets).
+   */
+  ok('عامل الخدمة ينظّف الاستجابات الموجَّهة قبل خدمتها',
+    sw.includes('cleanCopy') && /res\.redirected/.test(sw));
+  ok('التحميل المسبق للتنقّل معطّل كي يصل حدث fetch للعامل دون اتصال',
+    /navigationPreload\.disable\(\)/.test(sw) && !/navigationPreload\.enable\(\)/.test(sw));
+  ok('تنقّل دون اتصال يعيد هيكل التطبيق لا undefined',
+    sw.includes('shellResponse') && /new Response\('<!doctype html>/.test(sw));
+  ok('مطابقة الذاكرة المؤقتة تتجاهل Vary', /ignoreVary:\s*true/.test(sw));
+  ok('شاشات المرحلة الثانية مخزّنة للعمل دون اتصال',
+    ['billing.js', 'platform.js', 'pricing.js', 'signup.js'].every(v => sw.includes(`/js/views/${v}`)));
   ok('عامل الخدمة يدعم العمل دون اتصال', sw.includes('offline.html'));
   ok('عامل الخدمة يعالج تغيّر الاشتراك', sw.includes('pushsubscriptionchange'));
 
@@ -1245,6 +1259,12 @@ section('٢٠. لوحة المالك: المزايا والنمو والامتث
     token: TK, body: { plan_code: 'growth', cycle: 'monthly' } });
   ok('الفترة المدفوعة غير المستهلكة تُرحَّل رصيداً',
     up2.data.proration && up2.data.proration.credit > 0, JSON.stringify(up2.data.proration));
+  ok('التناسب يفصح عن أيام الفترة ليُشرح للجهة',
+    up2.data.proration.unusedDays >= 0 && up2.data.proration.totalDays > 0);
+  ok('التناسب يسمّي الخطة السابقة بالعربية لا بالرمز',
+    !!up2.data.proration.from_plan_name && up2.data.proration.from_plan_name !== up2.data.proration.from_plan);
+  ok('التناسب يعلن المدفوع فعلاً عن الفترة',
+    Number(up2.data.proration.paid_for_period) > 0);
   near('الرصيد يساوي المدفوع صافياً قبل الضريبة', up2.data.proration.credit, 1499, 2);
   ok('الرصيد يغطي الفاتورة الجديدة بالكامل',
     up2.data.invoice === null || up2.data.invoice.total === 0 || up2.data.invoice.status === 'paid',
@@ -1284,9 +1304,12 @@ section('٢٠. لوحة المالك: المزايا والنمو والامتث
   const sess = await call('GET', '/api/auth/me', { token: TK });
   ok('الإعلان يظهر شريطاً في جلسة الجهة',
     sess.data.banners?.some(b => b.title === 'تحديث مجدول للمنصة'));
-  ok('الإعلان يصل كإشعار للمستخدم',
-    (await call('GET', '/api/notifications', { token: TK })).data.items
-      .some(n => n.type === 'platform.announcement'));
+  const anNotifs = (await call('GET', '/api/notifications', { token: TK })).data.items
+    .filter(n => n.type === 'platform.announcement');
+  ok('الإعلان يصل كإشعار للمستخدم', anNotifs.length >= 1);
+  /* وسم إشعار الدفع يُبنى من data.id — بدونه يحلّ إعلان محلّ آخر على الجهاز */
+  ok('الإعلان يحمل معرّفه فيبقى وسم الدفع فريداً',
+    anNotifs.every(n => (typeof n.data === 'string' ? JSON.parse(n.data || '{}') : (n.data || {})).id > 0));
 
   const targeted = await call('POST', '/api/platform/announcements', { token: S.owner, body: {
     title: 'عرض خاص لخطة المؤسسات', severity: 'info',
@@ -1326,9 +1349,12 @@ section('٢٠. لوحة المالك: المزايا والنمو والامتث
   const seen = await call('GET', `/api/comms/tickets/${tk1.data.id}`, { token: TK });
   ok('ردّ المزوّد يصل للجهة', seen.data.vendor?.reply === 'صُحّح الخلل في تحديث اليوم');
   ok('حالة المعالجة تظهر للجهة', seen.data.vendor.status === 'closed');
-  ok('صاحب التذكرة يُشعَر بردّ المزوّد',
-    (await call('GET', '/api/notifications', { token: TK })).data.items
-      .some(n => n.type === 'ticket.vendor_reply'));
+  const vNotif = (await call('GET', '/api/notifications', { token: TK })).data.items
+    .find(n => n.type === 'ticket.vendor_reply');
+  ok('صاحب التذكرة يُشعَر بردّ المزوّد', !!vNotif);
+  ok('إشعار ردّ المزوّد يشير لتذكرته', String(vNotif.url).includes(`id=${tk1.data.id}`));
+  ok('إشعار ردّ المزوّد يحمل معرّف تذكرته فلا تتصادم الوسوم',
+    (typeof vNotif.data === 'string' ? JSON.parse(vNotif.data || '{}') : (vNotif.data || {})).id === tk1.data.id);
   ok('التذكرة تخرج من قائمة المفتوح بعد إغلاقها',
     !(await call('GET', '/api/platform/support?status=open', { token: S.owner })).data.items
       .some(i => i.id === tk1.data.id));
@@ -1543,6 +1569,10 @@ section('٢٠. لوحة المالك: المزايا والنمو والامتث
   ok('البوابات تشمل مزوّدات سعودية',
     gw.data.options.some(g => /moyasar|tap/i.test(g.key)));
   ok('البوابة غير مهيّأة ابتدائياً', gw.data.configured === false);
+  ok('كل بوابة تحمل مفتاحها واسمها العربي لتبنى منها قائمة الإعدادات',
+    gw.data.options.every(g => g.key && g.label));
+  ok('الكتالوج يعلن أي البوابات تحوّل لصفحتها',
+    gw.data.options.some(g => g.redirects === true) && gw.data.options.some(g => g.redirects === false));
   const payTry = await call('POST', `/api/billing/invoices/${paidInv.data.id}/pay`, { token: TK });
   ok('الدفع الإلكتروني يُرفض قبل تهيئة البوابة', payTry.status === 400);
   await call('PUT', '/api/platform/settings', { token: S.owner, body: {

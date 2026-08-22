@@ -236,8 +236,10 @@ function planPicker(plansData, data, refresh) {
                 { confirmText: 'تأكيد التغيير' })) return;
               try {
                 const r = await api.post('/api/billing/subscribe', { plan_code: p.code, cycle });
-                toast(r.invoice ? `تم التغيير وصدرت الفاتورة ${r.invoice.number}` : 'تم تغيير الخطة', 'ok');
                 m.close(); await refresh();
+                /* التناسب يستحق شرحاً صريحاً: الجهة دفعت ولها رصيد، فلا نتركها تخمّن */
+                if (r.proration?.credit > 0) prorationDialog(r);
+                else toast(r.invoice ? `تم التغيير وصدرت الفاتورة ${r.invoice.number}` : 'تم تغيير الخطة', 'ok');
               } catch (e) { toast(e.message, 'warn'); }
             }
           })
@@ -299,6 +301,45 @@ function payDialog(inv, data, refresh) {
 /** رسم رمز QR بلا مكتبات: نستخدم خدمة العرض المدمجة في المتصفح عبر canvas بسيط
  *  — وبما أن الشبكة الخارجية محجوبة، نعرض السلسلة المُرمَّزة نصّاً قابلاً للنسخ
  *  إضافةً إلى حقولها المفكوكة، وهو ما يحتاجه المدقّق فعلياً. */
+/**
+ * شرح التناسب بعد تغيير الخطة: كم بقي من الفترة المدفوعة، وكم رُحِّل رصيداً،
+ * وكيف انعكس على فاتورة الفترة الجديدة.
+ */
+function prorationDialog(r) {
+  const p = r.proration;
+  const inv = r.invoice;
+  const m = modal({
+    title: 'رُحِّل رصيد الفترة غير المستهلكة',
+    body: el('div.stack', {}, [
+      el('div.alert.ok', { text: 'الجزء الذي دفعتِه ولم تستهلكيه من خطتك السابقة لم يضِع — أُضيف رصيداً لحسابك.' }),
+      el('div.kv', {}, [
+        el('span.k', { text: 'الخطة السابقة' }),
+        el('span.v', { text: `${p.from_plan_name || p.from_plan} · ${p.from_cycle === 'yearly' ? 'سنوي' : 'شهري'}` }),
+        el('span.k', { text: 'الأيام المتبقية من فترتها' }),
+        el('span.v', { text: `${AR_NUM(p.unusedDays)} من ${AR_NUM(p.totalDays)} يوماً` }),
+        el('span.k', { text: 'المدفوع فعلاً عن الفترة' }),
+        el('span.v', { text: money(p.paid_for_period) }),
+        el('span.k', { text: 'الرصيد المُرحَّل' }),
+        el('span.v', {}, [el('b', { text: money(p.credit) })])
+      ]),
+      inv ? card('فاتورة الفترة الجديدة', el('div.kv', {}, [
+        el('span.k', { text: 'رقمها' }),
+        el('span.v', { text: inv.number, style: { direction: 'ltr' } }),
+        el('span.k', { text: 'قبل الرصيد' }),
+        el('span.v', { text: money(Number(inv.subtotal) + Number(inv.credit_applied || 0)) }),
+        el('span.k', { text: 'خُصم من الرصيد' }),
+        el('span.v', { text: `− ${money(inv.credit_applied || 0)}` }),
+        el('span.k', { text: 'الضريبة' }),
+        el('span.v', { text: money(inv.vat_amount) }),
+        el('span.k', { text: 'المستحق الآن' }),
+        el('span.v', {}, [el('b', { text: money(inv.total) })])
+      ])) : el('div.hint', { text: 'الرصيد غطّى الفترة الجديدة بالكامل — لا فاتورة مستحقة.' }),
+      el('div.hint', { text: 'الرصيد يُطبَّق قبل احتساب الضريبة، ويُخصم تلقائياً من كل فاتورة تالية حتى ينفد.' })
+    ]),
+    footer: el('button.btn.gold', { text: 'فهمت', onclick: () => m.close() })
+  });
+}
+
 async function eInvoiceDialog(invoiceRow) {
   const d = await api.get(`/api/billing/invoices/${invoiceRow.id}/einvoice`);
   const LABELS = { 1: 'اسم البائع', 2: 'الرقم الضريبي', 3: 'تاريخ ووقت الإصدار',

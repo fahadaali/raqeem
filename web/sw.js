@@ -5,7 +5,7 @@
    • استقبال إشعارات الدفع (Web Push) على المتصفح والأندرويد والآيفون
    • مزامنة خلفية لإعادة إرسال العمليات التي تمت أثناء انقطاع الشبكة
    ═══════════════════════════════════════════════════════════════════════ */
-const VERSION = 'noor-v1.0.0';
+const VERSION = 'noor-v1.0.2';
 const SHELL_CACHE = `${VERSION}-shell`;
 const DATA_CACHE = `${VERSION}-data`;
 
@@ -20,16 +20,36 @@ const SHELL = [
   '/js/views/tickets.js', '/js/views/reports.js', '/js/views/imports.js',
   '/js/views/audit.js', '/js/views/org.js', '/js/views/settings.js',
   '/js/views/notifications.js',
+  '/js/views/billing.js', '/js/views/platform.js', '/js/views/pricing.js', '/js/views/signup.js',
   '/assets/icons/icon-192.png', '/assets/icons/icon-512.png', '/assets/icons/favicon.png'
 ];
 
 // استعلامات تُحفظ نسخة منها للعرض دون اتصال
 const CACHEABLE_API = [/\/api\/auth\/me$/, /\/api\/dashboard/, /\/api\/tasks/, /\/api\/notifications/, /\/api\/hr\/attendance\/today/];
 
+/*
+ * نسخة نظيفة من الاستجابة بلا علَم إعادة التوجيه.
+ * السبب: بعض المستضيفات (منها Cloudflare Static Assets) تعيد توجيه
+ * `/index.html` إلى `/` بالرمز ٣٠٧، فتُخزَّن الاستجابة وعلَمها redirected=true،
+ * والمتصفّح يرفض استجابةً موجَّهة داخل respondWith لطلب تنقّل فيسقط التنقّل
+ * كلياً (ERR_FAILED) بدل أن يُخدَم هيكل التطبيق. إعادة بناء الاستجابة
+ * تُسقط العلَم فتصلح للتنقّل دون اتصال.
+ */
+async function cleanCopy(res) {
+  if (!res || !res.redirected) return res;
+  return new Response(await res.blob(), {
+    status: res.status, statusText: res.statusText, headers: res.headers
+  });
+}
+
 self.addEventListener('install', (e) => {
   e.waitUntil((async () => {
     const c = await caches.open(SHELL_CACHE);
-    await Promise.allSettled(SHELL.map(u => c.add(new Request(u, { cache: 'reload' }))));
+    await Promise.allSettled(SHELL.map(async (u) => {
+      const res = await fetch(new Request(u, { cache: 'reload' }));
+      if (!res.ok) throw new Error(`${u}: ${res.status}`);
+      await c.put(u, await cleanCopy(res));
+    }));
     await self.skipWaiting();
   })());
 });
@@ -38,7 +58,15 @@ self.addEventListener('activate', (e) => {
   e.waitUntil((async () => {
     const keys = await caches.keys();
     await Promise.all(keys.filter(k => !k.startsWith(VERSION)).map(k => caches.delete(k)));
-    if (self.registration.navigationPreload) await self.registration.navigationPreload.enable();
+    /*
+     * التحميل المسبق للتنقّل (Navigation Preload) مُعطَّل عمداً.
+     * حين يكون مُفعَّلاً وينقطع الاتصال، يُجهض المتصفّح التنقّل قبل أن يصل
+     * حدث fetch إلى عامل الخدمة أصلاً — فلا يُخدَم هيكل التطبيق المخزّن
+     * وتظهر شاشة «تعذّر الوصول». وهذا ما ثبت عملياً على بيئة Cloudflare.
+     * ومكسبه ضئيل هنا: التطبيق صفحة واحدة (SPA) لا يقع فيه تنقّل كامل
+     * بعد الإقلاع، فالعمل دون اتصال أولى من توفير جولة شبكة واحدة.
+     */
+    if (self.registration.navigationPreload) await self.registration.navigationPreload.disable();
     await self.clients.claim();
   })());
 });
@@ -47,6 +75,15 @@ self.addEventListener('message', (e) => {
   if (e.data?.type === 'SKIP_WAITING') self.skipWaiting();
   if (e.data?.type === 'CLEAR_CACHE') caches.keys().then(ks => ks.forEach(k => caches.delete(k)));
 });
+
+/* هيكل التطبيق من الذاكرة المؤقتة، منظَّفاً من علَم إعادة التوجيه */
+async function shellResponse() {
+  for (const key of ['/index.html', '/']) {
+    const hit = await caches.match(key, { ignoreVary: true });
+    if (hit) return cleanCopy(hit);
+  }
+  return null;
+}
 
 self.addEventListener('fetch', (event) => {
   const { request } = event;
@@ -59,11 +96,18 @@ self.addEventListener('fetch', (event) => {
   if (request.mode === 'navigate') {
     event.respondWith((async () => {
       try {
-        const preload = await event.preloadResponse;
-        if (preload) return preload;
-        return await fetch(request);
+        const res = await fetch(request);
+        if (res && res.ok) return res;
+        /* استجابة خطأ من الخادم: هيكل التطبيق أنفع للمستخدم من صفحة خطأ */
+        return (await shellResponse()) || res;
       } catch {
-        return (await caches.match('/index.html')) || (await caches.match('/offline.html'));
+        /* دون اتصال: هيكل التطبيق ثم صفحة الانقطاع، ولا نعيد undefined أبداً */
+        return (await shellResponse())
+          || (await cleanCopy(await caches.match('/offline.html', { ignoreVary: true })))
+          || new Response('<!doctype html><meta charset="utf-8"><title>دون اتصال</title>'
+            + '<body style="font-family:system-ui;text-align:center;padding:3rem" dir="rtl">'
+            + '<h1>لا يوجد اتصال</h1><p>أعد المحاولة بعد عودة الشبكة.</p>',
+            { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } });
       }
     })());
     return;
@@ -94,17 +138,18 @@ self.addEventListener('fetch', (event) => {
 
   // الأصول الثابتة → الذاكرة المؤقتة أولاً
   event.respondWith((async () => {
-    const cached = await caches.match(request);
+    const cached = await caches.match(request, { ignoreVary: true });
     if (cached) {
       fetch(request).then(r => { if (r.ok) caches.open(SHELL_CACHE).then(c => c.put(request, r)); }).catch(() => {});
       return cached;
     }
     try {
       const res = await fetch(request);
-      if (res.ok) (await caches.open(SHELL_CACHE)).put(request, res.clone());
+      if (res.ok) (await caches.open(SHELL_CACHE)).put(request, await cleanCopy(res.clone()));
       return res;
     } catch {
-      return caches.match('/offline.html');
+      return (await caches.match('/offline.html', { ignoreVary: true }))
+        || new Response('', { status: 504 });
     }
   })());
 });
