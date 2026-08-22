@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5">
+<title>منصة نور — الإدارة المتكاملة لمجمعات تحفيظ القرآن</title>
+<meta name="description" content="منصة إدارة متكاملة للمجمعات القرآنية: اللجان والمهام، الحضور الذكي، الدورة المالية، التقييم، التقارير وسجل التدقيق.">
+
+<!-- تثبيت التطبيق على الشاشة الرئيسية -->
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0F5132" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0B3A26" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+
+<!-- دعم التثبيت على آيفون / آيباد -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="نور">
+<link rel="apple-touch-icon" href="/assets/icons/icon-180.png">
+<link rel="apple-touch-icon" sizes="152x152" href="/assets/icons/icon-152.png">
+<link rel="apple-touch-icon" sizes="167x167" href="/assets/icons/icon-167.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/icons/icon-180.png">
+<link rel="icon" href="/assets/icons/favicon.png" type="image/png">
+<link rel="mask-icon" href="/assets/icons/favicon.png" color="#0F5132">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <div id="boot" class="boot">
+    <div class="boot-logo"><img src="/assets/icons/icon-192.png" alt="منصة نور" width="88" height="88"></div>
+    <div class="boot-name">منصة نور</div>
+    <div class="boot-sub">الإدارة المتكاملة لمجمعات تحفيظ القرآن الكريم</div>
+    <div class="boot-bar"><span></span></div>
+  </div>
+
+  <div id="app" hidden></div>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+  <div id="modal-root"></div>
+
+  <noscript>
+    <div style="padding:40px;text-align:center;font-family:sans-serif">
+      تتطلب منصة نور تفعيل جافاسكربت في المتصفح لعرض واجهات النظام.
+    </div>
+  </noscript>
+
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>

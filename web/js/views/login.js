@@ -1,0 +1,67 @@
+import api from '../api.js';
+import { el, field, input, toast, qs } from '../util.js';
+
+const DEMO = [
+  ['مدير المجمّع', 'admin@riyadh-qu.sa', 'Admin@123'],
+  ['مدير فرع', 'branch1@riyadh-qu.sa', 'Branch@123'],
+  ['مشرف تربوي', 'supervisor@riyadh-qu.sa', 'Super@123'],
+  ['المحاسب', 'finance@riyadh-qu.sa', 'Finance@123'],
+  ['الموارد البشرية', 'hr@riyadh-qu.sa', 'Hr@123456'],
+  ['رئيس لجنة', 'committee@riyadh-qu.sa', 'Lead@123'],
+  ['معلم', 'teacher@riyadh-qu.sa', 'Teach@123'],
+  ['موظف', 'employee@riyadh-qu.sa', 'Emp@1234'],
+  ['الدعم الفني', 'support@riyadh-qu.sa', 'Support@123'],
+  ['المدقق', 'auditor@riyadh-qu.sa', 'Audit@123']
+];
+
+export async function render({ onSuccess }) {
+  const email = input({ type: 'email', name: 'email', placeholder: 'name@riyadh-qu.sa', autocomplete: 'username', required: true, dir: 'ltr' });
+  const pass = input({ type: 'password', name: 'password', placeholder: '••••••••', autocomplete: 'current-password', required: true });
+  const btn = el('button.btn.lg.block', { type: 'submit', text: 'تسجيل الدخول' });
+  const msg = el('div.hint', { style: { color: 'var(--danger)', textAlign: 'center', minHeight: '18px' } });
+
+  const submit = async (e) => {
+    e?.preventDefault();
+    if (!email.value || !pass.value) { msg.textContent = 'يرجى إدخال البريد وكلمة المرور'; return; }
+    btn.disabled = true; msg.textContent = '';
+    const original = btn.textContent;
+    btn.textContent = ''; btn.append(el('span.spinner'), document.createTextNode(' جارٍ التحقق...'));
+    try {
+      await api.login(email.value.trim(), pass.value);
+      toast('مرحباً بك في منصة نور', 'ok');
+      await onSuccess();
+    } catch (err) {
+      msg.textContent = err.message || 'تعذّر تسجيل الدخول';
+      btn.disabled = false; btn.textContent = original;
+      pass.value = ''; pass.focus();
+    }
+  };
+
+  const form = el('form', { onsubmit: submit, novalidate: true }, [
+    field('البريد الإلكتروني', email, { required: true }),
+    field('كلمة المرور', pass, { required: true }),
+    btn, msg
+  ]);
+
+  const demoGrid = el('div.demo-grid', {}, DEMO.map(([role, e, p]) =>
+    el('button.demo-btn', {
+      type: 'button',
+      onclick: () => { email.value = e; pass.value = p; submit(); }
+    }, [el('b', { text: role }), 'دخول تجريبي'])
+  ));
+
+  return el('div.login-wrap', {}, [
+    el('div.login-card', {}, [
+      el('div.login-brand', {}, [
+        el('img', { src: '/assets/icons/icon-192.png', alt: 'منصة نور' }),
+        el('h1', { text: 'منصة نور' }),
+        el('p', { text: 'الإدارة المتكاملة لمجمعات تحفيظ القرآن الكريم' })
+      ]),
+      form,
+      el('div.login-demo', {}, [
+        el('h4', { text: 'حسابات تجريبية — اختر دوراً لتجربة صلاحياته' }),
+        demoGrid
+      ])
+    ])
+  ]);
+}

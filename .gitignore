@@ -1,0 +1,13 @@
+node_modules/
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+data/backups/
+storage/tenants/
+.env
+*.log
+.DS_Store
+npm-debug.log*
+!data/.gitkeep
+!storage/.gitkeep
