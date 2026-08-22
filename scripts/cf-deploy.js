@@ -4,7 +4,7 @@
  *   npm run cf:link                 — ينفّذ السلسلة كاملةً
  *   npm run cf:link -- --dry        — يعرض ما سيفعله دون تنفيذ
  *   npm run cf:link -- --rotate     — يعيد توليد الأسرار (يُبطل اشتراكات الإشعارات!)
- *   npm run cf:link -- --name نور   — اسم عامل مختلف
+ *   npm run cf:link -- --name رقيم   — اسم عامل مختلف
  *
  * السلسلة: تحقّق من الدخول ← قاعدة D1 ← دلو R2 ← الأسرار ← المخطط ← النشر ←
  *          ضبط APP_URL ← التهيئة الأولى ← فحص الصحة.
@@ -91,7 +91,7 @@ if (WORKER && WORKER !== workerName) {
 
 /* ─────────── ٣. قاعدة البيانات D1 ─────────── */
 head('قاعدة البيانات D1');
-const DB_NAME = (toml.match(/\[\[d1_databases\]\][\s\S]*?database_name\s*=\s*"([^"]+)"/) || [])[1] || 'noor-db';
+const DB_NAME = (toml.match(/\[\[d1_databases\]\][\s\S]*?database_name\s*=\s*"([^"]+)"/) || [])[1] || 'raqeem-db';
 let dbId = null;
 {
   const list = wr(['d1', 'list', '--json'], { allowFail: true, real: true });
@@ -125,7 +125,7 @@ let dbId = null;
 
 /* ─────────── ٤. دلو R2 ─────────── */
 head('تخزين الملفات R2');
-const BUCKET = (toml.match(/\[\[r2_buckets\]\][\s\S]*?bucket_name\s*=\s*"([^"]+)"/) || [])[1] || 'noor-files';
+const BUCKET = (toml.match(/\[\[r2_buckets\]\][\s\S]*?bucket_name\s*=\s*"([^"]+)"/) || [])[1] || 'raqeem-files';
 {
   const list = wr(['r2', 'bucket', 'list'], { allowFail: true, real: true });
   if (new RegExp(`(^|\\s|")${BUCKET}(\\s|"|$)`, 'm').test(list.out)) {

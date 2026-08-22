@@ -82,7 +82,7 @@ function drawIcon(size, { maskable = false } = {}) {
         const t = Math.min(1, dist / starR);
         c = mix(GOLD_L, GOLD, t);
       }
-      // قلب النجمة الفاتح (رمز النور)
+      // قلب النجمة الفاتح
       if (dist < inner) c = mix(WHITE, GOLD_L, dist / inner);
 
       // قاعدة تمثل المصحف المفتوح

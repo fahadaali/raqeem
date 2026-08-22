@@ -97,7 +97,7 @@ export function base32Decode(str) {
 export const generateTotpSecret = () => base32Encode(randomBytes(20));
 
 /** رابط otpauth الذي تقرأه تطبيقات المصادقة */
-export const totpUri = (secret, { account, issuer = 'Noor Platform' }) =>
+export const totpUri = (secret, { account, issuer = 'Raqeem Platform' }) =>
   `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(account)}` +
   `?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`;
 

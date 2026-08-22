@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════
---  منصة نور — مخطط قاعدة البيانات على Cloudflare D1
+--  منصة رقيم — مخطط قاعدة البيانات على Cloudflare D1
 --  ⚠ مولَّد آلياً من server/core/schema.sql — لا تُعدّله يدوياً.
 --    أعد توليده بـ:  npm run cf:build:migrations
 -- ════════════════════════════════════════════════════════════════
@@ -842,10 +842,10 @@ CREATE INDEX IF NOT EXISTS ix_signups_status ON signups(status, created_at);
 
 CREATE TABLE IF NOT EXISTS platform_settings (
   id                 INTEGER PRIMARY KEY CHECK (id = 1),
-  platform_name      TEXT NOT NULL DEFAULT 'منصة نور',
-  platform_name_en   TEXT DEFAULT 'Noor Platform',
+  platform_name      TEXT NOT NULL DEFAULT 'منصة رقيم',
+  platform_name_en   TEXT DEFAULT 'Raqeem Platform',
   tagline            TEXT DEFAULT 'منصة الإدارة المتكاملة لمجمعات تحفيظ القرآن الكريم',
-  support_email      TEXT DEFAULT 'support@noor.sa',
+  support_email      TEXT DEFAULT 'support@raqeem.sa',
   support_phone      TEXT,
   saas_enabled       INTEGER NOT NULL DEFAULT 0,   
   signup_enabled     INTEGER NOT NULL DEFAULT 0,   
@@ -858,7 +858,7 @@ CREATE TABLE IF NOT EXISTS platform_settings (
   vat_number         TEXT,
   cr_number          TEXT,
   bank_details       TEXT NOT NULL DEFAULT '{}',   
-  invoice_prefix     TEXT NOT NULL DEFAULT 'NOOR',
+  invoice_prefix     TEXT NOT NULL DEFAULT 'RQM',
   invoice_seq        INTEGER NOT NULL DEFAULT 0,
   seller_address     TEXT NOT NULL DEFAULT '{}',   
   zatca_enabled      INTEGER NOT NULL DEFAULT 0,   

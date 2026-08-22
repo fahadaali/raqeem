@@ -196,7 +196,7 @@ router.post('/users', can('users.manage'), h(async (req) => {
   await audit(req, { action: 'create', entity: 'user', entityId: uid,
     summary: `${req.ctx.userName} أنشأ حساب المستخدم (${name}) بدور ${role.name}` });
   await notifyUsers(app, req.ctx.tenantId, [uid], {
-    type: 'account.created', category: 'system', title: 'أهلاً بك في منصة نور',
+    type: 'account.created', category: 'system', title: 'أهلاً بك في منصة رقيم',
     body: `تم إنشاء حسابك بدور "${role.name}". يُرجى تغيير كلمة المرور عند أول دخول.`, url: '/settings'
   });
   return created({ id: uid });
@@ -261,7 +261,7 @@ router.get('/backups', can('settings.manage'), h(async (req) => {
   if (!st?.list) return { driver: st?.driver || 'غير مربوط', automatic: false, items: [] };
   const prefix = `tenants/${req.ctx.tenantId}/backups/`;
   const stamp = (name) => {
-    const m = name.match(/^noor-(\d{4}-\d{2}-\d{2})-(\d{2})-(\d{2})-(\d{2})\.sql\.gz$/);
+    const m = name.match(/^raqeem-(\d{4}-\d{2}-\d{2})-(\d{2})-(\d{2})-(\d{2})\.sql\.gz$/);
     return m ? `${m[1]}T${m[2]}:${m[3]}:${m[4]}Z` : null;
   };
   const keys = (await st.list(prefix)).sort().reverse();
@@ -283,7 +283,7 @@ router.post('/backups', can('settings.manage'), h(async (req) => {
 
 router.get('/backups/:name/download', can('settings.manage'), h(async (req) => {
   const name = String(req.params.name);
-  if (!/^noor-[\d-]+\.sql\.gz$/.test(name)) throw badRequest('اسم ملف غير صالح');
+  if (!/^raqeem-[\d-]+\.sql\.gz$/.test(name)) throw badRequest('اسم ملف غير صالح');
   const key = `tenants/${req.ctx.tenantId}/backups/${name}`;
   const data = await req.app.storage.get(key);
   if (!data) throw notFound('النسخة غير موجودة');

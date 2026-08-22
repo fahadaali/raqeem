@@ -24,7 +24,7 @@ const secrets = {
   BOOTSTRAP_TOKEN: randomSecret(24)
 };
 
-console.log('\n▸ الأسرار المولَّدة لمنصة نور على Cloudflare\n');
+console.log('\n▸ الأسرار المولَّدة لمنصة رقيم على Cloudflare\n');
 for (const [k, v] of Object.entries(secrets)) console.log(`  ${k.padEnd(20)} = ${v}`);
 
 if (!doPut) {

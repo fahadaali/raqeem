@@ -28,10 +28,10 @@ export const INVOICE_STATUS_AR = {
 
 const DEFAULT_SETTINGS = {
   id: 1,
-  platform_name: 'منصة نور',
-  platform_name_en: 'Noor Platform',
+  platform_name: 'منصة رقيم',
+  platform_name_en: 'Raqeem Platform',
   tagline: 'منصة الإدارة المتكاملة لمجمعات تحفيظ القرآن الكريم',
-  support_email: 'support@noor.sa',
+  support_email: 'support@raqeem.sa',
   support_phone: null,
   saas_enabled: 0,
   signup_enabled: 0,
@@ -44,7 +44,7 @@ const DEFAULT_SETTINGS = {
   vat_number: null,
   cr_number: null,
   bank_details: '{}',
-  invoice_prefix: 'NOOR',
+  invoice_prefix: 'RQM',
   invoice_seq: 0
 };
 

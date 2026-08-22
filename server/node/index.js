@@ -44,7 +44,7 @@ app.onError(errorHandler);
 const server = serve({ fetch: app.fetch, port: cfg.port, createServer: http.createServer }, (info) => {
   console.log('');
   console.log('  ╭──────────────────────────────────────────────╮');
-  console.log('  │   منصة نور — الإدارة المتكاملة للمجمعات     │');
+  console.log('  │   منصة رقيم — الإدارة المتكاملة للمجمعات     │');
   console.log('  ╰──────────────────────────────────────────────╯');
   console.log(`  ▸ الخادم يعمل على : http://localhost:${info.port}`);
   console.log(`  ▸ البيئة          : ${cfg.env}  ·  التشغيل: Node`);

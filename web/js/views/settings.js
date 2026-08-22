@@ -149,7 +149,7 @@ async function appTab() {
       el('div.row', { style: { marginBottom: '12px' } }, [
         el('img', { src: '/assets/icons/icon-192.png', alt: '', style: { width: '62px', height: '62px', borderRadius: '17px' } }),
         el('div', { style: { flex: 1, minWidth: '190px' } }, [
-          el('h3', { text: 'منصة نور' }),
+          el('h3', { text: 'منصة رقيم' }),
           el('div.hint', { text: 'تطبيق ويب تقدمي (PWA) يعمل بملء الشاشة ودون اتصال، ويستقبل الإشعارات كتطبيق أصلي.' })
         ]),
         chip(installed ? '✅ مثبّت' : 'غير مثبّت', installed ? 'ok' : 'warn')
@@ -163,10 +163,10 @@ async function appTab() {
       el('div', { style: { marginTop: '16px' } }, [
         el('h4', { style: { fontSize: '13px', marginBottom: '8px' }, text: p === 'ios' ? 'خطوات التثبيت على الآيفون / الآيباد' : p === 'android' ? 'خطوات التثبيت على الأندرويد' : 'خطوات التثبيت على الحاسب' }),
         ...(p === 'ios'
-          ? ['افتح المنصة في متصفح Safari', 'اضغط زر المشاركة ⬆️ في الشريط السفلي', 'اختر «إضافة إلى الشاشة الرئيسية»', 'اضغط «إضافة» — ستظهر أيقونة نور بين تطبيقاتك', 'افتح التطبيق من الأيقونة ثم فعّل الإشعارات']
+          ? ['افتح المنصة في متصفح Safari', 'اضغط زر المشاركة ⬆️ في الشريط السفلي', 'اختر «إضافة إلى الشاشة الرئيسية»', 'اضغط «إضافة» — ستظهر أيقونة رقيم بين تطبيقاتك', 'افتح التطبيق من الأيقونة ثم فعّل الإشعارات']
           : p === 'android'
           ? ['اضغط زر التثبيت أعلاه أو افتح قائمة المتصفح (⋮)', 'اختر «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية»', 'أكّد التثبيت', 'افتح التطبيق وفعّل الإشعارات من تبويب الإشعارات']
-          : ['اضغط أيقونة التثبيت ⊕ في شريط عنوان المتصفح', 'أو من قائمة المتصفح اختر «تثبيت منصة نور»', 'سيُفتح التطبيق في نافذة مستقلة']
+          : ['اضغط أيقونة التثبيت ⊕ في شريط عنوان المتصفح', 'أو من قائمة المتصفح اختر «تثبيت منصة رقيم»', 'سيُفتح التطبيق في نافذة مستقلة']
         ).map((t, i) => el('div.check-row', { style: { cursor: 'default' } }, [el('div.avatar.sm', { text: AR_NUM(i + 1) }), el('div.t', { text: t })]))
       ])
     ]),
@@ -424,7 +424,7 @@ async function apiTab() {
     body,
     card('📖 توثيق الواجهة البرمجية', [
       el('div.hint', { text: 'استخدم المفتاح في ترويسة الطلب:' }),
-      el('div.code', { text: `curl -H "Authorization: Bearer noor_rq_xxx.xxxxx" \\\n  ${base}/api/v1/teachers` }),
+      el('div.code', { text: `curl -H "Authorization: Bearer raqeem_rq_xxx.xxxxx" \\\n  ${base}/api/v1/teachers` }),
       el('h4', { style: { fontSize: '13px', margin: '14px 0 8px' }, text: 'نقاط الاتصال المتاحة' }),
       table([
         { header: 'المسار', key: 'p', render: r => el('code', { text: r.p, style: { direction: 'ltr', fontSize: '11.5px' } }) },

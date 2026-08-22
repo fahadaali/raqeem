@@ -1,5 +1,5 @@
 # ════════════════════════════════════════════════════════════════════════
-#  منصة نور — إعداد النشر على Cloudflare
+#  منصة رقيم — إعداد النشر على Cloudflare
 #  كل المزوّدات على كلاود فلير:
 #    • الاستضافة والتشغيل : Cloudflare Workers + Static Assets
 #    • قاعدة البيانات      : Cloudflare D1
@@ -10,7 +10,7 @@
 #  راجع docs/CLOUDFLARE.md لخطوات النشر بالتفصيل.
 # ════════════════════════════════════════════════════════════════════════
 
-name = "noor-erp"
+name = "raqeem-erp"
 main = "server/worker/index.js"
 compatibility_date = "2025-05-01"
 compatibility_flags = ["nodejs_compat"]
@@ -24,18 +24,18 @@ not_found_handling = "single-page-application"
 run_worker_first = ["/api/*", "/ws", "/__bootstrap"]
 
 # ─── قاعدة البيانات D1 ───
-# أنشئها بـ:  npx wrangler d1 create noor-db     ثم ضع المعرّف هنا
+# أنشئها بـ:  npx wrangler d1 create raqeem-db     ثم ضع المعرّف هنا
 [[d1_databases]]
 binding = "DB"
-database_name = "noor-db"
+database_name = "raqeem-db"
 database_id = "00000000-0000-0000-0000-000000000000"   # ← استبدله بمعرّف قاعدتك بعد إنشائها
 migrations_dir = "migrations"
 
 # ─── تخزين الملفات R2 (الفواتير والمرفقات — البند ٦) ───
-# أنشئه بـ:  npx wrangler r2 bucket create noor-files
+# أنشئه بـ:  npx wrangler r2 bucket create raqeem-files
 [[r2_buckets]]
 binding = "FILES"
-bucket_name = "noor-files"
+bucket_name = "raqeem-files"
 
 # ─── البثّ اللحظي: كائن دائم واحد لكل جهة تعليمية (البند ٨) ───
 [[durable_objects.bindings]]
@@ -85,13 +85,13 @@ BACKUP_KEEP = "14"
 #   npx wrangler secret put BOOTSTRAP_TOKEN
 
 # ─── الطابور (اختياري — يتطلّب خطة Workers Paid) ───
-# لتفعيله: أزل التعليق، ثم:  npx wrangler queues create noor-jobs
+# لتفعيله: أزل التعليق، ثم:  npx wrangler queues create raqeem-jobs
 # [[queues.producers]]
 # binding = "JOBS"
-# queue = "noor-jobs"
+# queue = "raqeem-jobs"
 #
 # [[queues.consumers]]
-# queue = "noor-jobs"
+# queue = "raqeem-jobs"
 # max_batch_size = 10
 # max_batch_timeout = 5
 # max_retries = 3
@@ -101,5 +101,5 @@ enabled = true
 
 # ─── بيئة التجربة ───
 [env.staging]
-name = "noor-erp-staging"
+name = "raqeem-erp-staging"
 vars = { NODE_ENV = "staging", VAPID_SUBJECT = "mailto:admin@riyadh-qu.sa" }

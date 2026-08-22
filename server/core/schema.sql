@@ -1,5 +1,5 @@
 -- ==========================================================================
---  منصة نور — مخطط قاعدة البيانات
+--  منصة رقيم — مخطط قاعدة البيانات
 --  بنية متعددة المستأجرين (Multi-Tenant) جاهزة للتحول إلى SaaS
 --  قاعدة إلزامية: كل جدول رئيسي يحمل العمود tenant_id
 --  الطوابع الزمنية تُخزَّن دائماً بصيغة UTC ISO-8601 (البند ١١)
@@ -851,10 +851,10 @@ CREATE INDEX IF NOT EXISTS ix_signups_status ON signups(status, created_at);
 -- ──────────────────── ١٨. إعدادات المنصة وسجلّ مالكها ────────────────────
 CREATE TABLE IF NOT EXISTS platform_settings (
   id                 INTEGER PRIMARY KEY CHECK (id = 1),
-  platform_name      TEXT NOT NULL DEFAULT 'منصة نور',
-  platform_name_en   TEXT DEFAULT 'Noor Platform',
+  platform_name      TEXT NOT NULL DEFAULT 'منصة رقيم',
+  platform_name_en   TEXT DEFAULT 'Raqeem Platform',
   tagline            TEXT DEFAULT 'منصة الإدارة المتكاملة لمجمعات تحفيظ القرآن الكريم',
-  support_email      TEXT DEFAULT 'support@noor.sa',
+  support_email      TEXT DEFAULT 'support@raqeem.sa',
   support_phone      TEXT,
   saas_enabled       INTEGER NOT NULL DEFAULT 0,   -- تفعيل طبقة SaaS في الواجهات العامة
   signup_enabled     INTEGER NOT NULL DEFAULT 0,   -- فتح التسجيل الآلي
@@ -867,7 +867,7 @@ CREATE TABLE IF NOT EXISTS platform_settings (
   vat_number         TEXT,
   cr_number          TEXT,
   bank_details       TEXT NOT NULL DEFAULT '{}',   -- JSON: اسم البنك، الآيبان، المستفيد
-  invoice_prefix     TEXT NOT NULL DEFAULT 'NOOR',
+  invoice_prefix     TEXT NOT NULL DEFAULT 'RQM',
   invoice_seq        INTEGER NOT NULL DEFAULT 0,
   seller_address     TEXT NOT NULL DEFAULT '{}',   -- JSON: الشارع، الحي، المدينة، الرمز البريدي
   zatca_enabled      INTEGER NOT NULL DEFAULT 0,   -- توليد رمز QR وملف XML للفواتير

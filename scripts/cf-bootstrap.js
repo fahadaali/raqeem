@@ -1,7 +1,7 @@
 /**
  * تهيئة قاعدة بيانات D1 بعد النشر — يُطبّق المخطط ثم يعبّئ بيانات المستأجر رقم ١.
  *
- *   npm run cf:bootstrap -- https://noor-erp.example.workers.dev
+ *   npm run cf:bootstrap -- https://raqeem-erp.example.workers.dev
  *   npm run cf:bootstrap -- http://localhost:8787            (مع wrangler dev)
  *
  * الرمز يُقرأ من متغيّر البيئة BOOTSTRAP_TOKEN أو من ملف .dev.vars محلياً،

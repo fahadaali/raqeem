@@ -108,7 +108,7 @@ export function buildReportHTML({
   <footer>
     <span>عدد السجلات: ${rows.length}</span>
     <span>${generatedBy ? 'أصدره: ' + esc(generatedBy) : ''}</span>
-    <span>وُلّد آلياً من منصة نور</span>
+    <span>وُلّد آلياً من منصة رقيم</span>
   </footer>
 </div>
 </body></html>`;

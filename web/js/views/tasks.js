@@ -7,7 +7,7 @@ import {
 import { fmtDate, todayISO, addDaysISO, daysBetween } from '../hijri.js';
 
 const STATUSES = ['todo', 'in_progress', 'review', 'done', 'blocked'];
-let view = localStorage.getItem('noor_tasks_view') || 'kanban';
+let view = localStorage.getItem('raqeem_tasks_view') || 'kanban';
 let filters = {};
 let cacheUsers = null, cacheCommittees = null;
 
@@ -41,7 +41,7 @@ async function buildToolbar(reload, navigate, locked) {
   ].map(([k, label]) => el('button', {
     text: label, class: view === k ? 'active' : '',
     onclick: (e) => {
-      view = k; localStorage.setItem('noor_tasks_view', k);
+      view = k; localStorage.setItem('raqeem_tasks_view', k);
       [...e.target.parentNode.children].forEach(b => b.classList.remove('active'));
       e.target.classList.add('active'); reload();
     }
@@ -329,11 +329,11 @@ export async function chatBox(contextType, contextId) {
         list.scrollTop = list.scrollHeight;
       }
     };
-    window.addEventListener('noor:chat', onMsg);
+    window.addEventListener('raqeem:chat', onMsg);
 
     /* في وضع الاستطلاع الدوري (بلا قناة دائمة) نجلب الجديد بأنفسنا */
     const onPoll = async () => {
-      if (!box.isConnected) return window.removeEventListener('noor:poll', onPoll);
+      if (!box.isConnected) return window.removeEventListener('raqeem:poll', onPoll);
       try {
         const fresh = await api.get(`/api/comms/conversations/${contextType}/${contextId}/messages`, { silent: true });
         let added = false;
@@ -341,7 +341,7 @@ export async function chatBox(contextType, contextId) {
         if (added) list.scrollTop = list.scrollHeight;
       } catch { /* دون اتصال */ }
     };
-    window.addEventListener('noor:poll', onPoll);
+    window.addEventListener('raqeem:poll', onPoll);
   } catch (e) {
     clear(list).append(el('div.empty', { style: { padding: '22px' } }, [el('p', { text: e.message })]));
     box.querySelector('.chat-input')?.remove();

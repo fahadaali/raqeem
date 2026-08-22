@@ -3,12 +3,12 @@ const listeners = new Set();
 
 export const state = {
   session: null,          // { user, tenant, permissions, branches, terms, current_term, push }
-  accessToken: localStorage.getItem('noor_at') || null,
-  refreshToken: localStorage.getItem('noor_rt') || null,
-  branchId: localStorage.getItem('noor_branch') || 'all',
-  termId: localStorage.getItem('noor_term') || '',
-  calendar: localStorage.getItem('noor_cal') || 'hijri',
-  theme: localStorage.getItem('noor_theme') || 'auto',
+  accessToken: localStorage.getItem('raqeem_at') || null,
+  refreshToken: localStorage.getItem('raqeem_rt') || null,
+  branchId: localStorage.getItem('raqeem_branch') || 'all',
+  termId: localStorage.getItem('raqeem_term') || '',
+  calendar: localStorage.getItem('raqeem_cal') || 'hijri',
+  theme: localStorage.getItem('raqeem_theme') || 'auto',
   route: { path: '/', query: {} },
   notifications: { items: [], unread: 0 },
   online: navigator.onLine
@@ -22,10 +22,10 @@ export const subscribe = (fn) => { listeners.add(fn); return () => listeners.del
 
 export function saveTokens(access, refresh) {
   state.accessToken = access || null;
-  if (access) localStorage.setItem('noor_at', access); else localStorage.removeItem('noor_at');
+  if (access) localStorage.setItem('raqeem_at', access); else localStorage.removeItem('raqeem_at');
   if (refresh !== undefined) {
     state.refreshToken = refresh || null;
-    if (refresh) localStorage.setItem('noor_rt', refresh); else localStorage.removeItem('noor_rt');
+    if (refresh) localStorage.setItem('raqeem_rt', refresh); else localStorage.removeItem('raqeem_rt');
   }
 }
 export function clearSession() {
@@ -35,7 +35,7 @@ export function clearSession() {
 }
 export const setPref = (key, value) => {
   state[key] = value;
-  localStorage.setItem('noor_' + ({ branchId: 'branch', termId: 'term', calendar: 'cal', theme: 'theme' }[key] || key), value);
+  localStorage.setItem('raqeem_' + ({ branchId: 'branch', termId: 'term', calendar: 'cal', theme: 'theme' }[key] || key), value);
 };
 
 /** التحقق من صلاحية — يقود إظهار/إخفاء عناصر الواجهة المرنة */

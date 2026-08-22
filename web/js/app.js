@@ -122,7 +122,7 @@ function buildSidebar() {
       ])
     ]),
     nav,
-    el('div.side-foot', { text: `منصة نور · ${s.tenant.code} · إصدار ١٫٠` })
+    el('div.side-foot', { text: `منصة رقيم · ${s.tenant.code} · إصدار ١٫٠` })
   ]);
 }
 
@@ -280,7 +280,7 @@ function updateBadges() {
     link.querySelector('.badge')?.remove();
     if (n) link.append(el('span.badge', { text: n > 99 ? '٩٩+' : AR_NUM(n) }));
   }
-  document.title = n ? `(${n}) منصة نور` : 'منصة نور — الإدارة المتكاملة لمجمعات تحفيظ القرآن';
+  document.title = n ? `(${n}) منصة رقيم` : 'منصة رقيم — الإدارة المتكاملة لمجمعات تحفيظ القرآن';
   if ('setAppBadge' in navigator) navigator.setAppBadge?.(n).catch(() => {});
 }
 
@@ -288,7 +288,7 @@ function updateBadges() {
 function buildBanners() {
   const list = state.session?.banners || [];
   const box = el('div.banners');
-  const dismissed = new Set(JSON.parse(localStorage.getItem('noor_dismissed_banners') || '[]'));
+  const dismissed = new Set(JSON.parse(localStorage.getItem('raqeem_dismissed_banners') || '[]'));
   for (const b of list) {
     if (dismissed.has(b.id)) continue;
     box.append(el('div.platform-banner.' + (b.severity || 'info'), {}, [
@@ -298,7 +298,7 @@ function buildBanners() {
       ]),
       el('button.x', { text: '✕', 'aria-label': 'إخفاء', onclick: (e) => {
         dismissed.add(b.id);
-        localStorage.setItem('noor_dismissed_banners', JSON.stringify([...dismissed]));
+        localStorage.setItem('raqeem_dismissed_banners', JSON.stringify([...dismissed]));
         e.currentTarget.closest('.platform-banner').remove();
       } })
     ]));
@@ -418,16 +418,16 @@ rt.on('notification', ({ notification }) => {
   updateBadges();
   toast(notification.body || '', 'info', notification.title);
 });
-rt.on('chat.message', (m) => window.dispatchEvent(new CustomEvent('noor:chat', { detail: m })));
-rt.on('task.updated', (m) => window.dispatchEvent(new CustomEvent('noor:task', { detail: m })));
+rt.on('chat.message', (m) => window.dispatchEvent(new CustomEvent('raqeem:chat', { detail: m })));
+rt.on('task.updated', (m) => window.dispatchEvent(new CustomEvent('raqeem:task', { detail: m })));
 
 /* وضع التراجع: إن تعذّرت القناة الدائمة تُحدَّث البيانات بالاستطلاع الدوري */
-rt.on('poll', () => { loadNotifications(); window.dispatchEvent(new CustomEvent('noor:poll')); });
+rt.on('poll', () => { loadNotifications(); window.dispatchEvent(new CustomEvent('raqeem:poll')); });
 
 window.addEventListener('popstate', () => refreshView());
-window.addEventListener('noor:signout', async () => { clearSession(); rt.disconnect(); clear(qs('#app')); await render(); });
-window.addEventListener('noor:navigate', (e) => navigate(e.detail));
-window.addEventListener('noor:push', () => loadNotifications());
+window.addEventListener('raqeem:signout', async () => { clearSession(); rt.disconnect(); clear(qs('#app')); await render(); });
+window.addEventListener('raqeem:navigate', (e) => navigate(e.detail));
+window.addEventListener('raqeem:push', () => loadNotifications());
 window.addEventListener('online', () => { setState({ online: true }); qs('.offline-bar')?.remove(); rt.connect(); loadNotifications(); });
 window.addEventListener('offline', () => {
   setState({ online: false });

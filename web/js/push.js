@@ -43,10 +43,10 @@ export async function registerServiceWorker() {
     });
     navigator.serviceWorker.addEventListener('message', (e) => {
       const { type, url, payload } = e.data || {};
-      if (type === 'navigate' && url) window.dispatchEvent(new CustomEvent('noor:navigate', { detail: url }));
-      if (type === 'push') window.dispatchEvent(new CustomEvent('noor:push', { detail: payload }));
+      if (type === 'navigate' && url) window.dispatchEvent(new CustomEvent('raqeem:navigate', { detail: url }));
+      if (type === 'push') window.dispatchEvent(new CustomEvent('raqeem:push', { detail: payload }));
       if (type === 'resubscribe') subscribePush({ silent: true });
-      if (type === 'sync') window.dispatchEvent(new CustomEvent('noor:sync'));
+      if (type === 'sync') window.dispatchEvent(new CustomEvent('raqeem:sync'));
     });
     return registration;
   } catch (e) {
@@ -109,7 +109,7 @@ export async function subscribePush({ silent = false, ask = true } = {}) {
   }
 
   await api.post('/api/notifications/subscribe', { subscription: sub.toJSON(), platform: platform() });
-  localStorage.setItem('noor_push', '1');
+  localStorage.setItem('raqeem_push', '1');
   if (!silent) toast('تم تفعيل الإشعارات على هذا الجهاز بنجاح', 'ok', '🔔 الإشعارات مفعّلة');
   return { ok: true };
 }
@@ -119,7 +119,7 @@ export async function unsubscribePush() {
     const reg = registration || await navigator.serviceWorker.ready;
     const sub = await reg.pushManager.getSubscription();
     if (sub) { await api.post('/api/notifications/unsubscribe', { endpoint: sub.endpoint }); await sub.unsubscribe(); }
-    localStorage.removeItem('noor_push');
+    localStorage.removeItem('raqeem_push');
     toast('تم إيقاف الإشعارات على هذا الجهاز', 'info');
     return true;
   } catch { return false; }
@@ -136,7 +136,7 @@ export async function pushStatus() {
 
 /** إعادة الاشتراك تلقائياً عند الدخول إن سبق تفعيله على هذا الجهاز */
 export async function autoResubscribe() {
-  if (localStorage.getItem('noor_push') !== '1') return;
+  if (localStorage.getItem('raqeem_push') !== '1') return;
   if (Notification?.permission !== 'granted') return;
   await subscribePush({ silent: true, ask: false }).catch(() => {});
 }
@@ -145,12 +145,12 @@ export async function autoResubscribe() {
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredPrompt = e;
-  window.dispatchEvent(new CustomEvent('noor:installable'));
+  window.dispatchEvent(new CustomEvent('raqeem:installable'));
 });
 window.addEventListener('appinstalled', () => {
   deferredPrompt = null;
-  localStorage.setItem('noor_installed', '1');
-  toast('تم تثبيت منصة نور على جهازك بنجاح', 'ok', '📱 تم التثبيت');
+  localStorage.setItem('raqeem_installed', '1');
+  toast('تم تثبيت منصة رقيم على جهازك بنجاح', 'ok', '📱 تم التثبيت');
   setTimeout(() => subscribePush({ silent: true }), 1800);
 });
 
@@ -182,11 +182,11 @@ export function showIosInstallGuide(forNotifications = false) {
       el('p', { style: { marginTop: 0, color: 'var(--text-2)', fontSize: '13px' },
         text: forNotifications
           ? 'نظام iOS يتيح الإشعارات للمواقع بعد إضافتها للشاشة الرئيسية فقط (iOS 16.4 فأحدث). اتبع الخطوات ثم فعّل الإشعارات من داخل التطبيق:'
-          : 'أضف منصة نور إلى شاشتك الرئيسية لتعمل كتطبيق مستقل بملء الشاشة:' }),
+          : 'أضف منصة رقيم إلى شاشتك الرئيسية لتعمل كتطبيق مستقل بملء الشاشة:' }),
       guideRow(1, 'افتح المنصة في متصفح Safari (وليس Chrome).'),
       guideRow(2, 'اضغط زر المشاركة ⬆️ في شريط المتصفح السفلي.'),
       guideRow(3, 'اختر «إضافة إلى الشاشة الرئيسية» Add to Home Screen.'),
-      guideRow(4, 'اضغط «إضافة»، وسيظهر تطبيق نور بين تطبيقاتك.'),
+      guideRow(4, 'اضغط «إضافة»، وسيظهر تطبيق رقيم بين تطبيقاتك.'),
       forNotifications ? guideRow(5, 'افتح التطبيق من الأيقونة الجديدة ثم فعّل الإشعارات من الإعدادات.') : null,
       el('div.hint', { style: { marginTop: '12px' },
         text: 'ملاحظة: يجب فتح التطبيق من الأيقونة المثبّتة حتى تعمل الإشعارات.' })
@@ -203,7 +203,7 @@ function showManualInstallGuide() {
       el('p', { style: { marginTop: 0, color: 'var(--text-2)', fontSize: '13px' },
         text: p === 'android'
           ? 'من قائمة المتصفح (⋮) اختر «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية».'
-          : 'من شريط العنوان اضغط أيقونة التثبيت ⊕، أو من قائمة المتصفح اختر «تثبيت منصة نور».' }),
+          : 'من شريط العنوان اضغط أيقونة التثبيت ⊕، أو من قائمة المتصفح اختر «تثبيت منصة رقيم».' }),
       el('div.hint', { text: 'قد يظهر خيار التثبيت بعد تصفح المنصة لبضع دقائق.' })
     ]),
     footer: [el('button.btn', { text: 'حسناً', onclick: () => qs('.modal-back')?.remove() })]
@@ -213,8 +213,8 @@ function showManualInstallGuide() {
 
 /** لافتة الترويج للتثبيت — تظهر مرة واحدة بعد الدخول */
 export function maybeShowInstallBanner() {
-  if (isStandalone() || localStorage.getItem('noor_installed') === '1') return;
-  if (localStorage.getItem('noor_install_dismissed') === '1') return;
+  if (isStandalone() || localStorage.getItem('raqeem_installed') === '1') return;
+  if (localStorage.getItem('raqeem_install_dismissed') === '1') return;
   const p = platform();
   if (p === 'desktop' && !canInstall()) return;
 
@@ -223,7 +223,7 @@ export function maybeShowInstallBanner() {
     const bar = el('div.install-banner', {}, [
       el('img', { src: '/assets/icons/icon-192.png', alt: '' }),
       el('div.tx', {}, [
-        el('b', { text: 'ثبّت منصة نور على جهازك' }),
+        el('b', { text: 'ثبّت منصة رقيم على جهازك' }),
         el('p', { text: p === 'ios'
           ? 'أضفها لشاشتك الرئيسية لتعمل كتطبيق وتستقبل الإشعارات.'
           : 'وصول أسرع، عمل دون اتصال، وإشعارات فورية.' })
@@ -231,7 +231,7 @@ export function maybeShowInstallBanner() {
       el('button.btn.sm', { text: 'تثبيت', onclick: async () => { bar.remove(); await promptInstall(); } }),
       el('button.icon-btn', {
         text: '✕', 'aria-label': 'إخفاء',
-        onclick: () => { bar.remove(); localStorage.setItem('noor_install_dismissed', '1'); }
+        onclick: () => { bar.remove(); localStorage.setItem('raqeem_install_dismissed', '1'); }
       })
     ]);
     document.body.append(bar);
@@ -242,15 +242,15 @@ export function maybeShowInstallBanner() {
 /** طلب تفعيل الإشعارات بلطف — لافتة غير معترضة، لا تُقاطع عمل المستخدم */
 export function maybeAskNotifications() {
   if (!pushSupported()) return;
-  if (localStorage.getItem('noor_push') === '1') return;
-  if (localStorage.getItem('noor_notif_asked') === '1') return;
+  if (localStorage.getItem('raqeem_push') === '1') return;
+  if (localStorage.getItem('raqeem_notif_asked') === '1') return;
   if (Notification.permission === 'denied') return;
   if (platform() === 'ios' && !isStandalone()) return;
 
   const show = () => {
     // لا نقاطع المستخدم أثناء فتح نافذة أو لوحة جانبية أو لافتة أخرى
     if (document.querySelector('.modal-back, .drawer, .install-banner')) return setTimeout(show, 15000);
-    localStorage.setItem('noor_notif_asked', '1');
+    localStorage.setItem('raqeem_notif_asked', '1');
     const bar = el('div.install-banner', {}, [
       el('div', { text: '🔔', style: { fontSize: '30px', flex: '0 0 auto' } }),
       el('div.tx', {}, [

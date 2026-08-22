@@ -2,7 +2,7 @@
 
 # النشر على Cloudflare
 
-دليل تشغيل **منصة نور** بالكامل على بنية Cloudflare: الاستضافة والتشغيل على **Workers**،
+دليل تشغيل **منصة رقيم** بالكامل على بنية Cloudflare: الاستضافة والتشغيل على **Workers**،
 قاعدة البيانات على **D1**، تخزين الملفات على **R2**، البثّ اللحظي على **Durable Objects**،
 والوظائف المجدولة على **Cron Triggers** — بلا أي مزوّد خارجي.
 
@@ -73,7 +73,7 @@ npm run cf:link
 ```bash
 npm run cf:link -- --dry      # يعرض الخطة وينفّذ الفحوص القرائية فعلاً دون تغيير شيء
 npm run cf:link -- --rotate   # يعيد توليد الأسرار (يُبطل اشتراكات الإشعارات القائمة)
-npm run cf:link -- --name نور-الرياض   # اسم عامل مختلف
+npm run cf:link -- --name رقيم-الرياض   # اسم عامل مختلف
 ```
 
 > ⚠ احتفظ بـ `.cf-secrets.json`: مفتاحا VAPID لا يمكن استرجاعهما من Cloudflare،
@@ -85,8 +85,8 @@ npm run cf:link -- --name نور-الرياض   # اسم عامل مختلف
 
 | # | أين | ماذا |
 |---|---|---|
-| ١ | Cloudflare ← R2 | `Enable R2` (تُطلب بطاقة حتى في الحد المجاني) ثم `Create bucket` باسم `noor-files` |
-| ٢ | Cloudflare ← Storage and Databases ← D1 | `Create database` باسم `noor-db`، وانسخ `Database ID` |
+| ١ | Cloudflare ← R2 | `Enable R2` (تُطلب بطاقة حتى في الحد المجاني) ثم `Create bucket` باسم `raqeem-files` |
+| ٢ | Cloudflare ← Storage and Databases ← D1 | `Create database` باسم `raqeem-db`، وانسخ `Database ID` |
 | ٣ | GitHub ← `wrangler.toml` ← ✏️ | الصق المعرّف في `database_id` (السطر ٣١) ثم `Commit changes` |
 | ٤ | Cloudflare ← Workers & Pages | `Create` ← `Import a repository` ← اختر المستودع والفرع `main` |
 | ٥ | العامل ← Settings ← Variables and Secrets | أضِف الأسرار الأربعة **من نوع Secret**: `JWT_SECRET` · `VAPID_PUBLIC_KEY` · `VAPID_PRIVATE_KEY` · `BOOTSTRAP_TOKEN` |
@@ -108,8 +108,8 @@ npm run cf:link -- --name نور-الرياض   # اسم عامل مختلف
 ### ٣.١ إنشاء الموارد
 
 ```bash
-npx wrangler d1 create noor-db          # انسخ database_id من الناتج
-npx wrangler r2 bucket create noor-files
+npx wrangler d1 create raqeem-db          # انسخ database_id من الناتج
+npx wrangler r2 bucket create raqeem-files
 ```
 
 ضع `database_id` في `wrangler.toml`:
@@ -117,7 +117,7 @@ npx wrangler r2 bucket create noor-files
 ```toml
 [[d1_databases]]
 binding = "DB"
-database_name = "noor-db"
+database_name = "raqeem-db"
 database_id = "‹المعرّف الذي ظهر لك›"
 ```
 
@@ -149,7 +149,7 @@ npm run cf:deploy     # ينشر العامل والواجهة
 ### ٣.٤ التهيئة الأولى
 
 ```bash
-npm run cf:bootstrap -- https://noor-erp.‹حسابك›.workers.dev
+npm run cf:bootstrap -- https://raqeem-erp.‹حسابك›.workers.dev
 ```
 
 يطبّق المخطط (إن لم يكن مطبّقاً) ويُنشئ الجهة رقم ١ بأدوارها الـ ١٠ وصلاحياتها الـ ٦٠ وبياناتها،
@@ -159,7 +159,7 @@ npm run cf:bootstrap -- https://noor-erp.‹حسابك›.workers.dev
 
 ### ٣.٥ نطاق مخصّص
 
-من لوحة التحكم: **Workers & Pages ← noor-erp ← Settings ← Domains & Routes ← Add Custom Domain**،
+من لوحة التحكم: **Workers & Pages ← raqeem-erp ← Settings ← Domains & Routes ← Add Custom Domain**،
 ثم اضبط `APP_URL` في `[vars]` داخل `wrangler.toml` وأعد النشر. الشهادة تُصدَر تلقائياً، و**HTTPS شرط
 لعمل عامل الخدمة وإشعارات الدفع والموقع الجغرافي**.
 
@@ -229,7 +229,7 @@ BASE=http://localhost:8787 npm run verify:realtime   # القناة اللحظي
 مع خطة Workers Paid، أزل التعليق عن قسم `queues` في `wrangler.toml` ثم:
 
 ```bash
-npx wrangler queues create noor-jobs
+npx wrangler queues create raqeem-jobs
 ```
 
 تُلتقط الوحدة تلقائياً: `enqueue()` يرسل إلى الطابور بدل الاعتماد على `waitUntil`.
@@ -281,16 +281,16 @@ npx wrangler queues create noor-jobs
 * **الاستعادة**:
 
 ```bash
-npx wrangler r2 object get noor-files/tenants/1/backups/noor-2026-01-01-02-00-00.sql.gz --file b.sql.gz
+npx wrangler r2 object get raqeem-files/tenants/1/backups/raqeem-2026-01-01-02-00-00.sql.gz --file b.sql.gz
 gunzip b.sql.gz
-npx wrangler d1 execute noor-db --remote --file=b.sql
+npx wrangler d1 execute raqeem-db --remote --file=b.sql
 ```
 
 الملف يُسقط مُشغّلات الحماية قبل الإدراج ويعيد إنشاءها بعده، فالاستعادة تعمل كما هي.
 إضافةً إلى ذلك يوفّر D1 **Time Travel** للرجوع بالقاعدة إلى أي لحظة خلال ٣٠ يوماً:
 
 ```bash
-npx wrangler d1 time-travel restore noor-db --timestamp=2026-01-01T00:00:00Z
+npx wrangler d1 time-travel restore raqeem-db --timestamp=2026-01-01T00:00:00Z
 ```
 
 ---
@@ -318,7 +318,7 @@ npx wrangler d1 time-travel restore noor-db --timestamp=2026-01-01T00:00:00Z
 ```bash
 npm run cf:tail                              # سجلّ حيّ من الإنتاج
 curl https://‹نطاقك›/api/health              # حالة الخدمة والمزوّدات المربوطة
-npx wrangler d1 execute noor-db --remote --command "SELECT COUNT(*) FROM users"
+npx wrangler d1 execute raqeem-db --remote --command "SELECT COUNT(*) FROM users"
 ```
 
 المراقبة مفعّلة في `wrangler.toml` (`[observability]`) فتظهر السجلات والقياسات في لوحة التحكم.

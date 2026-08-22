@@ -10,7 +10,7 @@ const limitText = (v, unit) => (v === null || v === undefined ? 'بلا حدود
 
 export async function render({ navigate }) {
   const [platform, data] = await Promise.all([
-    api.get('/api/public/platform', { silent: true }).catch(() => ({ name: 'منصة نور' })),
+    api.get('/api/public/platform', { silent: true }).catch(() => ({ name: 'منصة رقيم' })),
     api.get('/api/public/plans')
   ]);
 
@@ -59,7 +59,7 @@ export async function render({ navigate }) {
   return el('div.public-wrap', {}, [
     el('header.public-head', {}, [
       el('img', { src: '/assets/icons/icon-192.png', alt: '', width: 56, height: 56 }),
-      el('h1', { text: platform.name || 'منصة نور' }),
+      el('h1', { text: platform.name || 'منصة رقيم' }),
       el('p', { text: platform.tagline || 'الإدارة المتكاملة لمجمعات تحفيظ القرآن الكريم' }),
       platform.tenants_count
         ? chip(`تخدم ${AR_NUM(platform.tenants_count)} جهة تعليمية`, 'ok') : null

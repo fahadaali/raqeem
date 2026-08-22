@@ -72,7 +72,7 @@ async function request(method, url, { body, raw, retry = true, silent = false } 
   if (res.status === 401 && retry && state.refreshToken) {
     if (await doRefresh()) return request(method, url, { body, raw, retry: false, silent });
     clearSession();
-    window.dispatchEvent(new CustomEvent('noor:signout'));
+    window.dispatchEvent(new CustomEvent('raqeem:signout'));
     throw new ApiError('انتهت الجلسة', 401, 'UNAUTHORIZED');
   }
 
@@ -121,7 +121,7 @@ export const api = {
     const { blob, res } = await request('POST', url, { body, raw: true });
     const disp = res.headers.get('content-disposition') || '';
     const m = disp.match(/filename\*=UTF-8''([^;]+)/);
-    const name = filename || (m ? decodeURIComponent(m[1]) : 'noor-export');
+    const name = filename || (m ? decodeURIComponent(m[1]) : 'raqeem-export');
     const { download } = await import('./util.js');
     download(blob, name);
   },
@@ -130,7 +130,7 @@ export const api = {
     const { blob, res } = await request('GET', url, { raw: true });
     const disp = res.headers.get('content-disposition') || '';
     const m = disp.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/);
-    const name = filename || (m ? decodeURIComponent(m[1]) : 'noor-file');
+    const name = filename || (m ? decodeURIComponent(m[1]) : 'raqeem-file');
     const { download } = await import('./util.js');
     download(blob, name);
   },

@@ -11,11 +11,11 @@ export function buildConfig(env = {}) {
     appUrl: env.APP_URL || '',
     port: num(env.PORT, 3000),
 
-    jwtSecret: env.JWT_SECRET || 'noor-dev-secret-change-me',
+    jwtSecret: env.JWT_SECRET || 'raqeem-dev-secret-change-me',
     jwtExpires: env.JWT_EXPIRES || '12h',
     refreshDays: num(env.REFRESH_EXPIRES_DAYS, 30),
 
-    dbFile: env.DB_FILE || './data/noor.db',
+    dbFile: env.DB_FILE || './data/raqeem.db',
     storageRoot: env.STORAGE_ROOT || './storage',
 
     vapid: {

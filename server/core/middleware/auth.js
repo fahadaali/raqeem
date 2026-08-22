@@ -94,7 +94,7 @@ export function authenticate() {
     const req = c.get('request');
     const header = req.get('authorization') || '';
     const cookie = req.get('cookie') || '';
-    const fromCookie = (cookie.match(/(?:^|;\s*)noor_at=([^;]+)/) || [])[1];
+    const fromCookie = (cookie.match(/(?:^|;\s*)raqeem_at=([^;]+)/) || [])[1];
     const token = header.startsWith('Bearer ') ? header.slice(7) : fromCookie;
     if (!token) throw unauthorized();
 

@@ -459,7 +459,7 @@ section('٩. التكامل والواجهة البرمجية العامة', asy
   ok('المفتاح السرّي لا يُخزَّن ولا يُعاد عرضه', !JSON.stringify(listed).includes(API.split('.')[1]));
 
   ok('رفض الوصول بدون مفتاح', (await call('GET', '/api/v1/teachers')).status === 401);
-  ok('رفض مفتاح خاطئ', (await call('GET', '/api/v1/teachers', { token: 'noor_rq_zzz.bad' })).status === 401);
+  ok('رفض مفتاح خاطئ', (await call('GET', '/api/v1/teachers', { token: 'raqeem_rq_zzz.bad' })).status === 401);
 
   const idx = await call('GET', '/api/v1/', { token: API });
   ok('صفحة التوثيق تُرجع النطاقات والجهة', idx.status === 200 && idx.data.tenant.code === 'RQ');
@@ -513,13 +513,13 @@ section('١٢. استيراد البيانات الأولية', async () => {
   const hdr = 'الاسم الكامل,البريد الإلكتروني,الجوال,الدور,رمز الفرع,كلمة المرور المبدئية';
   const stamp = Date.now();
   const csv = '﻿' + hdr + '\n' +
-    `سالم التميمي,salem.${stamp}@test.sa,0501112223,teacher,B01,Noor@2026\n` +
-    'بريد خاطئ,not-an-email,0501112224,teacher,B01,Noor@2026\n' +
-    `دور مجهول,ok1.${stamp}@test.sa,0501112225,ghost,B01,Noor@2026\n` +
-    `فرع مجهول,ok2.${stamp}@test.sa,0501112226,teacher,ZZZ,Noor@2026\n` +
-    `مكرر,salem.${stamp}@test.sa,0501112227,teacher,B01,Noor@2026\n` +
+    `سالم التميمي,salem.${stamp}@test.sa,0501112223,teacher,B01,Raqeem@2026\n` +
+    'بريد خاطئ,not-an-email,0501112224,teacher,B01,Raqeem@2026\n' +
+    `دور مجهول,ok1.${stamp}@test.sa,0501112225,ghost,B01,Raqeem@2026\n` +
+    `فرع مجهول,ok2.${stamp}@test.sa,0501112226,teacher,ZZZ,Raqeem@2026\n` +
+    `مكرر,salem.${stamp}@test.sa,0501112227,teacher,B01,Raqeem@2026\n` +
     `كلمة قصيرة,ok3.${stamp}@test.sa,0501112228,teacher,B01,123\n` +
-    ',,0501112229,teacher,B01,Noor@2026\n';
+    ',,0501112229,teacher,B01,Raqeem@2026\n';
   const mk = () => { const fd = new FormData(); fd.append('type', 'users');
     fd.append('file', new Blob([csv], { type: 'text/csv' }), 'users.csv'); return fd; };
 
@@ -949,7 +949,7 @@ section('١٩. طبقة الـ SaaS (المرحلة الثانية)', async () =
     token: S.newOwner, body: { plan_code: 'growth', cycle: 'yearly' } });
   ok('الترقية تُصدر فاتورة', up.status === 201 && !!up.data.invoice);
   const inv = up.data.invoice;
-  ok('الفاتورة تحمل رقماً متسلسلاً', /^NOOR-\d{4}-\d{5}$/.test(inv.number), inv.number);
+  ok('الفاتورة تحمل رقماً متسلسلاً', /^RQM-\d{4}-\d{5}$/.test(inv.number), inv.number);
   eq('قيمة الاشتراك السنوي', inv.subtotal, 4990);
   eq('ضريبة القيمة المضافة ١٥٪', inv.vat_amount, 748.5);
   eq('الإجمالي شامل الضريبة', inv.total, 5738.5);
@@ -1638,7 +1638,7 @@ section('٢٠. لوحة المالك: المزايا والنمو والامتث
 /* ═════════ التشغيل ═════════ */
 (async () => {
   console.log(`\n╔═══════════════════════════════════════════════════════════╗`);
-  console.log(`║  تدقيق منصة نور — ${BASE.padEnd(39)}║`);
+  console.log(`║  تدقيق منصة رقيم — ${BASE.padEnd(39)}║`);
   console.log(`╚═══════════════════════════════════════════════════════════╝`);
   const started = Date.now();
   for (const s of sections) {

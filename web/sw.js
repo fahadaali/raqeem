@@ -1,11 +1,11 @@
 /* ═══════════════════════════════════════════════════════════════════════
-   منصة نور — عامل الخدمة (Service Worker)
+   منصة رقيم — عامل الخدمة (Service Worker)
    • تخزين هيكل التطبيق للعمل دون اتصال
    • استراتيجية الشبكة أولاً لواجهات البيانات مع رجوع إلى الذاكرة المؤقتة
    • استقبال إشعارات الدفع (Web Push) على المتصفح والأندرويد والآيفون
    • مزامنة خلفية لإعادة إرسال العمليات التي تمت أثناء انقطاع الشبكة
    ═══════════════════════════════════════════════════════════════════════ */
-const VERSION = 'noor-v1.0.2';
+const VERSION = 'raqeem-v1.0.2';
 const SHELL_CACHE = `${VERSION}-shell`;
 const DATA_CACHE = `${VERSION}-data`;
 
@@ -126,7 +126,7 @@ self.addEventListener('fetch', (event) => {
         if (cached) {
           const body = await cached.json();
           return new Response(JSON.stringify({ ...body, _offline: true }), {
-            headers: { 'content-type': 'application/json', 'x-noor-offline': '1' }
+            headers: { 'content-type': 'application/json', 'x-raqeem-offline': '1' }
           });
         }
         return new Response(JSON.stringify({ error: { code: 'OFFLINE', message: 'لا يوجد اتصال بالإنترنت' } }),
@@ -162,7 +162,7 @@ const CATEGORY_ICON = {
 };
 
 self.addEventListener('push', (event) => {
-  let payload = { title: 'منصة نور', body: 'لديك تحديث جديد', url: '/' };
+  let payload = { title: 'منصة رقيم', body: 'لديك تحديث جديد', url: '/' };
   try { if (event.data) payload = { ...payload, ...event.data.json() }; }
   catch { if (event.data) payload.body = event.data.text(); }
 
@@ -172,7 +172,7 @@ self.addEventListener('push', (event) => {
     badge: '/assets/icons/badge-72.png',
     dir: 'rtl',
     lang: 'ar',
-    tag: payload.tag || 'noor',
+    tag: payload.tag || 'raqeem',
     renotify: true,
     requireInteraction: payload.urgency === 'high',
     vibrate: payload.urgency === 'high' ? [200, 80, 200] : [120],
@@ -217,7 +217,7 @@ self.addEventListener('pushsubscriptionchange', (event) => {
 
 /* ─────────────────── المزامنة الخلفية ─────────────────── */
 self.addEventListener('sync', (event) => {
-  if (event.tag === 'noor-sync') {
+  if (event.tag === 'raqeem-sync') {
     event.waitUntil((async () => {
       const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
       for (const c of all) c.postMessage({ type: 'sync' });

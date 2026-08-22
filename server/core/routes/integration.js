@@ -36,7 +36,7 @@ keysRouter.post('/', can('api.keys.manage'), h(async (req) => {
   if (!list.length) throw badRequest('اختر نطاق وصول واحداً على الأقل');
 
   const secret = randomToken(24);
-  const prefix = `noor_${req.ctx.tenantCode.toLowerCase()}_${randomToken(3).slice(0, 6).toLowerCase()}`;
+  const prefix = `raqeem_${req.ctx.tenantCode.toLowerCase()}_${randomToken(3).slice(0, 6).toLowerCase()}`;
   const full = `${prefix}.${secret}`;
   const r = await app.db.run(
     `INSERT INTO api_keys(tenant_id,name,key_prefix,key_hash,scopes,rate_limit,expires_at,created_by) VALUES(?,?,?,?,?,?,?,?)`,
@@ -91,7 +91,7 @@ const scope = (name) => async (c, next) => {
 };
 
 publicRouter.get('/', h(async (req) => ({
-  service: 'Noor ERP Public API', version: 'v1',
+  service: 'Raqeem ERP Public API', version: 'v1',
   tenant: await req.app.db.get('SELECT code,name FROM tenants WHERE id=?', req.tenantId),
   scopes: req.apiKey.scopes,
   endpoints: ['/v1/teachers', '/v1/teachers/:id', '/v1/branches', '/v1/terms',

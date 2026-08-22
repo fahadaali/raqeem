@@ -6,8 +6,8 @@ import { gzip } from '../zip.js';
  *   • Cloudflare : يُحفظ في دلو R2 تحت tenants/<tenant_id>/backups/
  *
  * الناتج ملف SQL مضغوط (gzip) قابل للاستعادة كما هو:
- *   npx wrangler d1 execute noor-db --remote --file=noor-YYYY-MM-DD.sql
- *   sqlite3 noor.db < noor-YYYY-MM-DD.sql
+ *   npx wrangler d1 execute raqeem-db --remote --file=raqeem-YYYY-MM-DD.sql
+ *   sqlite3 raqeem.db < raqeem-YYYY-MM-DD.sql
  *
  * الملف يرتّب الجداول حسب تبعية المفاتيح الأجنبية، ويُسقط مُشغّلات الحماية
  * (سجل التدقيق غير القابل للتعديل، وقفل الفصول المؤرشفة) قبل الإدراج
@@ -79,10 +79,10 @@ export async function dumpSQL(app, { tenantId = null } = {}) {
 
   const head = [
     '-- ══════════════════════════════════════════════════════════════',
-    '--  منصة نور — نسخة احتياطية منطقية قابلة للاستعادة',
+    '--  منصة رقيم — نسخة احتياطية منطقية قابلة للاستعادة',
     `--  التاريخ : ${new Date().toISOString()}`,
     `--  الجهة   : ${tenantId ?? 'كل الجهات'}`,
-    '--  الاستعادة: wrangler d1 execute noor-db --remote --file=<هذا الملف>',
+    '--  الاستعادة: wrangler d1 execute raqeem-db --remote --file=<هذا الملف>',
     '-- ══════════════════════════════════════════════════════════════',
     '',
     '-- إسقاط مُشغّلات الحماية مؤقتاً كي لا تمنع استعادة البيانات',
@@ -137,7 +137,7 @@ export async function runLogicalBackup(app, { tenantId, keep = null } = {}) {
   const { sql, tables, rows } = await dumpSQL(app, { tenantId });
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
   const prefix = `tenants/${tenantId}/backups/`;
-  const key = `${prefix}noor-${stamp}.sql.gz`;
+  const key = `${prefix}raqeem-${stamp}.sql.gz`;
   const body = await gzip(new TextEncoder().encode(sql));
 
   await app.storage.put(key, body, { contentType: 'application/gzip' });

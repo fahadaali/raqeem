@@ -102,7 +102,7 @@ async function openTicket(id, reload) {
         chip(`صُعّدت ${timeAgo(t.vendor.escalated_at)}`)
       ]),
       t.vendor.reply ? el('div', { style: { background: 'var(--ok-bg)', border: '1px solid var(--border)', borderRadius: '11px', padding: '10px 13px' } }, [
-        el('b', { text: 'رد فريق منصة نور', style: { fontSize: '12.5px' } }),
+        el('b', { text: 'رد فريق منصة رقيم', style: { fontSize: '12.5px' } }),
         el('p', { text: t.vendor.reply, style: { margin: '6px 0 0', fontSize: '13px', whiteSpace: 'pre-wrap' } }),
         el('div.hint', { text: timeAgo(t.vendor.replied_at) })
       ]) : el('div.hint', { text: 'لم يصل رد من المزوّد بعد.' })
@@ -126,7 +126,7 @@ async function openTicket(id, reload) {
       t.vendor ? null : el('button.btn.ghost.block', {
         style: { marginTop: '8px' }, text: '⤴️ تصعيد إلى دعم مزوّد المنصة',
         onclick: async (e) => {
-          if (!confirm('سيُرسَل نص التذكرة إلى فريق منصة نور لمعالجتها. متابعة؟')) return;
+          if (!confirm('سيُرسَل نص التذكرة إلى فريق منصة رقيم لمعالجتها. متابعة؟')) return;
           e.target.disabled = true;
           try {
             await api.post(`/api/comms/tickets/${t.id}/escalate-vendor`, {});

@@ -141,7 +141,7 @@ async function tenantDialog(id, reload) {
   const box = el('div.stack');
 
   const name = input({ value: t.name });
-  const domain = input({ value: t.custom_domain || '', dir: 'ltr', placeholder: 'noor.example.sa' });
+  const domain = input({ value: t.custom_domain || '', dir: 'ltr', placeholder: 'raqeem.example.sa' });
   const primary = input({ type: 'color', value: t.primary_color });
   const accent = input({ type: 'color', value: t.accent_color });
 

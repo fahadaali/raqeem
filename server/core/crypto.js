@@ -61,7 +61,7 @@ export function parseDuration(v, fallback = 43200) {
   return Number(m[1]) * ({ s: 1, m: 60, h: 3600, d: 86400 }[m[2] || 's']);
 }
 
-export async function signJWT(payload, secret, { expiresIn = '12h', issuer = 'noor-erp' } = {}) {
+export async function signJWT(payload, secret, { expiresIn = '12h', issuer = 'raqeem-erp' } = {}) {
   const now = Math.floor(Date.now() / 1000);
   const body = { ...payload, iss: issuer, iat: now, exp: now + parseDuration(expiresIn) };
   const head = b64uEncode(enc.encode(JSON.stringify({ alg: 'HS256', typ: 'JWT' })));
@@ -74,7 +74,7 @@ export class JWTError extends Error {
   constructor(message, code) { super(message); this.code = code; }
 }
 
-export async function verifyJWT(token, secret, { issuer = 'noor-erp' } = {}) {
+export async function verifyJWT(token, secret, { issuer = 'raqeem-erp' } = {}) {
   const parts = String(token || '').split('.');
   if (parts.length !== 3) throw new JWTError('رمز غير صالح', 'INVALID');
   const data = `${parts[0]}.${parts[1]}`;

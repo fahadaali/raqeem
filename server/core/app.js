@@ -48,7 +48,7 @@ export function createApi(container) {
   api.get('/health', h(async (req) => {
     const t = await req.app.db.get('SELECT COUNT(*) AS c FROM tenants');
     return {
-      status: 'ok', service: 'noor-erp', time: new Date().toISOString(),
+      status: 'ok', service: 'raqeem-erp', time: new Date().toISOString(),
       env: req.app.cfg.env, runtime: req.app.runtime, tenants: t.c,
       push: pushEnabled(req.app.cfg), storage: req.app.storage.driver,
       database: req.app.db.dialect

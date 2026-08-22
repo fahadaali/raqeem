@@ -43,7 +43,7 @@ export async function render({ onSuccess, navigate }) {
     btn.textContent = ''; btn.append(el('span.spinner'), document.createTextNode(' جارٍ التحقق...'));
     try {
       await api.login(email.value.trim(), pass.value, totpField.hidden ? undefined : totp.value.trim());
-      toast('مرحباً بك في منصة نور', 'ok');
+      toast('مرحباً بك في منصة رقيم', 'ok');
       await onSuccess();
     } catch (err) {
       /* الحساب يطلب طبقة ثانية — نُظهر حقل الرمز ولا نُفرغ كلمة المرور */
@@ -78,7 +78,7 @@ export async function render({ onSuccess, navigate }) {
     el('div.login-card', {}, [
       el('div.login-brand', {}, [
         el('img', { src: tenant?.logo_url || '/assets/icons/icon-192.png', alt: '' }),
-        el('h1', { text: tenant?.name || brand?.platform?.name || 'منصة نور' }),
+        el('h1', { text: tenant?.name || brand?.platform?.name || 'منصة رقيم' }),
         el('p', { text: tenant
           ? (brand?.platform?.tagline || 'الإدارة المتكاملة لمجمعات تحفيظ القرآن الكريم')
           : (brand?.platform?.tagline || 'الإدارة المتكاملة لمجمعات تحفيظ القرآن الكريم') })

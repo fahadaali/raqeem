@@ -26,7 +26,7 @@ export const IMPORT_TYPES = {
       { key: 'branch_code', header: 'رمز الفرع', required: true, hint: 'مثل B01' },
       { key: 'password', header: 'كلمة المرور المبدئية', hint: '٨ أحرف فأكثر — تُولّد آلياً إن تُركت فارغة' }
     ],
-    sample: [{ name: 'محمد بن أحمد', email: 'm.ahmed@example.sa', phone: '0551234567', role_key: 'teacher', branch_code: 'B01', password: 'Noor@2026' }]
+    sample: [{ name: 'محمد بن أحمد', email: 'm.ahmed@example.sa', phone: '0551234567', role_key: 'teacher', branch_code: 'B01', password: 'Raqeem@2026' }]
   },
   employees: {
     label: 'ملفات الموظفين والرواتب',
@@ -206,7 +206,7 @@ export async function runImport(app, { batchId, tenantId, userId, type, rows, br
     for (const r of slice) {
       try {
         if (type === 'users') {
-          const pw = r.password || `Noor@${randomToken(4).slice(0, 6)}`;
+          const pw = r.password || `Raqeem@${randomToken(4).slice(0, 6)}`;
           stmts.push([`INSERT INTO users(tenant_id,name,email,phone,password_hash,role_id,primary_branch_id,must_change_pw)
             VALUES(?,?,?,?,?,?,?,1)`,
             [tenantId, r.name, r.email.toLowerCase(), r.phone || null, await hashPassword(pw),

@@ -25,7 +25,7 @@ export function validateCode(raw) {
   return code;
 }
 
-const RESERVED = new Set(['ADMIN', 'API', 'WWW', 'APP', 'PLATFORM', 'NOOR', 'SUPPORT',
+const RESERVED = new Set(['ADMIN', 'API', 'WWW', 'APP', 'PLATFORM', 'RQM', 'SUPPORT',
   'BILLING', 'STATUS', 'HELP', 'DOCS', 'MAIL', 'ROOT', 'SYSTEM', 'TEST']);
 
 export async function codeAvailable(app, raw) {

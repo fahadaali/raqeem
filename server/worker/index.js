@@ -103,7 +103,7 @@ async function handleWebSocket(request, container) {
 function bootstrapPage(hasToken) {
   const html = `<!doctype html><html dir="rtl" lang="ar"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="robots" content="noindex,nofollow"><title>تهيئة منصة نور</title>
+<meta name="robots" content="noindex,nofollow"><title>تهيئة منصة رقيم</title>
 <style>
  :root{--brand:#0F5132;--gold:#C9A227;--bg:#f6f7f5;--card:#fff;--line:#e3e6e1;--txt:#1c2320;--dim:#6b736e}
  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--txt);
@@ -129,7 +129,7 @@ function bootstrapPage(hasToken) {
  ol{margin:10px 0 0;padding-inline-start:20px;font-size:13.5px;color:var(--dim)}
  code{background:#eef1ee;padding:1px 6px;border-radius:5px;font-size:12.5px;direction:ltr;display:inline-block}
 </style></head><body><div class="card">
- <h1>تهيئة منصة نور</h1>
+ <h1>تهيئة منصة رقيم</h1>
  <p class="sub">تُنفَّذ مرّة واحدة: تُنشئ جداول قاعدة البيانات وتعبّئ الجهة رقم ١.</p>
  ${hasToken ? '' : '<div class="msg warn" style="display:block">لم يُضبط السرّ <code>BOOTSTRAP_TOKEN</code> على العامل. أضِفه من لوحة Cloudflare ← العامل ← Settings ← Variables and Secrets، ثم أعِد تحميل هذه الصفحة.</div>'}
  <form id="f" ${hasToken ? '' : 'style="opacity:.45;pointer-events:none"'}>

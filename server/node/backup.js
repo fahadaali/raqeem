@@ -9,13 +9,13 @@ export async function runBackup(app) {
   const dir = path.resolve(ROOT, app.cfg.backup.dir);
   fs.mkdirSync(dir, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const raw = path.join(dir, `noor-${stamp}.db`);
+  const raw = path.join(dir, `raqeem-${stamp}.db`);
   await app.db.backup(raw);
   const gz = raw + '.gz';
   fs.writeFileSync(gz, await gzip(new Uint8Array(fs.readFileSync(raw))));
   fs.unlinkSync(raw);
 
-  const files = fs.readdirSync(dir).filter(f => f.startsWith('noor-') && f.endsWith('.gz')).sort().reverse();
+  const files = fs.readdirSync(dir).filter(f => f.startsWith('raqeem-') && f.endsWith('.gz')).sort().reverse();
   for (const old of files.slice(app.cfg.backup.keep)) fs.unlinkSync(path.join(dir, old));
   return { file: path.basename(gz), size: fs.statSync(gz).size, kept: Math.min(files.length, app.cfg.backup.keep) };
 }

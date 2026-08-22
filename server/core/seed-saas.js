@@ -74,7 +74,7 @@ export async function seedSaaS(app, { tenantOneOwnerEmail = 'admin@riyadh-qu.sa'
   await db.run(
     `UPDATE platform_settings SET bank_details=?, vat_number=?, cr_number=?, updated_at=? WHERE id=1`,
     JSON.stringify({
-      bank: 'مصرف الراجحي', beneficiary: 'شركة نور لتقنية المعلومات',
+      bank: 'مصرف الراجحي', beneficiary: 'شركة رقيم لتقنية المعلومات',
       iban: 'SA0000000000000000000000', note: 'يرجى كتابة رقم الفاتورة في خانة الوصف'
     }),
     settings.vat_number || '300000000000003', settings.cr_number || '1010000000', nowUTC());

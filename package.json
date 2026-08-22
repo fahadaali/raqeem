@@ -1,8 +1,8 @@
 {
-  "name": "noor-erp",
+  "name": "raqeem-erp",
   "version": "1.0.0",
   "private": true,
-  "description": "منصة نور — منصة الإدارة المتكاملة (ERP) لمجمعات تحفيظ القرآن الكريم. بنية متعددة المستأجرين جاهزة للتحول إلى SaaS.",
+  "description": "منصة رقيم — منصة الإدارة المتكاملة (ERP) لمجمعات تحفيظ القرآن الكريم. بنية متعددة المستأجرين جاهزة للتحول إلى SaaS.",
   "type": "module",
   "main": "server/node/index.js",
   "engines": {
@@ -22,8 +22,8 @@
     "verify:wiring": "node scripts/verify-wiring.js",
     "cf:dev": "wrangler dev",
     "cf:deploy": "npm run cf:build && wrangler deploy",
-    "cf:migrate": "wrangler d1 migrations apply noor-db --remote",
-    "cf:migrate:local": "wrangler d1 migrations apply noor-db --local",
+    "cf:migrate": "wrangler d1 migrations apply raqeem-db --remote",
+    "cf:migrate:local": "wrangler d1 migrations apply raqeem-db --local",
     "cf:tail": "wrangler tail",
     "cf:build:migrations": "node scripts/build-migrations.js",
     "cf:link": "node scripts/cf-deploy.js",
