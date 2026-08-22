@@ -91,7 +91,8 @@ export async function render({ onSuccess, navigate }) {
           ? el('button.btn.sm', { type: 'button', text: 'إنشاء جهة جديدة',
               onclick: () => navigate?.('/signup') }) : null
       ]) : null,
-      !saas ? el('div.login-demo', {}, [
+      /* لا تظهر إلا حين يأذن بها الخادم صراحةً — أي على نسخة تطوير فقط */
+      (!saas && platform?.demo_logins) ? el('div.login-demo', {}, [
         el('h4', { text: 'حسابات تجريبية — اختر دوراً لتجربة صلاحياته' }),
         demoGrid
       ]) : null

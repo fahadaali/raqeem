@@ -52,7 +52,13 @@ router.get('/platform', h(async (req) => {
     signup_enabled: !!(s.saas_enabled && s.signup_enabled),
     signup_needs_review: !!s.signup_needs_review,
     trial_days: s.trial_days, currency: s.currency, vat_rate: s.vat_rate,
-    tenants_count: tenants
+    tenants_count: tenants,
+    /*
+     * أزرار «الحسابات التجريبية» في شاشة الدخول تفتح حساباً كامل الصلاحية بنقرة،
+     * فلا يجوز ظهورها على نسخة منشورة. الخادم وحده يقرّر ذلك من بيئة التشغيل،
+     * والافتراض المغلق: أي نسخة ليست تطويرية صريحة تُعدّ إنتاجاً.
+     */
+    demo_logins: req.app.cfg.env === 'development'
   };
 }));
 

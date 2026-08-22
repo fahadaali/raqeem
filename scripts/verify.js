@@ -1668,6 +1668,24 @@ section('٢١. حدود بيئة Cloudflare المفروضة على الشيفر
   /* الدخول الحقيقي يثبت أن السلسلة كلها تعمل على بيئة التشغيل الجارية */
   ok('الدخول يعمل بالتجزئة الملتزمة بالسقف',
     (await login('admin@riyadh-qu.sa', 'Admin@123')).status === 200);
+
+  /*
+   * أزرار «الحسابات التجريبية» تفتح حساب مالك كامل الصلاحية بنقرة واحدة.
+   * كانت مقيّدة بتعطيل طبقة الـ SaaS فقط — وهي معطّلة افتراضياً — فتظهر على
+   * كل نسخة منشورة. القرار الآن للخادم، والافتراض المغلق: إنتاج ما لم يُصرَّح.
+   */
+  const pub = (await call('GET', '/api/public/platform')).data;
+  ok('الخادم يصرّح بحالة الحسابات التجريبية', typeof pub.demo_logins === 'boolean');
+  const login_js = readFileSync('web/js/views/login.js', 'utf8');
+  ok('شاشة الدخول لا تعرضها إلا بإذن الخادم',
+    /platform\?\.demo_logins/.test(login_js));
+  /* الاقتران هو المطلوب: تُفتح على التطوير وحده، ويقرّرها الخادم لا العميل */
+  const srvEnv = (await call('GET', '/api/health')).data.env;
+  ok('الحسابات التجريبية مقترنة ببيئة الخادم لا بشيء آخر',
+    pub.demo_logins === (srvEnv === 'development'),
+    `env=${srvEnv} · demo_logins=${pub.demo_logins}`);
+  ok('بيئة الإنتاج تحجبها قطعاً',
+    srvEnv === 'development' || pub.demo_logins === false, `env=${srvEnv}`);
 });
 
 /* ═════════ التشغيل ═════════ */
