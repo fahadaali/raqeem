@@ -30,7 +30,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # wrangler 4 يشترط Node 22 فأحدث — والتطوير يجري عليها أصلاً
+          node-version: '22'
           cache: npm
 
       - name: تثبيت الاعتماديات
