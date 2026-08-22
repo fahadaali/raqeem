@@ -20,7 +20,7 @@ export async function render({ navigate }) {
           el('h4', { text: 'التسجيل الذاتي مغلق حالياً' }),
           el('p', { text: 'تواصل مع إدارة المنصة لفتح حساب جهتك التعليمية.' }),
           platform.support_email ? el('a.btn.ghost', { href: `mailto:${platform.support_email}`, text: platform.support_email, dir: 'ltr' }) : null,
-          el('button.btn', { text: 'العودة لتسجيل الدخول', onclick: () => navigate('/') })
+          el('button.btn', { text: 'العودة لتسجيل الدخول', onclick: () => navigate('/login') })
         ])
       ])
     ]);
@@ -92,7 +92,7 @@ export async function render({ navigate }) {
 
       if (r.status === 'pending_review') {
         toast(r.message, 'ok');
-        return void navigate('/');
+        return void navigate('/login');
       }
       toast('تم إنشاء جهتك — جارٍ تسجيل الدخول', 'ok');
       await api.login(email.value.trim(), password.value);
@@ -134,7 +134,7 @@ export async function render({ navigate }) {
       ]),
       el('div.row', { style: { justifyContent: 'center', gap: '12px', marginTop: '10px' } }, [
         el('button.btn.sm.ghost', { text: '‹ عرض الخطط', onclick: () => navigate('/pricing') }),
-        el('button.btn.sm.ghost', { text: 'لديّ حساب — تسجيل الدخول', onclick: () => navigate('/') })
+        el('button.btn.sm.ghost', { text: 'لديّ حساب — تسجيل الدخول', onclick: () => navigate('/login') })
       ])
     ])
   ]);

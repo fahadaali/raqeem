@@ -34,6 +34,7 @@ import { notifyUsers } from '../notify.js';
  * كل عملية فيها في سجل منصة مقفل (Append-only) مستقل عن سجلات الجهات.
  */
 import { plog } from '../plog.js';
+import { readLanding, normalizeLanding, DEFAULT_LANDING } from '../landing.js';
 
 const router = new Hono();
 /* الحارس يقبل رمز الادمن وحده — رمز المستأجر يُرفض قبل أي مسار */
@@ -599,6 +600,28 @@ router.put('/settings', h(async (req) => {
     summary: `${req.ctx.adminName} حدّث إعدادات المنصة`,
     meta: { saas_enabled: bool(b.saas_enabled, cur.saas_enabled), signup_enabled: bool(b.signup_enabled, cur.signup_enabled) } });
   return platformSettings(app);
+}));
+
+/* ─────────────── الشاشة الرئيسية العامة ─────────────── */
+/**
+ * تحرير ما يراه الزائر على `/`. الكتلة تُطهَّر قبل الحفظ لا بعد القراءة فحسب،
+ * فما يُخزَّن هو نفسه ما يُعرَض — ولا يبقى في القاعدة محتوى لم يمرّ على المطهِّر.
+ */
+router.get('/landing', h(async (req) => ({
+  landing: await readLanding(req.app),
+  defaults: DEFAULT_LANDING
+})));
+
+router.put('/landing', h(async (req) => {
+  const app = req.app;
+  const landing = normalizeLanding(req.body?.landing ?? req.body);
+  await app.db.run('UPDATE platform_settings SET landing=?, updated_at=? WHERE id=1',
+    JSON.stringify(landing), nowUTC());
+  await plog(req, { action: 'update', entity: 'landing', entityId: 1,
+    summary: `${req.ctx.adminName} ${landing.enabled ? 'حدّث ونشر' : 'حدّث'} الشاشة الرئيسية`,
+    meta: { enabled: landing.enabled, features: landing.features.length,
+      sections: landing.sections.length } });
+  return { landing };
 }));
 
 /* ─────────────── مدراء المنصة ─────────────── */

@@ -350,6 +350,20 @@ async function refreshView() {
   }
 }
 
+/**
+ * هل نشر الادمن الشاشة الرئيسية؟ يُقرأ مرّة واحدة لكل إقلاع.
+ * الافتراض عند أي تعذّر: «غير منشورة» — فيرى الزائر شاشة الدخول لا شاشة فارغة.
+ */
+let landingState;
+async function landingPublished() {
+  if (landingState !== undefined) return landingState;
+  try {
+    const d = await api.get('/api/public/landing', { silent: true });
+    landingState = !!d?.enabled;
+  } catch { landingState = false; }
+  return landingState;
+}
+
 async function render() {
   const app = qs('#app');
 
@@ -373,12 +387,37 @@ async function render() {
         return;
       } catch (e) { console.error(e); }
     }
+    /*
+     * `/` للزائر: الشاشة الرئيسية إن نشرها الادمن، وشاشة الدخول إن لم ينشرها.
+     * الرجوع إلى الدخول عند الإطفاء — أو عند تعذّر الجلب — يعني أن المنصة لا
+     * تنكسر لا قبل تحرير المحتوى ولا حين يسقط المسار العام.
+     */
+    /*
+     * والتطبيق المثبَّت يتخطّاها: من ثبّت التطبيق قصد الدخول لا القراءة عن
+     * المنصة، فإقلاعه على صفحة تعريفية في كل مرة تراجعٌ لا ترحيب.
+     */
+    if (path === '/' && !pwa.isStandalone() && await landingPublished()) {
+      try {
+        const { render: view } = await import('./views/landing.js');
+        clear(app).append(await view({ navigate }));
+        app.hidden = false; hideBoot();
+        return;
+      } catch (e) { console.error(e); }
+    }
     const { render: loginView } = await import('./views/login.js');
     clear(app).append(await loginView({ onSuccess: boot, navigate }));
     app.hidden = false;
     hideBoot();
     return;
   }
+  /*
+   * مسارات الزائر لا معنى لها بعد الدخول: تُستبدل بالجذر في التاريخ نفسه فلا
+   * يبقى شريط العنوان يقول `/login` والمستخدم داخلٌ فعلاً.
+   */
+  if (['/login', '/signup', '/pricing'].includes(parseRoute().path)) {
+    history.replaceState({}, '', '/');
+  }
+
   if (!qs('.shell')) {
     clear(app).append(el('div.shell', {}, [
       buildSidebar(),

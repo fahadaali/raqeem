@@ -876,6 +876,7 @@ CREATE TABLE IF NOT EXISTS platform_settings (
   require_2fa_admins INTEGER NOT NULL DEFAULT 0,   -- إلزام مالكي المنصة بالتحقق بخطوتين
   health_idle_days   INTEGER NOT NULL DEFAULT 14,  -- عتبة «جهة خاملة»
   upsell_threshold   INTEGER NOT NULL DEFAULT 80,  -- نسبة الاستهلاك التي تفتح فرصة ترقية
+  landing            TEXT NOT NULL DEFAULT '{}',   -- JSON: محتوى الشاشة الرئيسية العامة
   updated_at         TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 

@@ -650,3 +650,70 @@ table.tbl.editable td[contenteditable]:focus{background:var(--brand-50);box-shad
   .admin-top{padding:0 12px}
 }
 @media (pointer:coarse){ .admin-link{min-height:44px} }
+
+/* ── المرحلة الثالثة: الشاشة الرئيسية العامة ────────────── */
+.landing{min-height:100dvh;background:var(--bg);display:flex;flex-direction:column}
+.land-top{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:12px;
+  padding:12px clamp(14px,4vw,42px);background:color-mix(in srgb,var(--surface) 92%,transparent);
+  backdrop-filter:blur(10px);border-bottom:1px solid var(--border)}
+.land-brand{display:flex;align-items:center;gap:9px;color:var(--text);text-decoration:none}
+.land-brand img{border-radius:9px}
+.land-brand b{font-size:15.5px}
+.land-nav{margin-inline-start:auto;display:flex;align-items:center;gap:8px}
+.land-link{color:var(--text-2);text-decoration:none;font-size:13.5px;padding:9px 10px;border-radius:8px}
+.land-link:hover{background:var(--brand-50);color:var(--brand)}
+
+.land-hero{display:grid;gap:30px;align-items:center;grid-template-columns:1fr;
+  padding:clamp(34px,7vw,78px) clamp(14px,4vw,42px);
+  background:linear-gradient(150deg,var(--brand) 0%,var(--brand-600) 68%,#072518 100%);color:#fff}
+.land-hero.has-art{grid-template-columns:1.15fr .85fr}
+/* بلا صورة: نصٌّ متمركز محدود العرض، لا سطرٌ يمتدّ ونصفُ شاشة فارغ */
+.land-hero:not(.has-art) .land-hero-text{max-width:60ch;margin-inline:auto;text-align:center}
+.land-hero:not(.has-art) .land-hero-text p{margin-inline:auto}
+.land-hero:not(.has-art) .land-cta{justify-content:center}
+.land-hero-text h1{font-size:clamp(24px,4.2vw,40px);line-height:1.32;margin:0 0 14px}
+.land-hero-text p{font-size:clamp(14px,1.7vw,17px);line-height:1.85;opacity:.88;margin:0 0 22px;max-width:56ch}
+.land-cta{display:flex;gap:10px;flex-wrap:wrap}
+.land-cta .btn.lg{padding:13px 26px;font-size:15px;min-height:48px}
+.land-cta .btn.ghost{background:rgba(255,255,255,.12);color:#fff;border-color:rgba(255,255,255,.34)}
+.land-hero-art img{width:100%;height:auto;border-radius:var(--r-xl);box-shadow:0 24px 60px rgba(0,0,0,.32)}
+
+.land-stats{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  padding:26px clamp(14px,4vw,42px);background:var(--surface);border-bottom:1px solid var(--border)}
+.land-stat{text-align:center}
+.land-stat b{display:block;font-size:26px;color:var(--brand)}
+.land-stat span{font-size:12.5px;color:var(--text-3)}
+
+.land-features{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(238px,1fr));
+  padding:clamp(28px,5vw,56px) clamp(14px,4vw,42px)}
+.land-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:22px 20px}
+.land-card .ic{font-size:26px}
+.land-card h3{font-size:16px;margin:10px 0 6px}
+.land-card p{font-size:13.5px;line-height:1.8;color:var(--text-2);margin:0}
+
+.land-sec{padding:clamp(24px,4vw,48px) clamp(14px,4vw,42px);max-width:78ch;margin-inline:auto}
+.land-sec h2{font-size:clamp(19px,2.6vw,25px);margin:0 0 10px}
+.land-sec p{font-size:14.5px;line-height:1.95;color:var(--text-2);margin:0 0 14px;white-space:pre-line}
+.land-sec.cta{text-align:center;background:var(--brand-50);border-radius:var(--r-xl);max-width:none;
+  margin:0 clamp(14px,4vw,42px) clamp(24px,4vw,48px)}
+
+.land-foot{margin-top:auto;padding:26px clamp(14px,4vw,42px) calc(26px + var(--safe-b));
+  background:var(--surface);border-top:1px solid var(--border);text-align:center}
+.land-foot-links{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-bottom:8px}
+.land-foot p{font-size:13px;color:var(--text-2);margin:6px 0}
+.land-foot a.land-link{text-decoration:underline}
+.land-copy{font-size:12px;color:var(--text-3)}
+
+@media (max-width:820px){
+  .land-hero.has-art{grid-template-columns:1fr}
+  .land-hero{gap:22px}
+  .land-hero-art{order:-1}
+  .land-cta .btn.lg{flex:1 1 100%;justify-content:center}
+}
+@media (pointer:coarse){ .land-link{min-height:44px;display:flex;align-items:center} }
+
+/* محرّر الشاشة الرئيسية في لوحة المنصة */
+.land-row{display:flex;gap:8px;align-items:flex-start;padding:10px;border:1px solid var(--border);
+  border-radius:var(--r);background:var(--bg)}
+.land-row-main{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));flex:1}
+.land-row .stack{flex:1;gap:8px}

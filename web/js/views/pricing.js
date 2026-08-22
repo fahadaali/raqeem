@@ -71,7 +71,7 @@ export async function render({ navigate }) {
       grid
     ]),
     el('footer.public-foot', {}, [
-      el('button.btn.ghost', { text: 'تسجيل الدخول', onclick: () => navigate('/') }),
+      el('button.btn.ghost', { text: 'تسجيل الدخول', onclick: () => navigate('/login') }),
       platform.signup_enabled
         ? el('button.btn', { text: 'إنشاء جهة جديدة', onclick: () => navigate('/signup') })
         : el('span.hint', { text: 'التسجيل الذاتي مغلق حالياً — تواصل مع إدارة المنصة' }),

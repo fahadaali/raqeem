@@ -22,6 +22,7 @@ const NAV = [
   { path: '/admin/signups', label: 'طلبات التسجيل', icon: '📝', build: S.signupsTab },
 
   { group: 'الواجهة العامة' },
+  { path: '/admin/landing', label: 'الشاشة الرئيسية', icon: '🖥', build: S.landingTab },
   { path: '/admin/announcements', label: 'الإعلانات', icon: '📣', build: S.announceTab },
 
   { group: 'التجارة' },

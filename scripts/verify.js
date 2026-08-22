@@ -1845,6 +1845,85 @@ section('٢٢. فصل هويّة لوحة المنصة عن المجمّعات',
       .every(f => readFileSync('web/sw.js', 'utf8').includes(f)));
 });
 
+/* ═════════ ٢٣. الشاشة الرئيسية العامة ═════════ */
+section('٢٣. الشاشة الرئيسية العامة ومحرّرها', async () => {
+  const ADM = (await adminLogin()).data.accessToken;
+  const stamp = Date.now().toString().slice(-6);
+
+  /* ── القراءة عامة والتحرير محصور ── */
+  const pub = await call('GET', '/api/public/landing');
+  ok('الشاشة الرئيسية تُقرأ بلا مصادقة', pub.status === 200 && typeof pub.data.enabled === 'boolean');
+  ok('الكتلة العامة تحمل هوية المنصة', !!pub.data.platform?.name);
+  ok('التحرير مرفوض بلا مصادقة', (await call('PUT', '/api/admin/landing', { body: { landing: {} } })).status === 401);
+  ok('التحرير مرفوض برمز مجمّع',
+    (await call('PUT', '/api/admin/landing', { token: S.owner, body: { landing: {} } })).status === 403);
+  ok('القراءة الإدارية تُرجع الافتراضي مع المحرَّر',
+    (await call('GET', '/api/admin/landing', { token: ADM })).data.defaults?.hero?.title !== undefined);
+
+  /* ── ما يُحرَّر هو ما يُعرَض ── */
+  const put = await call('PUT', '/api/admin/landing', { token: ADM, body: { landing: {
+    enabled: true,
+    hero: { title: `عنوان ${stamp}`, subtitle: 'وصف', cta_label: 'ابدأ', cta_href: '/signup',
+      secondary_label: 'دخول', secondary_href: '/login' },
+    features: [{ icon: '✨', title: 'ميزة', body: 'وصف الميزة' }],
+    stats: [{ label: 'مجمّع', value: '12' }],
+    sections: [{ type: 'cta', title: 'جاهز؟', body: 'ابدأ', cta_label: 'حساب', cta_href: '/signup' }],
+    footer: { links: [{ label: 'الأسعار', href: '/pricing' }], note: 'ملاحظة' },
+    seo: { title: 'رقيم', description: 'وصف' } } } });
+  ok('حفظ الشاشة الرئيسية', put.status === 200);
+  const after = await call('GET', '/api/public/landing');
+  ok('المحتوى المحرَّر يظهر للزائر', after.data.hero.title === `عنوان ${stamp}` && after.data.enabled === true);
+  ok('المزايا والأرقام والأقسام تُحفظ',
+    after.data.features.length === 1 && after.data.stats.length === 1 && after.data.sections.length === 1);
+  ok('روابط التذييل تُحفظ', after.data.footer.links[0]?.href === '/pricing');
+
+  /* ── التطهير: كتلة عامة يكتبها الادمن ويقرؤها الغريب ── */
+  const evil = await call('PUT', '/api/admin/landing', { token: ADM, body: { landing: {
+    enabled: true,
+    hero: { title: 'ط', cta_label: 'اضغط', cta_href: 'javascript:alert(1)', image_url: 'data:text/html,x' },
+    footer: { links: [{ label: 'سيء', href: 'javascript:x' }, { label: 'حسن', href: '/pricing' }] },
+    features: Array.from({ length: 40 }, (_, i) => ({ icon: '★', title: `م${i}`, body: 'ب' })),
+    sections: Array.from({ length: 40 }, () => ({ type: 'text', title: 'ق', body: 'ن' })) } } });
+  const L = evil.data.landing;
+  ok('رابط javascript: يُجرَّد من زر الواجهة', L.hero.cta_href === '');
+  ok('رابط data: يُجرَّد من الصورة', L.hero.image_url === '');
+  ok('رابط javascript: يُسقط من التذييل ويبقى السليم',
+    L.footer.links.length === 1 && L.footer.links[0].href === '/pricing');
+  ok('عدد المزايا محدود', L.features.length === 12);
+  ok('عدد الأقسام محدود', L.sections.length === 8);
+  ok('النص الطويل يُقصّ',
+    (await call('PUT', '/api/admin/landing', { token: ADM, body: { landing: {
+      enabled: true, hero: { title: 'ط'.repeat(900) } } } })).data.landing.hero.title.length <= 160);
+  ok('نوع القسم محصور في المعروف',
+    (await call('PUT', '/api/admin/landing', { token: ADM, body: { landing: {
+      enabled: true, sections: [{ type: 'script', title: 'ق', body: 'ن' }] } } }))
+      .data.landing.sections[0].type === 'text');
+
+  /* ── الإطفاء يعيد «/» إلى شاشة الدخول ── */
+  await call('PUT', '/api/admin/landing', { token: ADM, body: { landing: { enabled: false } } });
+  ok('الإطفاء يظهر في المسار العام', (await call('GET', '/api/public/landing')).data.enabled === false);
+  ok('التحرير يُسجَّل في سجل المنصة',
+    (await call('GET', '/api/admin/logs?entity=landing', { token: ADM })).data.items.length > 0);
+
+  /* ── الواجهة: «/» للزائر و«/login» للدخول ── */
+  const { readFileSync } = await import('node:fs');
+  const appJs = readFileSync('web/js/app.js', 'utf8');
+  const land = readFileSync('web/js/views/landing.js', 'utf8');
+  ok('«/» يتفرّع على حال النشر', appJs.includes('landingPublished'));
+  ok('الرجوع الافتراضي شاشة الدخول عند التعذّر', /catch \{ landingState = false; \}/.test(appJs));
+  ok('مسارات الزائر تُستبدل بالجذر بعد الدخول', appJs.includes("['/login', '/signup', '/pricing']"));
+  ok('التطبيق المثبَّت يتخطّى الصفحة التعريفية', appJs.includes('!pwa.isStandalone()'));
+  ok('الصفحة تبني نصاً لا وسماً', !/\.innerHTML\s*=|insertAdjacentHTML/.test(land));
+  ok('الصفحة العامة تُخزَّن في عامل الخدمة',
+    readFileSync('web/sw.js', 'utf8').includes('/js/views/landing.js'));
+  ok('محرّر الشاشة في قائمة اللوحة',
+    readFileSync('web/js/admin-shell.js', 'utf8').includes("'/admin/landing'"));
+  for (const [f, needle] of [['web/js/views/pricing.js', "navigate('/login')"],
+    ['web/js/views/signup.js', "navigate('/login')"]]) {
+    ok(`روابط الدخول في ${f.split('/').pop()} تشير إلى /login`, readFileSync(f, 'utf8').includes(needle));
+  }
+});
+
 /* ═════════ التشغيل ═════════ */
 (async () => {
   console.log(`\n╔═══════════════════════════════════════════════════════════╗`);

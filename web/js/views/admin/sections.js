@@ -1555,3 +1555,169 @@ function adminDialog(row, reload) {
     ]
   });
 }
+
+/* ═══════════ الشاشة الرئيسية العامة ═══════════ */
+/**
+ * محرّر ما يراه الزائر على `/`.
+ *
+ * يحرّر نسخةً في الذاكرة ولا يحفظ إلا بضغطة صريحة، فلا ينشر تعديلاً نصفَ مكتوب.
+ * ومفتاح النشر منفصل عن الحفظ: يُحرَّر المحتوى مطفأً ثم يُنشر حين يجهز.
+ */
+const LAND_LIMITS = { features: 12, stats: 6, sections: 8, links: 10 };
+
+export async function landingTab() {
+  const d = await api.get('/api/admin/landing');
+  const L = structuredClone(d.landing);
+
+  const wrap = el('div');
+  const draw = () => clear(wrap).append(landingEditor(L, d.defaults, draw));
+  draw();
+  return wrap;
+}
+
+function landingEditor(L, defaults, redraw) {
+  const bind = (obj, key, node) => {
+    node.addEventListener('input', () => { obj[key] = node.value; });
+    return node;
+  };
+
+  /* ── رأس الصفحة ── */
+  const pub = el('input', { type: 'checkbox', checked: !!L.enabled });
+  pub.addEventListener('change', () => { L.enabled = pub.checked; });
+
+  const save = async (e) => {
+    e.target.disabled = true;
+    try {
+      const r = await api.put('/api/admin/landing', { landing: L });
+      Object.assign(L, r.landing);
+      toast(L.enabled ? 'حُفظت الشاشة ونُشرت للزوّار' : 'حُفظت الشاشة (غير منشورة)', 'ok');
+      redraw();
+    } catch (err) { toast(err.message, 'warn'); }
+    finally { e.target.disabled = false; }
+  };
+
+  /* ── القسم البطل ── */
+  const hero = card('الواجهة الأولى', [
+    field('العنوان', bind(L.hero, 'title', input({ value: L.hero.title }))),
+    field('النص التعريفي', bind(L.hero, 'subtitle', textarea({ rows: 3, value: L.hero.subtitle }))),
+    el('div.grid-2', {}, [
+      field('نص الزر الأساسي', bind(L.hero, 'cta_label', input({ value: L.hero.cta_label }))),
+      field('رابط الزر الأساسي', bind(L.hero, 'cta_href', input({ value: L.hero.cta_href, dir: 'ltr' })),
+        { hint: 'مسار داخلي مثل /signup أو رابط كامل' })
+    ]),
+    el('div.grid-2', {}, [
+      field('نص الزر الثانوي', bind(L.hero, 'secondary_label', input({ value: L.hero.secondary_label }))),
+      field('رابط الزر الثانوي', bind(L.hero, 'secondary_href', input({ value: L.hero.secondary_href, dir: 'ltr' })))
+    ]),
+    field('رابط صورة الواجهة', bind(L.hero, 'image_url', input({ value: L.hero.image_url, dir: 'ltr' })),
+      { hint: 'اتركه فارغاً لواجهة نصّية بلا صورة' })
+  ]);
+
+  /* ── قوائم متكرّرة: مزايا وأرقام وأقسام وروابط ── */
+  const listCard = (title, key, max, blank, fields, hint) => {
+    const rows = el('div.stack');
+    const paint = () => {
+      clear(rows).append(...L[key].map((item, i) => el('div.land-row', {}, [
+        ...fields(item, i),
+        el('div.row', { style: { gap: '4px' } }, [
+          el('button.btn.sm.ghost', { text: '↑', title: 'أعلى', disabled: i === 0,
+            onclick: () => { [L[key][i - 1], L[key][i]] = [L[key][i], L[key][i - 1]]; paint(); } }),
+          el('button.btn.sm.ghost', { text: '↓', title: 'أسفل', disabled: i === L[key].length - 1,
+            onclick: () => { [L[key][i + 1], L[key][i]] = [L[key][i], L[key][i + 1]]; paint(); } }),
+          el('button.btn.sm.ghost', { text: '🗑', title: 'حذف',
+            onclick: () => { L[key].splice(i, 1); paint(); } })
+        ])
+      ])), L[key].length ? null : empty('—', 'لا عناصر', 'أضف عنصراً بالزر أدناه'));
+    };
+    paint();
+    return card(title, [
+      hint ? el('div.hint', { style: { marginBottom: '8px' }, text: hint }) : null,
+      rows,
+      el('button.btn.sm', { text: '＋ إضافة', style: { marginTop: '10px' }, onclick: () => {
+        if (L[key].length >= max) return void toast(`الحد الأعلى ${AR_NUM(max)} عناصر`, 'warn');
+        L[key].push(structuredClone(blank)); paint();
+      } })
+    ]);
+  };
+
+  const features = listCard('المزايا', 'features', LAND_LIMITS.features,
+    { icon: '✨', title: '', body: '' }, (f) => [
+      el('div.land-row-main', {}, [
+        bind(f, 'icon', input({ value: f.icon, style: { maxWidth: '68px', textAlign: 'center' }, 'aria-label': 'الرمز' })),
+        bind(f, 'title', input({ value: f.title, placeholder: 'العنوان' })),
+        bind(f, 'body', input({ value: f.body, placeholder: 'الوصف' }))
+      ])
+    ], 'بطاقات تُعرض تحت الواجهة الأولى.');
+
+  const stats = listCard('الأرقام', 'stats', LAND_LIMITS.stats,
+    { label: '', value: '' }, (s) => [
+      el('div.land-row-main', {}, [
+        bind(s, 'value', input({ value: s.value, placeholder: 'القيمة' })),
+        bind(s, 'label', input({ value: s.label, placeholder: 'الوصف' }))
+      ])
+    ], 'شريط أرقام مختصر — اتركه فارغاً ليختفي الشريط كلّه.');
+
+  const sections = listCard('أقسام إضافية', 'sections', LAND_LIMITS.sections,
+    { type: 'text', title: '', body: '', cta_label: '', cta_href: '' }, (s) => {
+      const kind = select([{ value: 'text', label: 'نص' }, { value: 'cta', label: 'دعوة لإجراء' }],
+        { value: s.type });
+      kind.addEventListener('change', () => { s.type = kind.value; });
+      return [el('div.stack', {}, [
+        el('div.land-row-main', {}, [kind, bind(s, 'title', input({ value: s.title, placeholder: 'العنوان' }))]),
+        bind(s, 'body', textarea({ rows: 2, value: s.body, placeholder: 'النص' })),
+        el('div.land-row-main', {}, [
+          bind(s, 'cta_label', input({ value: s.cta_label, placeholder: 'نص الزر (لأقسام الدعوة)' })),
+          bind(s, 'cta_href', input({ value: s.cta_href, placeholder: 'رابط الزر', dir: 'ltr' }))
+        ])
+      ])];
+    });
+
+  /* التذييل متداخل، فيُبنى بيده لا بالمولّد العام */
+  const footRows = el('div.stack');
+  const paintFoot = () => {
+    clear(footRows).append(...L.footer.links.map((l, i) => el('div.land-row', {}, [
+      el('div.land-row-main', {}, [
+        bind(l, 'label', input({ value: l.label, placeholder: 'النص' })),
+        bind(l, 'href', input({ value: l.href, placeholder: 'الرابط', dir: 'ltr' }))
+      ]),
+      el('button.btn.sm.ghost', { text: '🗑', onclick: () => { L.footer.links.splice(i, 1); paintFoot(); } })
+    ])), L.footer.links.length ? null : empty('—', 'لا روابط', ''));
+  };
+  paintFoot();
+  const footer = card('التذييل', [
+    footRows,
+    el('button.btn.sm', { text: '＋ رابط', style: { margin: '10px 0' }, onclick: () => {
+      if (L.footer.links.length >= LAND_LIMITS.links) return void toast('بلغتَ الحد الأعلى', 'warn');
+      L.footer.links.push({ label: '', href: '' }); paintFoot();
+    } }),
+    field('ملاحظة التذييل', bind(L.footer, 'note', textarea({ rows: 2, value: L.footer.note })))
+  ]);
+
+  const seo = card('بيانات محركات البحث', [
+    field('عنوان الصفحة', bind(L.seo, 'title', input({ value: L.seo.title }))),
+    field('وصف الصفحة', bind(L.seo, 'description', textarea({ rows: 2, value: L.seo.description })))
+  ]);
+
+  return el('div.stack', {}, [
+    el('div.card', {}, [el('div.row', { style: { alignItems: 'center', gap: '12px', flexWrap: 'wrap' } }, [
+      el('label.row', { style: { alignItems: 'center', gap: '8px', margin: 0 } }, [
+        pub, el('b', { text: 'منشورة للزوّار' })
+      ]),
+      el('span.hint', { style: { flex: '1 1 220px' },
+        text: L.enabled
+          ? 'الزائر على «/» يرى هذه الصفحة، والدخول على «/login».'
+          : 'الزائر على «/» يرى شاشة الدخول — انشرها حين يجهز المحتوى.' }),
+      el('a.btn.sm.ghost', { href: '/', target: '_blank', rel: 'noopener', text: '↗ معاينة' }),
+      el('button.btn.gold', { text: 'حفظ', onclick: save })
+    ])]),
+    hero, features, stats, sections, footer, seo,
+    el('div.row', { style: { justifyContent: 'flex-end', gap: '8px' } }, [
+      el('button.btn.ghost', { text: 'استعادة المحتوى الافتراضي', onclick: async () => {
+        if (!await confirmDialog('استبدال كل المحتوى بالمحتوى الافتراضي؟ لن يُحفظ حتى تضغط «حفظ».')) return;
+        Object.assign(L, structuredClone(defaults), { enabled: L.enabled });
+        redraw();
+      } }),
+      el('button.btn.gold', { text: 'حفظ', onclick: save })
+    ])
+  ]);
+}

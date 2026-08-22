@@ -17,14 +17,16 @@ const tickets   = R('web/js/views/tickets.js');
 const login     = R('web/js/views/login.js');
 const app       = R('web/js/app.js');
 const routes    = R('server/core/routes/admin.js');
+const landing   = R('web/js/views/landing.js');
 const bRoutes   = R('server/core/routes/billing.js');
 const aRoutes   = R('server/core/routes/auth.js');
 const cRoutes   = R('server/core/routes/comms.js');
-const ALLUI = platform + billing + settings + tickets + login + app;
+const ALLUI = platform + billing + settings + tickets + login + app + landing;
 const ALLSRV = routes + bRoutes + aRoutes + cRoutes
   + R('server/core/zatca.js') + R('server/core/health.js') + R('server/core/billing.js')
   + R('server/core/coupons.js') + R('server/core/announce.js') + R('server/core/payments.js')
-  + R('server/core/features.js') + R('server/core/security.js') + R('server/core/jobs/backup.js');
+  + R('server/core/features.js') + R('server/core/security.js') + R('server/core/jobs/backup.js')
+  + R('server/core/routes/public.js') + R('server/core/landing.js');
 
 let pass = 0, fail = 0;
 const check = (level, item, srvNeedle, uiNeedle) => {
@@ -93,6 +95,14 @@ check('٤', 'إشعار البوابة', 'paymentWebhook', null);
 check('٤', 'تجاوزات الحدود والمزايا', "router.put('/tenants/:id/overrides'", '/overrides');
 check('٤', 'بيانات المشتري والرقم الضريبي', "router.put('/billing-entity'", 'billing-entity');
 check('٤', 'رقم أمر الشراء', 'po_number', 'po_number');
+
+console.log('\n▸ اكتمال المرحلة ٣ — الشاشة الرئيسية العامة');
+check('٣', 'قراءة عامة للشاشة الرئيسية', "router.get('/landing'", '/api/public/landing');
+check('٣', 'تحرير الشاشة من اللوحة', "router.put('/landing'", '/api/admin/landing');
+check('٣', 'تطهير روابط المحتوى العام', 'export function safeHref', null);
+check('٣', 'مفتاح النشر يفصل التحرير عن العرض', 'enabled: !!b.enabled', 'منشورة للزوّار');
+check('٣', 'الصفحة العامة مربوطة بالجذر', null, 'landingPublished');
+check('٣', 'محرّر الشاشة في قائمة اللوحة', null, "'/admin/landing'");
 
 console.log(`\n  ${fail ? '✘' : '✔'} ${pass} مكتمل · ${fail} ناقص\n`);
 process.exit(fail ? 1 : 0);

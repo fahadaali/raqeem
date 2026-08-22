@@ -6,6 +6,7 @@ import { rateLimit } from '../middleware/rateLimit.js';
 import { hashPassword, randomToken, sha256Hex } from '../crypto.js';
 import { platformSettings, yearlySavings, planLimits } from '../billing.js';
 import { provisionTenant, codeAvailable, emailAvailable, normalizeCode } from '../provision.js';
+import { readLanding } from '../landing.js';
 
 /**
  * الواجهات العامة للمرحلة الثانية (لا تتطلّب تسجيل دخول):
@@ -84,6 +85,25 @@ router.get('/brand', h(async (req) => {
       logo_url: tenant.logo_url,
       colors: { primary: tenant.primary_color, accent: tenant.accent_color }
     } : null
+  };
+}));
+
+/* ─────────────── الشاشة الرئيسية العامة ─────────────── */
+/**
+ * محتوى الصفحة التعريفية للزائر. مفتوح بلا مصادقة عمداً — هذه هي الصفحة التي
+ * يراها من لا حساب له. وحين تكون مطفأة يعود `/` إلى شاشة الدخول كما كان.
+ */
+router.get('/landing', h(async (req) => {
+  const landing = await readLanding(req.app);
+  const s = await platformSettings(req.app);
+  return {
+    ...landing,
+    platform: {
+      name: s.platform_name, name_en: s.platform_name_en, tagline: s.tagline,
+      support_email: s.support_email, support_phone: s.support_phone,
+      saas_enabled: !!s.saas_enabled,
+      signup_enabled: !!(s.saas_enabled && s.signup_enabled)
+    }
   };
 }));
 
