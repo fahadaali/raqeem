@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS tenants (
   status          TEXT NOT NULL DEFAULT 'active',   -- active | suspended
   plan            TEXT NOT NULL DEFAULT 'phase1',
   settings        TEXT NOT NULL DEFAULT '{}',
+  setup_dismissed_at TEXT,                          -- إخفاء بطاقة التجهيز الأولى
   -- المرحلة الثانية (SaaS)
   custom_domain   TEXT UNIQUE,                      -- نطاق الجهة الخاص (White-labeling)
   owner_email     TEXT,

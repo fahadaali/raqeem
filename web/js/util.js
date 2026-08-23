@@ -63,6 +63,26 @@ export const qsa = (s, r = document) => [...r.querySelectorAll(s)];
 export const AR_NUM = (n) => Number(n || 0).toLocaleString('ar-SA');
 export const pct = (n) => Number(n || 0).toLocaleString('ar-SA', { maximumFractionDigits: 1 }) + '٪';
 export const money = (n) => Number(n || 0).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/**
+ * صيغة المعدود في العربية — مفرد ومثنّى وجمعُ قلّةٍ وجمعُ كثرة.
+ *
+ * «٤ طلباً» و«٢ أيام» خطأ يتكرّر كلّما وُصل عددٌ بنصّ. القاعدة:
+ *   ١   مفردٌ بلا عدد        «طلب ينتظر»
+ *   ٢   مثنّى بلا عدد        «طلبان ينتظران»
+ *   ٣–١٠ عددٌ ثم جمع        «٤ طلبات تنتظر»
+ *   ١١+ عددٌ ثم مفرد منصوب  «١٥ طلباً ينتظر»
+ *
+ * @param {number} n العدد
+ * @param {{one:string, two:string, few:string, many:string}} f الصيغ الأربع
+ */
+export function counted(n, f) {
+  const c = Number(n) || 0;
+  if (c === 1) return f.one;
+  if (c === 2) return f.two;
+  if (c >= 3 && c <= 10) return `${AR_NUM(c)} ${f.few}`;
+  return `${AR_NUM(c)} ${f.many}`;
+}
+
 export const initials = (name) => String(name || '؟').replace(/^(المعلمة?|المهندس|الأستاذ|د\.)\s*/, '')
   .split(/[\s—-]+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('');
 

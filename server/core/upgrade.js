@@ -23,6 +23,9 @@ const ADDITIONS = [
   ['tenants', 'feature_overrides',  "TEXT NOT NULL DEFAULT '{}'"],
   ['tenants', 'billing_entity',     "TEXT NOT NULL DEFAULT '{}'"],
 
+  /* ── بطاقة تجهيز الجهة الجديدة ── */
+  ['tenants', 'setup_dismissed_at', 'TEXT'],
+
   /* ── تحقّق بخطوتين ── */
   ['users',   'totp_secret',        'TEXT'],
   ['users',   'totp_enabled',       'INTEGER NOT NULL DEFAULT 0'],

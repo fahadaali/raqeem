@@ -11,6 +11,8 @@ const NAV = [
   { path: '/dashboard', label: 'لوحة التحكم', icon: 'layout-dashboard', view: 'dashboard' },
   { path: '/checkin', label: 'تسجيل الحضور', icon: 'map-pin', view: 'hr', perm: ['hr.attendance.self'], sub: 'checkin' },
   { path: '/notifications', label: 'الإشعارات', icon: 'bell', view: 'notifications', badge: 'notifications' },
+  { path: '/approvals', label: 'الاعتمادات', icon: 'inbox', view: 'approvals',
+    perm: ['finance.view', 'finance.approve_supervisor', 'finance.approve_finance', 'finance.manage', 'hr.leaves.approve'] },
 
   { group: 'العمل التشغيلي' },
   { path: '/tasks', label: 'المهام', icon: 'clipboard-list', view: 'tasks', perm: ['tasks.view', 'tasks.view_all'] },
@@ -60,6 +62,7 @@ const VIEWS = {
   org: () => import('./views/org.js'),
   settings: () => import('./views/settings.js'),
   notifications: () => import('./views/notifications.js'),
+  approvals: () => import('./views/approvals.js'),
   billing: () => import('./views/billing.js')
 };
 

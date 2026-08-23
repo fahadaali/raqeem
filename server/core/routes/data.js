@@ -11,11 +11,18 @@ import { buildReportHTML } from '../report.js';
 import { enqueue } from '../queue.js';
 import { IMPORT_TYPES, validateRows } from '../jobs/importer.js';
 import { runReport, REPORTS } from '../jobs/reports.js';
+import { decorateRequest } from './finance.js';
+import { has } from '../middleware/rbac.js';
 
 const importsRouter = new Hono();
 const reportsRouter = new Hono();
 const auditRouter = new Hono();
 const dashboardRouter = new Hono();
+const approvalsRouter = new Hono();
+const setupRouter = new Hono();
+
+/* أسماء أنواع الإجازات — هي نفسها المعروضة في شاشة الموارد البشرية */
+const LEAVE_AR = { annual: 'سنوية', sick: 'مرضية', emergency: 'اضطرارية', unpaid: 'بدون راتب' };
 
 /* ═══════ ١٢. استيراد البيانات الأولية ═══════ */
 importsRouter.get('/types', can('imports.manage'), h(async () =>
@@ -244,4 +251,133 @@ dashboardRouter.get('/', h(async (req) => {
   };
 }));
 
-export { importsRouter, reportsRouter, auditRouter, dashboardRouter };
+
+/* ═══════ صندوق الاعتمادات الموحّد ═══════
+ *
+ * ما ينتظر قرار المستخدم كان موزّعاً على شاشتين: الطلبات المالية في تبويب
+ * داخل «النظام المالي»، والإجازات في تبويب داخل «الموارد البشرية». فمن يعتمد
+ * الاثنين يفتح شاشتين ليعرف هل ينتظره شيء — والذي لا يُرى لا يُعتمد.
+ *
+ * هذا المسار يقرأ المصدرين بالحكم نفسه الذي تقرأ به شاشتاهما — `decorateRequest`
+ * للمالية وصلاحية `hr.leaves.approve` للإجازات — فلا يتفرّع منطق الاعتماد ولا
+ * يظهر هنا ما لا يملك المستخدم اعتماده هناك.
+ */
+approvalsRouter.get('/', h(async (req) => {
+  const app = req.app;
+  const ctx = req.ctx;
+  const items = [];
+
+  /* ── الطلبات المالية المعلّقة التي يقف المستخدم على خطوتها ── */
+  if (has(ctx, 'finance.view') || has(ctx, 'finance.request')) {
+    const fs = scoped(ctx, { alias: 'f' });
+    const rows = await app.db.all(
+      `SELECT f.*, u.name AS requester_name, b.name AS branch_name
+       FROM finance_requests f JOIN users u ON u.id=f.requester_id
+       LEFT JOIN branches b ON b.id=f.branch_id
+       WHERE ${fs.where} AND f.status IN ('pending','in_review')
+       ORDER BY f.created_at LIMIT 200`, ...fs.params);
+    for (const r of rows) {
+      const d = await decorateRequest(app, ctx, r);
+      if (!d.can_approve) continue;
+      items.push({
+        kind: 'finance', id: d.id, ref: d.number, title: d.title,
+        requester: d.requester_name, branch: d.branch_name,
+        amount: d.amount, step: d.current_step_name,
+        created_at: d.created_at, url: `/finance?id=${d.id}`
+      });
+    }
+  }
+
+  /* ── الإجازات المعلّقة لمن يملك اعتمادها ── */
+  if (has(ctx, 'hr.leaves.approve')) {
+    const ls = scoped(ctx, { alias: 'l' });
+    const rows = await app.db.all(
+      `SELECT l.*, u.name AS user_name FROM leaves l JOIN users u ON u.id=l.user_id
+       WHERE ${ls.where} AND l.status='pending' ORDER BY l.created_at LIMIT 200`, ...ls.params);
+    for (const l of rows) {
+      /* التواريخ تخرج خاماً: الواجهة تعرضها بتقويم المستخدم — هجرياً أو ميلادياً */
+      items.push({
+        kind: 'leave', id: l.id, ref: null,
+        title: `إجازة ${LEAVE_AR[l.type] || l.type}`,
+        start_date: l.start_date, end_date: l.end_date, days: l.days,
+        requester: l.user_name, branch: null, amount: null,
+        step: 'اعتماد الموارد البشرية',
+        created_at: l.created_at, url: '/hr'
+      });
+    }
+  }
+
+  /* الأقدم أولاً: ما طال انتظاره أحقُّ بالنظر */
+  items.sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+
+  return {
+    items,
+    counts: {
+      total: items.length,
+      finance: items.filter(i => i.kind === 'finance').length,
+      leave: items.filter(i => i.kind === 'leave').length
+    }
+  };
+}));
+
+
+/* ═══════ تجهيز الجهة الجديدة ═══════
+ *
+ * الجهة تُنشأ فتفتح على لوحةٍ كلُّها أصفار: لا تدلّ على خطوةٍ تُبتدأ، ولا تطمئن
+ * أنّ شيئاً يعمل. هذه الخطوات الخمس تحلّ محلّها حتى يمتلئ المجمّع ببياناته.
+ *
+ * والإنجاز لا يُخزَّن: يُحتسب من البيانات نفسها في كل قراءة. فمن أضاف فرعاً من
+ * شاشة الفروع يجد الخطوة منجزةً هنا دون أن يعلّمها — ولا تتناقض حالتان لشيء واحد.
+ */
+const SETUP_STEPS = [
+  { key: 'branches',  title: 'أضف فروعك وحدّد نطاقها',
+    why: 'بإحداثيات الفرع يقبل التحضير الذكي حضور المعلم.', cta: 'إضافة فرع', url: '/org' },
+  { key: 'team',      title: 'ادعُ فريقك وأسند الأدوار',
+    why: 'كل دور يرى ما يخصّه فقط — المعلم غير المحاسب.', cta: 'دعوة أعضاء', url: '/org' },
+  { key: 'term',      title: 'افتح الفصل الدراسي',
+    why: 'المهام والحضور والتقارير كلها معلّقة بفصل مفتوح.', cta: 'فتح فصل', url: '/terms' },
+  { key: 'committee', title: 'أنشئ لجانك ووزّع مهامها',
+    why: 'اللجان تجعل المتابعة على مجموعات لا على أفراد.', cta: 'إنشاء لجنة', url: '/committees' },
+  { key: 'workflow',  title: 'اضبط مسار الاعتماد المالي',
+    why: 'يحدّد من يعتمد وبأي ترتيب قبل صرف أول ريال.', cta: 'ضبط المسار', url: '/finance' }
+];
+
+setupRouter.get('/', can('settings.manage'), h(async (req) => {
+  const app = req.app;
+  const t = req.ctx.tenantId;
+  const one = async (sql, ...p) => (await app.db.get(sql, ...p)).c;
+
+  const counts = {
+    branches:  await one('SELECT COUNT(*) AS c FROM branches WHERE tenant_id=? AND is_active=1', t),
+    team:      await one("SELECT COUNT(*) AS c FROM users WHERE tenant_id=? AND status='active'", t),
+    term:      await one("SELECT COUNT(*) AS c FROM terms WHERE tenant_id=? AND status='open'", t),
+    committee: await one('SELECT COUNT(*) AS c FROM committees WHERE tenant_id=?', t),
+    workflow:  await one('SELECT COUNT(*) AS c FROM workflows WHERE tenant_id=?', t)
+  };
+  /* الفريق يُعدّ منجزاً بمنسوبٍ غير المدير نفسه */
+  const done = {
+    branches: counts.branches >= 1, team: counts.team > 1, term: counts.term >= 1,
+    committee: counts.committee >= 1, workflow: counts.workflow >= 1
+  };
+
+  const tenant = await app.db.get('SELECT setup_dismissed_at FROM tenants WHERE id=?', t);
+  const steps = SETUP_STEPS.map(s => ({ ...s, done: !!done[s.key] }));
+  const remaining = steps.filter(s => !s.done).length;
+
+  return {
+    steps, remaining, counts,
+    complete: remaining === 0,
+    dismissed: !!tenant?.setup_dismissed_at,
+    /* تظهر البطاقة ما دامت ناقصةً ولم تُخفَ يدوياً */
+    show: remaining > 0 && !tenant?.setup_dismissed_at
+  };
+}));
+
+setupRouter.post('/dismiss', can('settings.manage'), h(async (req) => {
+  await req.app.db.run('UPDATE tenants SET setup_dismissed_at=? WHERE id=?', nowUTC(), req.ctx.tenantId);
+  await audit(req, { action: 'update', entity: 'tenant', entityId: req.ctx.tenantId,
+    summary: `${req.ctx.userName} أخفى بطاقة تجهيز الجهة` });
+  return { ok: true };
+}));
+
+export { importsRouter, reportsRouter, auditRouter, dashboardRouter, approvalsRouter, setupRouter };

@@ -90,7 +90,11 @@ async function stepsOf(app, tenantId, workflowId) {
   return s.length ? s : DEFAULT_STEPS;
 }
 
-async function decorate(app, ctx, r) {
+/**
+ * يُلبس الطلبَ مسارَه وحالته و«هل يعتمده هذا المستخدم؟».
+ * مُصدَّرة لأن صندوق الاعتمادات الموحّد يقرأ الحكم نفسه — فلا يتفرّع المنطق.
+ */
+export async function decorateRequest(app, ctx, r) {
   const steps = await stepsOf(app, ctx.tenantId, r.workflow_id);
   const approvals = await app.db.all(
     `SELECT a.*, u.name AS approver_name FROM finance_approvals a
@@ -138,7 +142,7 @@ router.get('/requests', can('finance.view', 'finance.request'), h(async (req) =>
   if (q.q) { sql += ' AND (f.title LIKE ? OR f.number LIKE ?)'; params.push(`%${q.q}%`, `%${q.q}%`); }
   sql += ' ORDER BY f.created_at DESC LIMIT 500';
   const rows = await app.db.all(sql, ...params);
-  return Promise.all(rows.map(r => decorate(app, req.ctx, r)));
+  return Promise.all(rows.map(r => decorateRequest(app, req.ctx, r)));
 }));
 
 router.get('/requests/:id', can('finance.view', 'finance.request'), h(async (req) => {
@@ -154,7 +158,7 @@ router.get('/requests/:id', can('finance.view', 'finance.request'), h(async (req
     WHERE f.id=? AND f.tenant_id=?`, base.id, req.ctx.tenantId);
   const invoices = await app.db.all(`SELECT i.*, f.storage_key, f.original_name, f.mime
     FROM invoices i LEFT JOIN files f ON f.id=i.file_id WHERE i.request_id=?`, r.id);
-  return { ...(await decorate(app, req.ctx, r)), invoices };
+  return { ...(await decorateRequest(app, req.ctx, r)), invoices };
 }));
 
 router.post('/requests', can('finance.request'), h(async (req) => {

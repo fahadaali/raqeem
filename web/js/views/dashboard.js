@@ -1,10 +1,21 @@
 import api from '../api.js';
 import { state, can, currentTermObj, termIsArchived } from '../state.js';
-import { el, card, stat, chip, empty, table, progressBar, AR_NUM, pct, money, timeAgo, T, avatar } from '../util.js';
+import { el, card, stat, chip, empty, table, progressBar, AR_NUM, counted, pct, money, timeAgo, T, avatar } from '../util.js';
+import { icon as luIcon } from '../icons.js';
 import { fmtDate } from '../hijri.js';
 
 export async function render({ navigate }) {
   const d = await api.get('/api/dashboard');
+  /* صندوق الاعتمادات يُقرأ عدده هنا: ما ينتظر قراراً يسبق كل رقم على الشاشة.
+     وسقوطه لا يُسقط اللوحة — من لا يعتمد شيئاً لا يرى السطر أصلاً. */
+  const approvals = can('finance.view', 'finance.approve_supervisor', 'finance.approve_finance',
+    'finance.manage', 'hr.leaves.approve')
+    ? await api.get('/api/approvals', { silent: true }).catch(() => null)
+    : null;
+  /* بطاقة التجهيز: لمن يملك إعدادات الجهة وحده، وما دامت خطواتها ناقصة */
+  const setup = can('settings.manage')
+    ? await api.get('/api/setup', { silent: true }).catch(() => null)
+    : null;
   const cal = state.calendar;
   const wrap = el('div.stack');
   const term = currentTermObj();
@@ -33,12 +44,133 @@ export async function render({ navigate }) {
     can('hr.attendance.self') ? el('button.btn.gold', { icon: 'map-pin', iconSize: 16, text: 'تسجيل الحضور', onclick: () => navigate('/checkin') }) : null
   ])]));
 
+  /*
+   * تجهيز الجهة الجديدة — يسبق كل شيء ما دام ناقصاً.
+   *
+   * الجهة تُنشأ فتفتح على لوحةٍ كلُّها أصفار، فلا تدلّ على خطوةٍ تُبتدأ. وهذه
+   * البطاقة تحلّ محلّها: خطواتها تُحتسب من البيانات نفسها لا من علامةٍ تُحفَظ،
+   * فمن أضاف فرعاً من شاشة الفروع يجدها منجزةً هنا دون أن يعلّمها.
+   */
+  if (setup?.show) {
+    const total = setup.steps.length;
+    const done = total - setup.remaining;
+    const DASH = 170;   /* محيط دائرة نصف قطرها ٢٧ */
+    const left = setup.remaining;
+    const leftAr = counted(left, { one: 'خطوة واحدة', two: 'خطوتان', few: 'خطوات', many: 'خطوة' });
+
+    const dismiss = async (e) => {
+      e.currentTarget.disabled = true;
+      await api.post('/api/setup/dismiss', {}).catch(() => {});
+      e.currentTarget.closest('.setup-card')?.remove();
+    };
+
+    wrap.append(el('div.card.setup-card', {}, [
+      el('div.setup-head', {}, [
+        el('div.setup-ring', {}, [
+          el('div', { html:
+            `<svg width="64" height="64" viewBox="0 0 64 64" style="transform:rotate(-90deg)">
+               <circle cx="32" cy="32" r="27" fill="none" stroke="var(--border)" stroke-width="6"></circle>
+               <circle cx="32" cy="32" r="27" fill="none" stroke="var(--primary)" stroke-width="6"
+                 stroke-linecap="round" stroke-dasharray="${DASH}"
+                 stroke-dashoffset="${DASH - (DASH * done) / total}"></circle>
+             </svg>` }),
+          el('span.setup-pct', { text: '٪' + AR_NUM(Math.round((done / total) * 100)) })
+        ]),
+        el('div', { style: { flex: '1', minWidth: '180px' } }, [
+          el('h3', { text: 'لنجهّز مجمّعك' }),
+          el('p.hint', { text: `بقيت ${leftAr} · تستغرق دقائق، وتوقف حيث شئت وتُكمل لاحقاً.` })
+        ]),
+        el('button.btn.sm.ghost', { text: 'أخفِ هذا', onclick: dismiss })
+      ]),
+      el('div.setup-steps', {}, setup.steps.map((st, i) => {
+        /* الخطوة التالية وحدها تأخذ المشمشي — إجراءٌ رئيسي واحد في الشاشة */
+        const isNext = !st.done && setup.steps.slice(0, i).every(x => x.done);
+        return el('div.setup-step' + (st.done ? '.done' : '') + (isNext ? '.now' : ''), {}, [
+          el('span.dot', st.done
+            ? { icon: 'check', iconSize: 16 }
+            : { text: AR_NUM(i + 1) }),
+          el('div.tx', {}, [el('b', { text: st.title }), el('span', { text: st.why })]),
+          st.done ? null : el('button.btn.sm' + (isNext ? '.gold' : '.ghost'),
+            { text: st.cta, onclick: () => navigate(st.url) })
+        ]);
+      }))
+    ]));
+  }
+
+  /*
+   * ما يحتاج انتباهك — الإضافة الجوهرية.
+   *
+   * كانت اللوحة تفتح على ثمانية أرقام متساوية: تُقرأ ولا يُعمَل بها، ولا تقول
+   * أيُّها يستدعي تصرّفاً اليوم. هذا الشريط يسبقها ويحمل ما ينتظر المستخدم
+   * فعلاً، ولكلّ سطرٍ زرٌّ يقود إلى موضع الإجراء لا إلى شاشةٍ عامة.
+   * ولا يُبنى إلا ممّا تعيده اللوحة أصلاً — لا استعلام جديد سوى عدّاد الاعتمادات.
+   */
+  const alerts = [];
+  if (approvals?.counts.total) {
+    alerts.push({
+      icon: 'inbox', tone: 'warn',
+      title: counted(approvals.counts.total, {
+        one: 'طلب ينتظر قرارك',   two:  'طلبان ينتظران قرارك',
+        few: 'طلبات تنتظر قرارك', many: 'طلباً ينتظر قرارك'
+      }),
+      sub: approvals.items[0]
+        ? `أقدمها: ${approvals.items[0].title}`
+        : '', cta: 'افتح الصندوق', primary: true, go: () => navigate('/approvals')
+    });
+  }
+  if (d.overdue) {
+    alerts.push({
+      icon: 'alarm-clock', tone: 'danger',
+      title: counted(d.overdue, {
+        one: 'مهمة تجاوزت تاريخ استحقاقها',  two:  'مهمتان تجاوزتا تاريخ استحقاقها',
+        few: 'مهام تجاوزت تاريخ استحقاقها', many: 'مهمة تجاوزت تاريخ استحقاقها'
+      }),
+      sub: 'تحتاج إعادة جدولة أو إغلاقاً', cta: 'راجعها',
+      go: () => navigate('/tasks?overdue=1')
+    });
+  }
+  if (d.tickets_sla_breached && can('tickets.view_all')) {
+    alerts.push({
+      icon: 'siren', tone: 'info',
+      title: counted(d.tickets_sla_breached, {
+        one: 'تذكرة تجاوزت مدة الاستجابة',  two:  'تذكرتان تجاوزتا مدة الاستجابة',
+        few: 'تذاكر تجاوزت مدة الاستجابة', many: 'تذكرة تجاوزت مدة الاستجابة'
+      }),
+      sub: 'اتفاقية مستوى الخدمة', cta: 'افتحها', go: () => navigate('/tickets')
+    });
+  }
+
+  const WASH = { danger: 'var(--clay)', warn: 'var(--mint-2)', info: 'var(--sky)' };
+  const TONE = { danger: 'var(--error)', warn: 'var(--review-ink)', info: 'var(--info)' };
+
+  wrap.append(el('section.focus', {}, [
+    el('div.focus-row', {}, [
+      el('span.ic', { icon: 'bell-ring', iconSize: 22 }),
+      el('h3', { text: 'ما يحتاج انتباهك' })
+    ]),
+    alerts.length
+      ? el('div.focus-grid', {}, alerts.map(a => el('div.alert-card', {}, [
+          el('span.mark', { icon: a.icon, iconSize: 20,
+            style: { background: WASH[a.tone], color: TONE[a.tone] } }),
+          el('div.tx', {}, [el('b', { text: a.title }), a.sub ? el('span', { text: a.sub }) : null]),
+          el('button.btn.sm' + (a.primary ? '.gold' : '.ghost'), { text: a.cta, onclick: a.go })
+        ])))
+      : el('div.alert-card.clear', {}, [
+          el('span.mark', { icon: 'circle-check', iconSize: 20,
+            style: { background: 'var(--surface)', color: 'var(--primary)' } }),
+          el('div.tx', {}, [
+            el('b', { text: 'لا شيء ينتظرك — كل شيء في موعده' }),
+            el('span', { text: 'تصفّح مؤشراتك أدناه، أو راجع مهام الفصل.' })
+          ])
+        ])
+  ]));
+
   // البطاقات الإحصائية
   const cards = el('div.grid.g4');
   cards.append(
     stat('مهامي المفتوحة', AR_NUM(d.my_open_tasks), { icon: 'clipboard-list', kind: 'brand', hint: 'مهام مسندة إليك ولم تكتمل', onclick: () => navigate('/tasks?mine=1') }),
     stat('إجمالي المهام', AR_NUM(d.tasks_total), {
-      icon: 'folder-kanban', hint: `${AR_NUM(d.tasks?.done || 0)} مكتملة`, onclick: () => navigate('/tasks')
+      icon: 'folder-kanban', hint: `أُنجز منها ${AR_NUM(d.tasks?.done || 0)}`, onclick: () => navigate('/tasks')
     }),
     stat('مهام متأخرة', AR_NUM(d.overdue), { icon: 'alarm-clock', kind: d.overdue ? 'danger' : 'ok', hint: 'تجاوزت تاريخ الاستحقاق', onclick: () => navigate('/tasks?overdue=1') })
   );
@@ -51,14 +183,26 @@ export async function render({ navigate }) {
   }
   if (can('hr.attendance.view')) {
     const a = d.attendance_today || {};
-    cards.append(stat('الحضور اليوم', AR_NUM((a.present || 0) + (a.late || 0)), {
-      icon: 'user-check', kind: 'ok', hint: `${AR_NUM(a.absent || 0)} غياب · ${AR_NUM(a.late || 0)} تأخير`, onclick: () => navigate('/hr')
+    /* الغياب والتأخير يُذكران حين يقعان — و«٠ غياب» ليس خبراً يُقال.
+       ولا سجلّ أصلاً ≠ حضورٌ مكتمل: الصفر هنا يعني أنّ اليوم لم يُرصد بعد. */
+    const logged = (a.present || 0) + (a.late || 0) + (a.absent || 0);
+    const gaps = [
+      a.absent && counted(a.absent, { one: 'غائب واحد', two: 'غائبان', few: 'غائبين', many: 'غائباً' }),
+      a.late   && counted(a.late,   { one: 'متأخر واحد', two: 'متأخران', few: 'متأخرين', many: 'متأخراً' })
+    ].filter(Boolean);
+    cards.append(stat('الحضور اليوم', logged ? AR_NUM((a.present || 0) + (a.late || 0)) : '—', {
+      icon: 'user-check', kind: logged ? 'ok' : '',
+      hint: !logged ? 'لم يُرصد حضور اليوم بعد'
+        : gaps.length ? gaps.join(' · ') : 'حضورٌ مكتمل بلا غياب',
+      onclick: () => navigate('/hr')
     }));
   }
   if (can('tickets.view_all')) {
     cards.append(stat('تذاكر مفتوحة', AR_NUM((d.tickets.open || 0) + (d.tickets.in_progress || 0)), {
       icon: 'headset', kind: d.tickets_sla_breached ? 'danger' : 'info',
-      hint: d.tickets_sla_breached ? `${AR_NUM(d.tickets_sla_breached)} تجاوزت مدة الخدمة` : 'ضمن اتفاقية الخدمة',
+      hint: d.tickets_sla_breached
+        ? counted(d.tickets_sla_breached, { one: 'تذكرة تجاوزت المدة', two: 'تذكرتان تجاوزتا المدة', few: 'تذاكر تجاوزت المدة', many: 'تذكرة تجاوزت المدة' })
+        : 'ضمن اتفاقية الخدمة',
       onclick: () => navigate('/tickets')
     }));
   }

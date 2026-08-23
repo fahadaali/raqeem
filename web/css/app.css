@@ -229,6 +229,59 @@ img{max-width:100%}
   -webkit-mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M20%206%209%2017l-5-5%22%2F%3E%3C%2Fsvg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M20%206%209%2017l-5-5%22%2F%3E%3C%2Fsvg%3E") center/contain no-repeat}
 .plan-card .btn{margin-top:6px}
 
+/* ── معالج التسجيل: ثلاث خطوات ────────────────────────────
+   نموذجٌ واحد طويل يُقرأ عبئاً ويُترَك قبل تمامه. الخطوة الواحدة
+   تُظهر ما يُطلب الآن وحده، والشريط أعلاه يقول أين نحن وكم بقي. */
+.rail{display:flex;align-items:flex-start;gap:0;margin-bottom:22px}
+.rail .node{display:flex;flex-direction:column;align-items:center;gap:6px;flex:0 0 auto;width:96px}
+.rail .bead{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;
+  border:2px solid var(--border-2);background:var(--surface);color:var(--text-3);
+  font-family:var(--font-head);font-size:14px;font-weight:800;transition:.2s}
+.rail .node.done .bead{background:var(--primary);border-color:var(--primary);color:var(--on-color)}
+.rail .node.now .bead{border-color:var(--secondary);color:var(--secondary);
+  box-shadow:0 0 0 4px var(--mint-2)}
+.rail .node small{font-size:11.5px;color:var(--text-3);white-space:nowrap}
+.rail .node.now small{color:var(--text-dark);font-weight:600}
+.rail .bar{flex:1;height:2px;background:var(--border-2);margin-block-start:16px;border-radius:var(--r-pill)}
+.rail .bar.done{background:var(--primary)}
+
+.wiz h3{font-size:19px;margin:0 0 3px}
+.wiz>.hint{margin:0 0 16px}
+.wiz-nav{display:flex;align-items:center;gap:10px;margin-top:22px;padding-top:18px;
+  border-top:1px solid var(--border)}
+.wiz-nav .step-of{flex:1;text-align:center;font-size:12px;color:var(--text-3)}
+
+/* الخطة تُختار ببطاقةٍ تُقرأ لا بقائمةٍ تُفتح */
+.plan-pick{position:relative;width:100%;text-align:start;background:var(--surface);
+  border:1px solid var(--border);border-radius:var(--r-lg);padding:15px 16px;transition:.18s;
+  display:flex;align-items:center;gap:12px;cursor:pointer;font-family:inherit}
+.plan-pick:hover{border-color:var(--primary)}
+.plan-pick.on{border-color:var(--secondary);box-shadow:0 0 0 2px var(--mint-2) inset}
+.plan-pick .tx{flex:1;min-width:0}
+.plan-pick .nm{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.plan-pick b{font-family:var(--font-head);font-size:18px;font-weight:800;color:var(--text-dark)}
+/* في القائمة العمودية تُقرأ الشارة في السطر — والمعلّقة تصطدم بالبطاقة فوقها */
+.plan-pick .plan-tag{position:static;font-size:10.5px;padding:2px 10px}
+.plan-pick p{font-size:12px;color:var(--text-3);line-height:1.6;margin:3px 0 0}
+.plan-pick .price{font-family:var(--font-head);font-size:22px;font-weight:800;color:var(--primary-dark);
+  white-space:nowrap;text-align:center}
+.plan-pick .price small{display:block;font-family:var(--font-body);font-size:11.5px;
+  font-weight:400;color:var(--text-3)}
+
+.summary{background:var(--light);border:1px solid var(--border);border-radius:var(--r-lg);padding:14px 17px}
+.sum-row{display:flex;align-items:center;gap:9px;font-size:13px;padding:4px 0}
+.sum-row>span{color:var(--text-3);font-size:12.5px}
+.sum-row>b{margin-inline-start:auto;font-size:13px;color:var(--text-dark);
+  text-align:end;min-width:0;overflow-wrap:anywhere}
+.sum-row.total{border-top:1px dashed var(--border-2);margin-top:5px;padding-top:9px}
+.sum-row.total b{color:var(--primary-dark);font-size:14px}
+/* الغامق على سطحٍ داكن لا يُقرأ — الدرجة الأفتح هي المقروءة هناك */
+[data-theme="dark"] .sum-row.total b,
+[data-theme="dark"] .plan-pick .price{color:var(--primary)}
+
+.done-mark{width:72px;height:72px;border-radius:50%;background:var(--mint);color:var(--primary);
+  display:grid;place-items:center;margin:0 auto 16px}
+
 .usage-row{display:flex;flex-direction:column;gap:6px}
 .alert{border-radius:var(--r);padding:12px 16px;font-size:13px;line-height:1.8;border:1px solid transparent;
   display:flex;align-items:flex-start;gap:9px}
@@ -404,6 +457,87 @@ textarea.input{min-height:88px;resize:vertical;line-height:1.8}
 .rank{display:inline-flex;color:var(--text-light)}
 .rank-1{color:var(--secondary)} .rank-2{color:var(--primary)} .rank-3{color:var(--text-light)}
 
+/* ── بطاقة تجهيز الجهة الجديدة ───────────────────────────────
+   تحلّ محلّ لوحةٍ كلُّها أصفار حتى يمتلئ المجمّع ببياناته. */
+.setup-head{padding:20px 22px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+  border-bottom:1px solid var(--border)}
+.setup-ring{position:relative;width:64px;height:64px;flex:0 0 auto}
+.setup-ring>div{line-height:0}
+.setup-pct{position:absolute;inset:0;display:grid;place-items:center;
+  font-family:var(--font-head);font-size:17px;font-weight:800;color:var(--primary-dark)}
+.setup-head h3{font-size:20px;font-weight:800}
+.setup-head .hint{margin-top:2px}
+.setup-step{display:flex;align-items:center;gap:13px;padding:13px 16px;border-bottom:1px solid var(--border)}
+.setup-step:last-child{border-bottom:0}
+.setup-step .dot{width:30px;height:30px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center;
+  border:2px solid var(--border-2);background:var(--surface);color:var(--text-light);
+  font-family:var(--font-head);font-size:13px;font-weight:800}
+.setup-step.done .dot{background:var(--primary);border-color:var(--primary);color:var(--on-color)}
+.setup-step.now .dot{border-color:var(--secondary);color:var(--secondary)}
+.setup-step .tx{flex:1;min-width:0}
+.setup-step .tx b{display:block;font-size:14px;font-weight:600;color:var(--text-dark);line-height:1.5}
+.setup-step .tx span{display:block;font-size:12px;color:var(--text-light);line-height:1.6}
+.setup-step.done .tx b{color:var(--text-light);text-decoration:line-through;
+  text-decoration-color:var(--border-2)}
+@media (max-width:640px){
+  .setup-step{flex-wrap:wrap}
+  .setup-step .btn{flex:1 1 100%}
+}
+
+/* ── شريط «ما يحتاج انتباهك» ─────────────────────────────────
+   يسبق المؤشرات على اللوحة: الرقم يُقرأ، والأولوية يُعمَل بها. */
+.focus{border:1px solid var(--border);border-radius:var(--r-lg);background:var(--surface);
+  box-shadow:var(--shadow);padding:16px 18px}
+.focus-row{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.focus-row h3{font-size:19px;font-weight:800}
+.focus-row .ic{color:var(--secondary)}
+.focus-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.alert-card{display:flex;align-items:center;gap:14px;padding:13px 15px;border-radius:var(--r);
+  border:1px solid var(--border);background:var(--cream)}
+.alert-card.clear{background:var(--mint);border-color:transparent}
+.alert-card.clear .tx b{color:var(--primary-dark)}
+.alert-card.clear .tx span{color:var(--primary-dark);opacity:.72}
+.alert-card .mark{width:40px;height:40px;border-radius:var(--r);display:grid;place-items:center;flex:0 0 auto}
+.alert-card .tx{flex:1;min-width:0}
+.alert-card .tx b{display:block;font-size:14px;font-weight:600;color:var(--text-dark);line-height:1.5}
+.alert-card .tx span{display:block;font-size:12px;color:var(--text-light);line-height:1.6;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.alert-card .btn{flex:0 0 auto}
+@media (max-width:640px){
+  .focus{padding:14px}
+  .alert-card{flex-wrap:wrap}
+  .alert-card .btn{flex:1 1 100%}
+}
+
+/* ── صندوق الاعتمادات ────────────────────────────────────────
+   صفٌّ واحد لكل ما ينتظر قراراً، والقرار في السطر نفسه. */
+.approvals-head{display:flex;align-items:flex-end;gap:12px;margin-bottom:4px}
+.approvals-head h3{font-size:22px;font-weight:800}
+.approvals-head .hint{margin-top:2px}
+.approvals-count{font-family:var(--font-head);font-size:32px;font-weight:900;
+  color:var(--primary-dark);line-height:1;font-variant-numeric:tabular-nums}
+.approvals-list{display:flex;flex-direction:column}
+.approval-row{display:flex;align-items:center;gap:13px;padding:14px 17px;
+  border-bottom:1px solid var(--border);transition:.14s}
+.approval-row:last-child{border-bottom:0}
+.approval-row:hover{background:var(--cream)}
+.approval-row>.ic{color:var(--primary)}
+.approval-row .tx{flex:1;min-width:0}
+.approval-row .tx b{display:block;font-size:14px;font-weight:600;color:var(--text-dark);
+  line-height:1.55;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.approval-row .tx span{display:block;font-size:12px;color:var(--text-light);line-height:1.6;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.approval-row .amount{font-family:var(--font-head);font-size:18px;font-weight:800;
+  color:var(--text-dark);white-space:nowrap;font-variant-numeric:tabular-nums}
+@media (max-width:860px){
+  /* على الجوال: السطر يتكوّم والقرار يبقى في متناول الإبهام أسفله */
+  .approval-row{flex-wrap:wrap;gap:9px}
+  .approval-row .tx{flex:1 1 100%;order:-1}
+  .approval-row .amount{margin-inline-start:auto}
+  .approval-row>.row{flex:1 1 100%}
+  .approval-row>.row .btn{flex:1}
+}
+
 /* عيّنات ألوان الهوية بجوار منتقي اللون */
 .swatches{display:flex;gap:6px;flex-wrap:wrap}
 .swatch{width:26px;height:26px;border-radius:50%;border:2px solid var(--surface);
@@ -571,10 +705,12 @@ table.tbl.editable td[contenteditable]:focus{background:var(--brand-50);box-shad
 .chat-input input:focus{border-color:var(--primary)}
 
 /* ── الإشعارات والتنبيهات ────────────────────────────────── */
-.toasts{position:fixed;inset-block-start:calc(var(--top) + var(--safe-t) + 10px);inset-inline-end:14px;z-index:9000;
+/* التنبيهات تنهض من أسفل الشاشة: أعلاها موضع الشريط العلوي وأزراره،
+   وكان التنبيه يحجب الإجراء الرئيسي في بطاقة الترحيب عند كل دخول. */
+.toasts{position:fixed;inset-block-end:calc(16px + var(--safe-b));inset-inline-end:14px;z-index:9000;
   display:flex;flex-direction:column;gap:9px;max-width:min(370px,calc(100vw - 28px));pointer-events:none}
 .toast{background:var(--surface);border:1px solid var(--border);border-inline-start:4px solid var(--primary);
-  border-radius:var(--r);padding:12px 16px;box-shadow:var(--shadow-lg);animation:toastIn .28s;
+  border-radius:var(--r);padding:12px 16px;box-shadow:var(--shadow-lg);animation:toastUp .28s;
   display:flex;gap:10px;align-items:flex-start;pointer-events:auto}
 .toast.ok{border-inline-start-color:var(--success)} .toast.err{border-inline-start-color:var(--error)}
 .toast.warn{border-inline-start-color:var(--warning)} .toast.info{border-inline-start-color:var(--info)}
@@ -586,7 +722,9 @@ table.tbl.editable td[contenteditable]:focus{background:var(--brand-50);box-shad
 .toast p{margin:0;font-size:12px;color:var(--text-2);line-height:1.65}
 .toast.out{animation:toastOut .25s forwards}
 @keyframes toastIn{from{opacity:0;transform:translateY(-12px) scale(.96)}to{opacity:1;transform:none}}
-@keyframes toastOut{to{opacity:0;transform:translateX(30px)}}
+/* صعوداً ونزولاً لا يميناً وشمالاً — الحركة الرأسية لا اتجاه لها في RTL */
+@keyframes toastUp{from{opacity:0;transform:translateY(14px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes toastOut{to{opacity:0;transform:translateY(10px) scale(.97)}}
 
 .notif-panel{position:fixed;inset-block-start:calc(var(--top) + var(--safe-t));inset-inline-end:12px;
   width:min(388px,calc(100vw - 24px));max-height:min(560px,72dvh);background:var(--surface);
@@ -744,11 +882,17 @@ table.tbl.editable td[contenteditable]:focus{background:var(--brand-50);box-shad
   .topbar>.icon-btn{margin-top:9px}
   .topbar .switcher{order:10;flex:1 1 44%;max-width:none;min-width:0;margin-top:2px}
   .topbar .switcher select{max-width:none;min-width:0;flex:1;text-overflow:ellipsis}
-  .toasts{inset-block-start:calc(112px + var(--safe-t))}
+  .toasts{inset-block-end:calc(88px + var(--safe-b))}   /* فوق شريط التنقّل السفلي */
   /* عمودان بدل عمود: ١٧٨px تتجاوز عرض الجوال بقليل فتنهار إلى عمود واحد */
   .stat-grid{grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:9px}
   .stat{padding:12px 13px}
   .stat .value{font-size:22px}
+}
+@media (max-width:480px){
+  /* عدّاد الخطوة يأخذ سطره فلا يزاحم الزرّين على العرض الضيّق */
+  .wiz-nav{flex-wrap:wrap}
+  .wiz-nav .step-of{order:-1;flex:1 0 100%;margin-bottom:4px}
+  .rail .node{width:84px}
 }
 @media (max-width:420px){
   .demo-grid{grid-template-columns:1fr 1fr}

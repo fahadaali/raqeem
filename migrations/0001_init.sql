@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS tenants (
   status          TEXT NOT NULL DEFAULT 'active',   
   plan            TEXT NOT NULL DEFAULT 'phase1',
   settings        TEXT NOT NULL DEFAULT '{}',
+  setup_dismissed_at TEXT,                          
   
   custom_domain   TEXT UNIQUE,                      
   owner_email     TEXT,

@@ -15,7 +15,7 @@ import formRoutes from './routes/forms.js';
 import commsRoutes from './routes/comms.js';
 import fileRoutes from './routes/files.js';
 import notificationRoutes from './routes/notifications.js';
-import { importsRouter, reportsRouter, auditRouter, dashboardRouter } from './routes/data.js';
+import { importsRouter, reportsRouter, auditRouter, dashboardRouter, approvalsRouter, setupRouter } from './routes/data.js';
 import { keysRouter, publicRouter } from './routes/integration.js';
 import publicSaasRoutes from './routes/public.js';
 import billingRoutes from './routes/billing.js';
@@ -102,6 +102,8 @@ export function createApi(container) {
   api.route('/reports', guard(reportsRouter, { feature: 'reports' }));
   api.route('/audit', guard(auditRouter));
   api.route('/dashboard', guard(dashboardRouter));
+  api.route('/approvals', guard(approvalsRouter));
+  api.route('/setup', guard(setupRouter));
 
   /* المرحلة الثانية: اشتراك الجهة */
   api.route('/billing', guard(billingRoutes, { gate: false }));
