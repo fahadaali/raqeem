@@ -1,6 +1,7 @@
 import api from './api.js';
 import { state, setState, setPref, saveTokens, clearSession, can, activeTerm, currentTermObj, applyTheme } from './state.js';
 import { el, clear, qs, qsa, toast, timeAgo, T, avatar, skeleton, AR_NUM } from './util.js';
+import { landingPublished } from './public-shell.js';
 import { icon as luIcon } from './icons.js';
 import * as rt from './realtime.js';
 import * as pwa from './push.js';
@@ -347,20 +348,6 @@ async function refreshView() {
       el('button.btn', { text: 'إعادة المحاولة', onclick: () => refreshView() })
     ]));
   }
-}
-
-/**
- * هل الشاشة الرئيسية منشورة؟ يُقرأ مرّة واحدة لكل إقلاع.
- * الافتراض عند تعذّر الجلب: «غير منشورة» — فيُعرَض الدخول لا شاشة فارغة.
- */
-let landingState;
-async function landingPublished() {
-  if (landingState !== undefined) return landingState;
-  try {
-    const d = await api.get('/api/public/landing', { silent: true });
-    landingState = !!d?.enabled;
-  } catch { landingState = false; }
-  return landingState;
 }
 
 /** يعرض الشاشة الرئيسية على الجذر، ويُرجع false إن تعذّر ذلك */

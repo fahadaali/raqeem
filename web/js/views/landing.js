@@ -1,7 +1,7 @@
 import api from '../api.js';
-import { el, clear, AR_NUM } from '../util.js';
-import { hasIcon, icon as luIcon } from '../icons.js';
-import { setPref, applyTheme } from '../state.js';
+import { el, AR_NUM } from '../util.js';
+import { hasIcon } from '../icons.js';
+import { themeToggle } from '../public-shell.js';
 
 /**
  * الشاشة الرئيسية العامة — ما يراه الزائر على `/` قبل أن يملك حساباً.
@@ -56,27 +56,6 @@ function themedImg(lightSrc, darkSrc, props = {}) {
   new MutationObserver(pick).observe(document.documentElement,
     { attributes: true, attributeFilter: ['data-theme'] });
   return img;
-}
-
-/** مفتاح المظهر — هو مفتاح اللوحة نفسه واختيارُه يُحفَظ للجلستين معاً */
-function themeToggle() {
-  const dark = () => document.documentElement.dataset.theme === 'dark';
-  const btn = el('button.icon-btn.land-theme', {
-    type: 'button', title: 'المظهر', 'aria-label': 'تبديل المظهر',
-    onclick: () => {
-      const next = dark() ? 'light' : 'dark';
-      applyTheme(next); setPref('theme', next);
-    }
-  });
-  /* الأيقونة تتبع السمة لا الضغطة: من ترك «تلقائي» وبدّل جهازُه ليلاً يجدها صحيحة */
-  const sync = () => {
-    clear(btn).append(luIcon(dark() ? 'sun' : 'moon', { size: 18 }));
-    btn.setAttribute('aria-pressed', String(dark()));
-  };
-  sync();
-  new MutationObserver(sync).observe(document.documentElement,
-    { attributes: true, attributeFilter: ['data-theme'] });
-  return btn;
 }
 
 /** عنوان قسمٍ متمركز — يسقط كلّه إن لم يُكتب له عنوان */

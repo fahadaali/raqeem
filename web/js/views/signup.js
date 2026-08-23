@@ -1,4 +1,5 @@
 import api from '../api.js';
+import { publicTop, publicPage, landingPublished } from '../public-shell.js';
 import { el, clear, field, input, toast, AR_NUM, money } from '../util.js';
 
 /**
@@ -23,13 +24,18 @@ const STEPS = [
 
 export async function render({ navigate }) {
   const params = new URLSearchParams(location.search);
+  const home = await landingPublished();
   const [platform, plansData] = await Promise.all([
     api.get('/api/public/platform', { silent: true }).catch(() => ({})),
     api.get('/api/public/plans', { silent: true }).catch(() => ({ plans: [] }))
   ]);
 
+  const top = () => publicTop({ navigate, name: platform.name, home,
+    actions: [el('button.btn.sm.ghost', { type: 'button', text: 'تسجيل الدخول',
+      onclick: () => navigate('/login') })] });
+
   if (!platform.signup_enabled) {
-    return el('div.public-wrap', {}, [
+    return publicPage(top(), el('div.public-wrap', {}, [
       el('div.login-card', {}, [
         el('div.empty', {}, [
           el('span.ic', { icon: 'lock', iconSize: 'card' }),
@@ -39,7 +45,7 @@ export async function render({ navigate }) {
           el('button.btn', { text: 'العودة لتسجيل الدخول', onclick: () => navigate('/login') })
         ])
       ])
-    ]);
+    ]));
   }
 
   /* ── الحقول ────────────────────────────────────────────── */
@@ -329,12 +335,12 @@ export async function render({ navigate }) {
 
   paint();
 
-  const foot = el('div.row', { style: { justifyContent: 'center', gap: '12px', marginTop: '10px' } }, [
-    el('button.btn.sm.ghost', { icon: 'arrow-right', iconSize: 15, text: 'عرض الخطط', onclick: () => navigate('/pricing') }),
-    el('button.btn.sm.ghost', { text: 'لديّ حساب — تسجيل الدخول', onclick: () => navigate('/login') })
+  /* «تسجيل الدخول» صعد إلى الشريط العلوي، فيبقى هنا ما يخصّ الخطط وحده */
+  const foot = el('div.row', { style: { justifyContent: 'center', marginTop: '10px' } }, [
+    el('button.btn.sm.ghost', { icon: 'arrow-right', iconSize: 15, text: 'عرض الخطط', onclick: () => navigate('/pricing') })
   ]);
-  return el('div.public-wrap', {}, [
+  return publicPage(top(), el('div.public-wrap', {}, [
     el('div.login-card.wide', {}, [head, body]),
     foot
-  ]);
+  ]));
 }

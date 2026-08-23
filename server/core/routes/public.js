@@ -74,8 +74,16 @@ router.get('/brand', h(async (req) => {
     const sub = normalizeCode(host.split('.')[0]);
     if (sub) tenant = await app.db.get(`SELECT * FROM tenants WHERE code=? AND status='active'`, sub);
   }
-  if (!tenant && !settings.saas_enabled) {
-    tenant = await app.db.get('SELECT * FROM tenants WHERE id=1');
+  /*
+   * التراجع إلى جهةٍ بعينها لا يصحّ إلا في نسخةٍ لجهةٍ واحدة.
+   *
+   * كان الشرط «طبقة الـ SaaS مطفأة» فيأخذ الجهة رقم ١ مهما كان عددها — فتظهر
+   * شاشة الدخول المشتركة باسم أوّل مجمّعٍ أُنشئ، وهي شاشة المجمّعات كلِّها. أما
+   * من له نطاقه الخاص فيصله برنده من النطاق أعلاه، وهو الطريق الصحيح للتخصيص.
+   */
+  if (!tenant) {
+    const { c } = await app.db.get('SELECT COUNT(*) AS c FROM tenants');
+    if (c === 1) tenant = await app.db.get('SELECT * FROM tenants LIMIT 1');
   }
 
   return {

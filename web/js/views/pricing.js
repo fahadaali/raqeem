@@ -1,4 +1,5 @@
 import api from '../api.js';
+import { publicTop, publicPage, landingPublished } from '../public-shell.js';
 import { el, AR_NUM, chip, toast } from '../util.js';
 
 /**
@@ -9,6 +10,7 @@ const price = (v) => (Number(v) === 0 ? 'مجاناً' : AR_NUM(Number(v)));
 const limitText = (v, unit) => (v === null || v === undefined ? 'بلا حدود' : `${AR_NUM(v)} ${unit}`);
 
 export async function render({ navigate }) {
+  const home = await landingPublished();
   const [platform, data] = await Promise.all([
     api.get('/api/public/platform', { silent: true }).catch(() => ({ name: 'منصة رقيم' })),
     api.get('/api/public/plans')
@@ -56,7 +58,15 @@ export async function render({ navigate }) {
 
   draw();
 
-  return el('div.public-wrap', {}, [
+  return publicPage(
+    publicTop({ navigate, name: platform.name, home, actions: [
+      el('button.btn.sm.ghost', { type: 'button', text: 'تسجيل الدخول',
+        onclick: () => navigate('/login') }),
+      platform.signup_enabled
+        ? el('button.btn.sm.gold', { type: 'button', text: 'إنشاء جهة',
+            onclick: () => navigate('/signup') }) : null
+    ].filter(Boolean) }),
+    el('div.public-wrap', {}, [
     el('header.public-head', {}, [
       el('img', { src: '/assets/brand/monogram-primary.svg', alt: '', width: 60, height: 60 }),
       el('h1', { text: platform.name || 'منصة رقيم' }),
@@ -78,5 +88,5 @@ export async function render({ navigate }) {
       platform.support_email
         ? el('a.hint', { href: `mailto:${platform.support_email}`, text: platform.support_email, dir: 'ltr' }) : null
     ])
-  ]);
+  ]));
 }

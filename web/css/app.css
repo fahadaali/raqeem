@@ -1011,6 +1011,12 @@ table.tbl.editable td[contenteditable]:focus{background:var(--brand-50);box-shad
 .land-brand b{font-family:var(--font-head);font-size:20px;font-weight:800}
 .land-nav{margin-inline-start:auto;display:flex;align-items:center;gap:8px}
 .land-jumps{display:flex;align-items:center;gap:2px}
+/* الشاشات العامة: شريطٌ فوق حاويتها الأصلية، والحاوية تملأ ما بقي */
+.pub-page{min-height:100dvh;display:flex;flex-direction:column;background:var(--cream)}
+.pub-page>.login-wrap,.pub-page>.public-wrap{flex:1;min-height:0}
+.pub-top{flex:0 0 auto}
+.pub-top .land-brand img{width:34px;height:34px}
+.pub-top .land-brand b{font-size:18px}
 /* مفتاح المظهر يفصله خطٌّ خفيف عن الروابط: أداةٌ لا رابط */
 .land-theme{margin-inline:6px}
 .land-top .land-nav>.row{gap:8px}

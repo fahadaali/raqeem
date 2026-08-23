@@ -1,4 +1,5 @@
 import api from '../api.js';
+import { publicTop, publicPage, landingPublished } from '../public-shell.js';
 import { el, field, input, toast, qs } from '../util.js';
 
 const DEMO = [
@@ -18,6 +19,7 @@ export async function render({ onSuccess, navigate }) {
   /* هوية النطاق وحالة طبقة الـ SaaS — تُقرأ من قاعدة البيانات لا من الكود */
   const brand = await api.get('/api/public/brand', { silent: true }).catch(() => null);
   const platform = await api.get('/api/public/platform', { silent: true }).catch(() => null);
+  const home = await landingPublished();
   const tenant = brand?.tenant || null;
   const saas = !!brand?.platform?.saas_enabled;
 
@@ -27,7 +29,8 @@ export async function render({ onSuccess, navigate }) {
     if (tenant.colors.accent) document.documentElement.style.setProperty('--secondary', tenant.colors.accent);
   }
 
-  const email = input({ type: 'email', name: 'email', placeholder: 'name@riyadh-qu.sa', autocomplete: 'username', required: true, dir: 'ltr' });
+  /* مثالٌ محايد: نطاق مجمّعٍ بعينه لا محلَّ له في شاشةٍ تخدم المجمّعات كلَّها */
+  const email = input({ type: 'email', name: 'email', placeholder: 'name@example.sa', autocomplete: 'username', required: true, dir: 'ltr' });
   const pass = input({ type: 'password', name: 'password', placeholder: '••••••••', autocomplete: 'current-password', required: true });
   const totp = input({ dir: 'ltr', inputmode: 'numeric', maxlength: 6, placeholder: '******',
     style: { textAlign: 'center', letterSpacing: '6px' } });
@@ -75,7 +78,14 @@ export async function render({ onSuccess, navigate }) {
     }, [el('b', { text: role }), 'دخول تجريبي'])
   ));
 
-  return el('div.login-wrap', {}, [
+  return publicPage(
+    publicTop({ navigate, name: brand?.platform?.name, home,
+      actions: [
+        saas && platform?.signup_enabled
+          ? el('button.btn.sm.gold', { type: 'button', text: 'إنشاء جهة',
+              onclick: () => navigate?.('/signup') }) : null
+      ].filter(Boolean) }),
+    el('div.login-wrap', {}, [
     el('div.login-card', {}, [
       el('div.login-brand', {}, [
         el('img', { src: tenant?.logo_url || '/assets/brand/monogram-primary.svg', alt: '' }),
@@ -98,5 +108,5 @@ export async function render({ onSuccess, navigate }) {
         demoGrid
       ]) : null
     ])
-  ]);
+  ]));
 }

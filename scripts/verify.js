@@ -1911,6 +1911,8 @@ section('٢٣. الشاشة الرئيسية العامة ومحرّرها', asy
   const { readFileSync } = await import('node:fs');
   const appJs = readFileSync('web/js/app.js', 'utf8');
   const land = readFileSync('web/js/views/landing.js', 'utf8');
+  /* حال النشر وشريط الشاشات العامة انتقلا إلى وحدةٍ يشترك فيها الجميع */
+  const pubShell = readFileSync('web/js/public-shell.js', 'utf8');
   ok('«/» يتفرّع على حال النشر', appJs.includes('landingPublished'));
   ok('الشاشة الرئيسية تُشحن منشورة',
     (await import('../server/core/landing.js')).DEFAULT_LANDING.enabled === true);
@@ -1924,7 +1926,15 @@ section('٢٣. الشاشة الرئيسية العامة ومحرّرها', asy
     JSON.parse(readFileSync('web/manifest.webmanifest', 'utf8')).start_url.startsWith('/dashboard'));
   ok('الصفحة الرئيسية تعرف المسجَّل',
     land.includes('signedIn') && land.includes("'/dashboard'"));
-  ok('الرجوع الافتراضي شاشة الدخول عند التعذّر', /catch \{ landingState = false; \}/.test(appJs));
+  ok('الرجوع الافتراضي شاشة الدخول عند التعذّر', /catch \{ landingState = false; \}/.test(pubShell));
+  /* الشاشات العامة كلُّها تحمل الشريط: علامةٌ تعود إلى الجذر ومفتاحُ مظهر */
+  ok('الشاشات العامة تحمل شريطاً واحداً',
+    ['login', 'pricing', 'signup'].every(v =>
+      readFileSync(`web/js/views/${v}.js`, 'utf8').includes('publicTop')));
+  ok('شاشة الدخول تحمل اسم المنصة لا اسم مجمّع',
+    readFileSync('web/js/views/login.js', 'utf8').includes("name: brand?.platform?.name"));
+  ok('التخصيص بجهةٍ واحدة لا بإطفاء الـ SaaS',
+    readFileSync('server/core/routes/public.js', 'utf8').includes('if (c === 1) tenant ='));
   ok('مسارات الدخول تُستبدل بعد الدخول', appJs.includes("['/login', '/signup']"));
   ok('الصفحة تبني نصاً لا وسماً', !/\.innerHTML\s*=|insertAdjacentHTML/.test(land));
   ok('الصفحة العامة تُخزَّن في عامل الخدمة',
