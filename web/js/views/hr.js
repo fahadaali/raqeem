@@ -4,6 +4,7 @@ import {
   el, clear, card, chip, empty, table, toast, modal, field, input, textarea, select, tabs,
   T, AR_NUM, pct, money, avatar, clockOf, progressBar, confirmDialog, skeleton, qs
 } from '../util.js';
+import { geoMap, distanceM } from '../map.js';
 import { fmtDate, todayISO, dayName, addDaysISO } from '../hijri.js';
 
 export async function render({ sub, navigate }) {
@@ -32,11 +33,31 @@ async function checkinScreen() {
     const label = { check_in: 'تسجيل الحضور', check_out: 'تسجيل الانصراف', done: 'اكتمل اليوم' }[action];
     const cls = action === 'check_out' ? '.out' : action === 'done' ? '.done' : '';
 
-    const mapBox = el('div.mini-map', {}, [
-      el('div.fence', { style: { width: '132px', height: '132px' } }),
-      el('div.br', { icon: 'landmark', iconSize: 20 }),
-      el('div.lbl', { text: d.branch ? `${d.branch.name} · النطاق ${AR_NUM(d.geofence_radius)} م` : 'لم يُحدد فرع' })
+    /*
+     * خريطة حقيقية لا رسمٌ تخطيطي: المُحضِّر يرى مسجده ونطاقه وموضعَه منه، فإن
+     * رُفض تحضيره عرف السبب بعينه — أهو خارج النطاق أم أنّ إحداثيات الفرع خطأ.
+     */
+    const mapBox = geoMap({
+      lat: d.branch?.lat, lng: d.branch?.lng, radius: d.geofence_radius || 50, height: 230
+    });
+    const mapWrap = el('div.checkin-map', {}, [
+      mapBox,
+      el('div.row', { style: { justifyContent: 'center', gap: '8px', marginTop: '9px' } }, [
+        chip(d.branch ? d.branch.name : 'لم يُحدد فرع', d.branch ? 'info' : 'warn', 'landmark'),
+        chip(`النطاق ${AR_NUM(d.geofence_radius)} م`, '', 'map-pin')
+      ])
     ]);
+
+    /* الموقع يُعرَض قبل الضغط: من يرى نفسه خارج النطاق يتقدّم قبل أن يُرفَض */
+    const locate = (opts = {}) => new Promise((res, rej) =>
+      navigator.geolocation.getCurrentPosition(res, rej,
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 0, ...opts }));
+    if (navigator.geolocation && d.branch?.lat) {
+      locate({ maximumAge: 60000 }).then((pos) => {
+        const { latitude, longitude, accuracy } = pos.coords;
+        mapBox.update({ me: { lat: latitude, lng: longitude, accuracy } });
+      }).catch(() => { /* لا إذن بعد — الخريطة تبقى على الفرع وحده */ });
+    }
     const status = el('div', { style: { fontSize: '13px', color: 'var(--text-2)', minHeight: '22px' } });
 
     const btn = el('button.checkin-btn' + cls, { disabled: action === 'done' }, [
@@ -47,18 +68,17 @@ async function checkinScreen() {
 
     btn.onclick = async () => {
       if (!navigator.geolocation) return toast('جهازك لا يدعم تحديد الموقع', 'err');
-      btn.disabled = true;
+      btn.disabled = true; btn.classList.add('busy');
       status.textContent = 'جارٍ تحديد موقعك...';
       navigator.geolocation.getCurrentPosition(async (pos) => {
         const { latitude, longitude, accuracy } = pos.coords;
+        btn.classList.remove('busy');
         if (d.branch?.lat) {
-          const dx = (longitude - d.branch.lng) * 111000 * Math.cos(latitude * Math.PI / 180);
-          const dy = (latitude - d.branch.lat) * 111000;
-          const scale = 66 / Math.max(d.geofence_radius, 1);
-          const me = mapBox.querySelector('.me') || el('div.me');
-          me.style.left = `calc(50% + ${Math.max(-70, Math.min(70, dx * scale))}px)`;
-          me.style.top = `calc(50% + ${Math.max(-70, Math.min(70, -dy * scale))}px)`;
-          if (!me.parentNode) mapBox.append(me);
+          mapBox.update({ me: { lat: latitude, lng: longitude, accuracy } });
+          const away = distanceM(d.branch.lat, d.branch.lng, latitude, longitude);
+          if (away > d.geofence_radius) {
+            status.textContent = `أنت على بُعد ${AR_NUM(away)} م — تقدّم إلى داخل النطاق (${AR_NUM(d.geofence_radius)} م)`;
+          }
         }
         try {
           const res = await api.post('/api/hr/attendance/check', { lat: latitude, lng: longitude, accuracy });
@@ -69,7 +89,7 @@ async function checkinScreen() {
           btn.disabled = false;
         }
       }, (err) => {
-        btn.disabled = false;
+        btn.disabled = false; btn.classList.remove('busy');
         status.textContent = err.code === 1
           ? 'رفضت إذن الموقع — فعّله من إعدادات المتصفح لتتمكن من التحضير'
           : 'تعذّر تحديد موقعك، تأكد من تفعيل خدمة الموقع (GPS)';
@@ -83,7 +103,7 @@ async function checkinScreen() {
           el('h3', { text: dayName(d.date) }),
           el('div.hint', { text: fmtDate(d.date, state.calendar) })
         ]),
-        btn, status, mapBox,
+        btn, status, mapWrap,
         el('div.row', { style: { justifyContent: 'center' } }, [
           r?.check_in_at ? chip('الحضور: ' + clockOf(r.check_in_at), 'ok', 'log-out') : chip('لم تسجّل الحضور بعد', 'warn', 'hourglass'),
           r?.check_out_at ? chip('الانصراف: ' + clockOf(r.check_out_at), 'danger', 'flag') : null,

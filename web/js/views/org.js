@@ -4,6 +4,7 @@ import {
   el, clear, card, chip, empty, table, toast, modal, field, input, searchInput, select, tabs,
   AR_NUM, avatar, confirmDialog, skeleton, debounce, qs
 } from '../util.js';
+import { geoMap } from '../map.js';
 import { fmtDate } from '../hijri.js';
 import { icon as luIcon } from '../icons.js';
 import { openEmployeeFile } from './hr.js';
@@ -167,11 +168,39 @@ function openBranch(b, reload) {
     { enableHighAccuracy: true });
   } });
 
+  /*
+   * الخريطة تُضبَط بالسحب لا بالأرقام.
+   *
+   * كان الإعدادُ حقلَي إحداثيات: من يعرف خطَّ عرض مسجده؟ فصار الدبّوس يُسحَب على
+   * خريطةٍ حقيقية، والحقلان يتبعانه ويبقيان مفتوحَين لمن عنده الرقم الدقيق.
+   * والدائرة تتنفّس مع حقل النطاق فيُرى ما يعنيه «٥٠ متراً» على الأرض.
+   */
+  const map = geoMap({
+    lat: b?.lat, lng: b?.lng, radius: Number(b?.geofence_radius) || 50, editable: true, height: 280,
+    onMove: ({ lat: la, lng: ln }) => { lat.value = la.toFixed(6); lng.value = ln.toFixed(6); }
+  });
+  const syncMap = () => map.update({
+    lat: lat.value ? Number(lat.value) : undefined,
+    lng: lng.value ? Number(lng.value) : undefined,
+    radius: Number(radius.value) || 50
+  });
+  lat.addEventListener('input', syncMap);
+  lng.addEventListener('input', syncMap);
+  radius.addEventListener('input', syncMap);
+  /* زرّ «موقعي» يحرّك الخريطة معه — وإلا بقيت على موضعٍ قديم */
+  locate.addEventListener('click', () => setTimeout(syncMap, 900));
+
   const m = modal({
     title: b ? 'تعديل الفرع' : 'فرع جديد',
     body: el('div', {}, [
       el('div.grid.g2', {}, [field('رمز الفرع', code, { required: true }), field('اسم الفرع', name, { required: true })]),
       field('العنوان', address),
+      el('div.stack', { style: { gap: '8px', marginBlock: '12px' } }, [
+        el('label.field', { style: { margin: 0 } }, [el('span', { text: 'موقع الفرع ونطاق التحضير' })]),
+        map,
+        el('p.hint', { style: { margin: 0 },
+          text: 'اسحب الدبّوس إلى موقع المسجد، والدائرة هي النطاق الذي يُقبل التحضير داخله.' })
+      ]),
       el('div.grid.g2', {}, [field('خط العرض (Latitude)', lat), field('خط الطول (Longitude)', lng)]),
       locate,
       el('div.grid.g2', { style: { marginTop: '12px' } }, [

@@ -99,7 +99,10 @@ export function securityHeaderMap({ env = 'production' } = {}) {
       "script-src 'self' 'unsafe-inline'",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com data:",
-      "img-src 'self' data: blob:",
+      /* مربّعات الخريطة من OpenStreetMap: صورٌ فقط، ولا `connect-src` لها —
+         فلا يُرسَل إليها شيء. والخريطة تتمركز على الفرع دائماً، فالطلب يكشف
+         موضع الفرع لا موضع المُحضِّر، وموقعُه يُرسَم فوقها من جهازه. */
+      "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://tile.openstreetmap.org",
       "connect-src 'self' ws: wss:",
       "frame-ancestors 'self'", "base-uri 'self'", "form-action 'self'"
     ].join('; ')

@@ -1956,6 +1956,16 @@ section('٢٣. الشاشة الرئيسية العامة ومحرّرها', asy
       /\.topbar\{height:calc\(var\(--top\) \+ var\(--safe-t\)\)/.test(css));
   }
 
+  /* ── الخريطة الحقيقية ── */
+  ok('الخريطة في ضبط الفرع وفي التحضير',
+    readFileSync('web/js/views/org.js', 'utf8').includes('geoMap')
+    && readFileSync('web/js/views/hr.js', 'utf8').includes('geoMap'));
+  ok('مربّعات الخريطة مسموحةٌ في سياسة الصور وحدها',
+    /img-src[^;]*tile\.openstreetmap\.org/.test(readFileSync('web/_headers', 'utf8'))
+    && !/connect-src[^;]*openstreetmap/.test(readFileSync('web/_headers', 'utf8')));
+  ok('الخريطة تُخفي المربّع الذي لا يصل',
+    /gm-blind/.test(readFileSync('web/js/map.js', 'utf8')));
+
   /* لا يُعرَض تفعيلُ إشعاراتٍ لا يستطيع الخادم إرسالها */
   ok('لا يُعرَض تفعيل الإشعارات وخدمة الدفع معطّلة',
     /st\?\.enabled/.test(readFileSync('web/js/push.js', 'utf8')));
