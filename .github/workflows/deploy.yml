@@ -43,10 +43,14 @@ jobs:
       - name: بناء ملفات النشر (الترحيلات ورؤوس الأمان)
         run: npm run cf:build
 
+      # البيئة تُسمّى صراحةً: الملفّ يعرّف `env.staging` إلى جانب البيئة العليا،
+      # و`deploy` بلا `--env` يترك الاختيار لسلوكٍ افتراضي حذّر منه wrangler نفسه
+      # في كل تشغيل. والسلسلة الفارغة تعني البيئة العليا — وهي التي يفحصها
+      # `/api/health` أدناه على raqeem.fahad2ao.workers.dev.
       - name: نشر العامل
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: npx wrangler deploy
+        run: npx wrangler deploy --env=""
 
       - name: التحقّق من صحة الخدمة بعد النشر
         run: |
