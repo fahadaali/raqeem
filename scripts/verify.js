@@ -1940,6 +1940,25 @@ section('٢٣. الشاشة الرئيسية العامة ومحرّرها', asy
   /* شيفرة التطبيق من الشبكة أولاً: الذاكرة أولاً تُبقي المستخدم وراء نسخة */
   ok('شيفرة التطبيق تُجلَب من الشبكة أولاً',
     /isCode/.test(readFileSync('web/sw.js', 'utf8')));
+
+  /* ── المناطق الآمنة: الجزيرة الديناميكية تبتلع أعلى الشاشة في التطبيق المثبَّت ── */
+  {
+    const css = readFileSync('web/css/app.css', 'utf8');
+    /* كل قاعدةٍ لشريطٍ علويّ — في كل استعلامات الوسائط — تذكر المنطقة الآمنة */
+    const bars = [...css.matchAll(/(^|\})\s*(\.topbar|\.land-top|\.admin-top|\.side-head)\s*\{([^}]*)\}/gm)]
+      .map(m => ({ sel: m[2], body: m[3] }));
+    const blind = bars.filter(b => !b.body.includes('--safe-t'));
+    ok('كل شريطٍ علويّ يحمل المنطقة الآمنة',
+      bars.length >= 4 && blind.length === 0,
+      blind.map(b => b.sel).join('، '));
+    /* والحشوة تُضاف إلى الارتفاع لا تُطرَح منه (`border-box`) */
+    ok('ارتفاع الشريط يحمل المنطقة الآمنة',
+      /\.topbar\{height:calc\(var\(--top\) \+ var\(--safe-t\)\)/.test(css));
+  }
+
+  /* لا يُعرَض تفعيلُ إشعاراتٍ لا يستطيع الخادم إرسالها */
+  ok('لا يُعرَض تفعيل الإشعارات وخدمة الدفع معطّلة',
+    /st\?\.enabled/.test(readFileSync('web/js/push.js', 'utf8')));
   ok('مسارات الدخول تُستبدل بعد الدخول', appJs.includes("['/login', '/signup']"));
   ok('الصفحة تبني نصاً لا وسماً', !/\.innerHTML\s*=|insertAdjacentHTML/.test(land));
   ok('الصفحة العامة تُخزَّن في عامل الخدمة',

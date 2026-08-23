@@ -156,7 +156,8 @@ img{max-width:100%}
 /* ── شاشة الدخول ──────────────────────────────────────────── */
 .login-wrap{min-height:100dvh;display:grid;grid-template-columns:1fr;place-items:center;
   background-color:var(--brand-surface);background-image:url("/assets/brand/pattern-overlay-cream.svg");
-  background-repeat:repeat;padding:20px}
+  background-repeat:repeat;
+  padding:calc(20px + var(--safe-t)) 20px calc(20px + var(--safe-b))}
 .login-card{width:100%;max-width:412px;background:var(--surface);border-radius:var(--r-xl);
   padding:34px 30px;box-shadow:var(--shadow-lg)}
 .login-brand{text-align:center;margin-bottom:24px}
@@ -317,7 +318,7 @@ img{max-width:100%}
 .sidebar{background-color:var(--brand-surface);color:var(--on-brand);display:flex;flex-direction:column;
   background-image:url("/assets/brand/pattern-overlay-cream.svg");background-repeat:repeat;
   position:sticky;top:0;height:100dvh;overflow:hidden;z-index:60}
-.side-head{display:flex;gap:11px;align-items:center;padding:16px 18px;border-bottom:1px solid var(--cream-a12);flex:0 0 auto}
+.side-head{display:flex;gap:11px;align-items:center;padding:calc(16px + var(--safe-t)) 18px 16px;border-bottom:1px solid var(--cream-a12);flex:0 0 auto}
 .side-head img{width:40px;height:40px;border-radius:28%;flex:0 0 auto}
 .side-head .t{min-width:0}
 .side-head b{display:block;font-family:var(--font-head);font-size:17px;font-weight:800;
@@ -342,7 +343,16 @@ img{max-width:100%}
 .side-foot{padding:11px 14px;border-top:1px solid var(--cream-a12);font-size:11px;opacity:.6;flex:0 0 auto}
 
 .main{display:flex;flex-direction:column;min-width:0}
-.topbar{height:var(--top);background:var(--surface);border-bottom:1px solid var(--border);
+/*
+ * الشريط العلوي.
+ *
+ * `box-sizing:border-box` يجعل الحشوة تُطرَح من الارتفاع لا تُضاف إليه: فكان
+ * `height:60px` مع `padding-top` قدرَ الجزيرة الديناميكية يترك للمحتوى ما يقارب
+ * البكسل الواحد، فتنزلق أزرارُه تحت الجزيرة ولا تُلمَس. فالارتفاع يحمل المنطقة
+ * الآمنة صراحةً.
+ */
+.topbar{height:calc(var(--top) + var(--safe-t));
+  background:var(--surface);border-bottom:1px solid var(--border);
   display:flex;align-items:center;gap:9px;padding:0 16px;position:sticky;top:0;z-index:50;
   padding-top:var(--safe-t)}
 .topbar h2{font-size:19px;font-weight:800;flex:0 1 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -875,8 +885,11 @@ table.tbl.editable td[contenteditable]:focus{background:var(--brand-50);box-shad
   table.tbl{min-width:520px}
 }
 @media (max-width:640px){
-  /* الشريط العلوي يتحول إلى سطرين حتى تبقى كل الأدوات في متناول الإصبع */
-  .topbar{height:auto;min-height:var(--top);flex-wrap:wrap;padding:0 12px 9px;row-gap:8px}
+  /* الشريط العلوي يتحول إلى سطرين حتى تبقى كل الأدوات في متناول الإصبع.
+     والحشوة العلوية تحمل المنطقة الآمنة: `padding` المختصرة كانت تصفّرها هنا،
+     وهذه الشاشات هي بعينها التي فيها الجزيرة الديناميكية. */
+  .topbar{height:auto;min-height:calc(var(--top) + var(--safe-t));flex-wrap:wrap;
+    padding:var(--safe-t) 12px 9px;row-gap:8px}
   .topbar h2{display:none}
   .topbar .spacer{display:none}
   .topbar>.icon-btn{margin-top:9px}
@@ -965,7 +978,8 @@ table.tbl.editable td[contenteditable]:focus{background:var(--brand-50);box-shad
 .admin-foot{padding:12px 16px;font-size:10.5px;color:var(--adm-dim);border-top:1px solid var(--adm-line)}
 
 .admin-main{display:flex;flex-direction:column;min-width:0}
-.admin-top{display:flex;align-items:center;gap:12px;padding:0 18px;height:var(--top);
+.admin-top{display:flex;align-items:center;gap:12px;padding:var(--safe-t) 18px 0;
+  height:calc(var(--top) + var(--safe-t));
   background:var(--surface);border-bottom:1px solid var(--border);position:sticky;inset-block-start:0;z-index:40}
 .admin-top h2{font-size:19px;font-weight:800;margin:0}
 .admin-top .spacer{flex:1}
@@ -997,14 +1011,16 @@ table.tbl.editable td[contenteditable]:focus{background:var(--brand-50);box-shad
   .admin-open .admin-back{display:block;position:fixed;inset:0;background:var(--overlay);z-index:110}
   .admin-burger{display:grid}
   .admin-content{padding:13px}
-  .admin-top{padding:0 12px}
+  .admin-top{padding:var(--safe-t) 12px 0}   /* التصفير نفسه كان هنا */
 }
 @media (pointer:coarse){ .admin-link{min-height:44px} }
 
 /* ── المرحلة الثالثة: الشاشة الرئيسية العامة ────────────── */
 .landing{min-height:100dvh;background:var(--cream);display:flex;flex-direction:column}
+/* والشريط العام مثله: في التطبيق المثبَّت يمتدّ المحتوى تحت شريط الحالة */
 .land-top{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:12px;
-  padding:12px clamp(14px,4vw,42px);background:color-mix(in srgb,var(--surface) 92%,transparent);
+  padding:calc(12px + var(--safe-t)) clamp(14px,4vw,42px) 12px;
+  background:color-mix(in srgb,var(--surface) 92%,transparent);
   backdrop-filter:blur(10px);border-bottom:1px solid var(--border)}
 .land-brand{display:flex;align-items:center;gap:10px;color:var(--text-dark);text-decoration:none}
 .land-brand img{border-radius:28%}

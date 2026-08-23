@@ -240,30 +240,58 @@ export function maybeShowInstallBanner() {
 }
 
 /** طلب تفعيل الإشعارات بلطف — لافتة غير معترضة، لا تُقاطع عمل المستخدم */
-export function maybeAskNotifications() {
+/* لا يُعاد العرض قبل أسبوع — ولا يُحرَق العرض على لافتةٍ لم يرها أحد */
+const ASK_AGAIN_AFTER = 7 * 24 * 60 * 60 * 1000;
+
+export async function maybeAskNotifications() {
   if (!pushSupported()) return;
   if (localStorage.getItem('raqeem_push') === '1') return;
-  if (localStorage.getItem('raqeem_notif_asked') === '1') return;
   if (Notification.permission === 'denied') return;
   if (platform() === 'ios' && !isStandalone()) return;
+
+  /*
+   * لا يُعرَض ما لا يعمل.
+   *
+   * خدمة الدفع تحتاج مفتاحَي VAPID على الخادم، وبدونهما يضغط المستخدم «تفعيل»
+   * فيُمنَح الإذن ثم يسقط الاشتراك — فيبقى ظانّاً أن إشعاراته تعمل وهي لا تعمل.
+   * فيُسأل الخادمُ أولاً، والصمتُ أصدق من عرضٍ لا يُنجَز.
+   */
+  try {
+    /* المصدر نفسه الذي يقرؤه `subscribePush` — الجلسة أولاً ثم الخادم */
+    const st = state.session?.push?.publicKey
+      ? state.session.push
+      : await api.get('/api/push/vapid', { silent: true });
+    if (!st?.enabled || !st?.publicKey) return;
+  } catch { return; }
+
+  /* الطلب السابق: يُعاد بعد أسبوع لا يُدفَن إلى الأبد */
+  const asked = Number(localStorage.getItem('raqeem_notif_asked') || 0);
+  if (asked && Date.now() - asked < ASK_AGAIN_AFTER) return;
 
   const show = () => {
     // لا نقاطع المستخدم أثناء فتح نافذة أو لوحة جانبية أو لافتة أخرى
     if (document.querySelector('.modal-back, .drawer, .install-banner')) return setTimeout(show, 15000);
-    localStorage.setItem('raqeem_notif_asked', '1');
     const bar = el('div.install-banner', {}, [
       el('span.ic', { icon: 'bell', iconSize: 32, style: { flex: '0 0 auto' } }),
       el('div.tx', {}, [
         el('b', { text: 'فعّل الإشعارات الفورية' }),
         el('p', { text: 'تنبيهات المهام والاعتمادات المالية والرسائل — تصلك حتى والتطبيق مغلق.' })
       ]),
+      /* الوسم يُكتَب عند التصرّف لا عند العرض: لافتةٌ انقضت مدّتها ولم يرها
+         أحدٌ لا تُسقط الطلبَ إلى الأبد */
       el('button.btn.sm', {
         text: 'تفعيل',
-        onclick: async (e) => { e.stopPropagation(); bar.remove(); await subscribePush(); }
+        onclick: async (e) => {
+          e.stopPropagation(); localStorage.setItem('raqeem_notif_asked', String(Date.now()));
+          bar.remove(); await subscribePush();
+        }
       }),
       el('button.icon-btn', {
-        text: '\u2715', 'aria-label': 'لاحقاً',
-        onclick: (e) => { e.stopPropagation(); bar.remove(); }
+        icon: 'x', iconSize: 18, 'aria-label': 'لاحقاً',
+        onclick: (e) => {
+          e.stopPropagation(); localStorage.setItem('raqeem_notif_asked', String(Date.now()));
+          bar.remove();
+        }
       })
     ]);
     document.body.append(bar);
