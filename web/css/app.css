@@ -1018,7 +1018,7 @@ table.tbl.editable td[contenteditable]:focus{background:var(--brand-50);box-shad
   padding:clamp(34px,7vw,78px) clamp(14px,4vw,42px);
   background-color:var(--brand-surface);background-image:url("/assets/brand/pattern-overlay-cream.svg");
   background-repeat:repeat;color:var(--on-brand)}
-.land-hero.has-art{grid-template-columns:1.15fr .85fr}
+.land-hero.has-art{grid-template-columns:1fr 1.06fr;gap:clamp(24px,4vw,44px)}
 /* بلا صورة: نصٌّ متمركز محدود العرض، لا سطرٌ يمتدّ ونصفُ شاشة فارغ */
 .land-hero:not(.has-art) .land-hero-text{max-width:60ch;margin-inline:auto;text-align:center}
 .land-hero:not(.has-art) .land-hero-text p{margin-inline:auto}
@@ -1029,7 +1029,8 @@ table.tbl.editable td[contenteditable]:focus{background:var(--brand-50);box-shad
 .land-cta .btn.lg{padding:13px 26px;font-size:15px;min-height:48px}
 .land-cta .btn.ghost{background:transparent;color:var(--on-brand);border-color:var(--cream-a60)}
 .land-cta .btn.ghost:hover{background:var(--on-brand);color:var(--brand-surface);border-color:var(--on-brand);box-shadow:none}
-.land-hero-art img{width:100%;height:auto;border-radius:var(--r-xl);box-shadow:var(--shadow-lg)}
+.land-hero-art .land-frame{border-color:var(--cream-a28)}
+.land-hero-art img{width:100%;height:auto;display:block}
 
 .land-stats{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
   padding:26px clamp(14px,4vw,42px);background:var(--surface);border-bottom:1px solid var(--border)}
@@ -1037,7 +1038,7 @@ table.tbl.editable td[contenteditable]:focus{background:var(--brand-50);box-shad
 .land-stat b{display:block;font-family:var(--font-head);font-size:32px;font-weight:900;color:var(--primary-dark)}
 .land-stat span{font-size:12.5px;color:var(--text-light)}
 
-.land-features{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(238px,1fr));
+.land-features{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));
   padding:clamp(28px,5vw,56px) clamp(14px,4vw,42px)}
 .land-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
   padding:26px 22px;box-shadow:var(--shadow);transition:.2s}
@@ -1047,6 +1048,82 @@ table.tbl.editable td[contenteditable]:focus{background:var(--brand-50);box-shad
   background:var(--mint);color:var(--primary)}
 .land-card h3{font-size:19px;margin:14px 0 8px}
 .land-card p{font-size:13.5px;line-height:1.8;color:var(--text-2);margin:0}
+
+/* ── أقسام الصفحة الرئيسية: عنوانٌ متمركز ثم محتواه ─────── */
+.land-block{padding:clamp(30px,5vw,62px) clamp(14px,4vw,42px);max-width:1180px;margin-inline:auto;width:100%}
+.land-block>.land-features{padding:0}
+.land-h{text-align:center;max-width:64ch;margin-inline:auto;margin-bottom:clamp(20px,3vw,32px);
+  scroll-margin-top:78px}
+.land-h:focus{outline:none}
+.land-h h2{font-size:clamp(21px,3vw,30px);margin:0 0 8px}
+.land-h p{font-size:14.5px;line-height:1.9;color:var(--text-2);margin:0}
+
+/* إطار اللقطة: حافةٌ وظلٌّ خفيف — لا زخرفة نافذةٍ مزيّفة */
+.land-frame{border:1px solid var(--border);border-radius:var(--r-xl);overflow:hidden;
+  background:var(--surface);box-shadow:var(--shadow-lg);line-height:0}
+.land-frame img{width:100%;height:auto;display:block}
+
+/* ── معرض الشاشات ──────────────────────────────────────── */
+.land-tabs{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:clamp(16px,2.5vw,24px)}
+.land-tab{border:1px solid var(--border);background:var(--surface);color:var(--text-2);
+  border-radius:var(--r-pill);padding:9px 18px;font-size:13.5px;font-weight:600;cursor:pointer;
+  transition:.18s;min-height:40px;font-family:inherit}
+.land-tab:hover{border-color:var(--primary);color:var(--primary)}
+.land-tab.on{background:var(--primary);border-color:var(--primary);color:var(--on-color)}
+.land-panel:focus-visible{outline:2px solid var(--primary);outline-offset:4px;border-radius:var(--r-xl)}
+.land-cap{text-align:center;font-size:13.5px;line-height:1.9;color:var(--text-2);
+  margin:14px auto 0;max-width:62ch}
+
+/* ── كيف تبدأ ──────────────────────────────────────────── */
+.land-steps{list-style:none;padding:0;margin:0;display:grid;gap:16px;
+  grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.land-step{position:relative;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg);padding:24px 22px 22px;box-shadow:var(--shadow)}
+.land-step .n{position:absolute;inset-block-start:-15px;inset-inline-start:22px;
+  width:34px;height:34px;border-radius:50%;display:grid;place-items:center;
+  background:var(--secondary);color:var(--on-color);
+  font-family:var(--font-head);font-size:15px;font-weight:800}
+.land-step .ic{display:inline-grid;place-items:center;width:46px;height:46px;border-radius:var(--r);
+  background:var(--mint);color:var(--primary);margin-bottom:12px}
+.land-step h3{font-size:18px;margin:0 0 6px}
+.land-step p{font-size:13.5px;line-height:1.85;color:var(--text-2);margin:0}
+
+/* ── الشهادات ──────────────────────────────────────────── */
+.land-quotes{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(276px,1fr))}
+.land-quote{margin:0;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg);padding:24px 22px;box-shadow:var(--shadow)}
+.land-quote .ic{color:var(--secondary)}
+.land-quote blockquote{margin:10px 0 16px;font-size:14.5px;line-height:1.95;color:var(--text-dark)}
+.land-quote figcaption{display:flex;flex-direction:column;gap:2px;
+  border-top:1px solid var(--border);padding-top:12px}
+.land-quote figcaption b{font-family:var(--font-head);font-size:14.5px;color:var(--text-dark)}
+.land-quote figcaption span{font-size:12px;color:var(--text-3)}
+
+/* ── الأسئلة المتكرّرة ─────────────────────────────────── */
+.land-faq{max-width:76ch;margin-inline:auto;display:flex;flex-direction:column;gap:10px}
+.land-fq{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
+  overflow:hidden;transition:border-color .18s}
+.land-fq[open]{border-color:var(--primary)}
+.land-fq summary{display:flex;align-items:center;gap:12px;cursor:pointer;list-style:none;
+  padding:16px 20px;font-family:var(--font-head);font-size:16px;font-weight:700;
+  color:var(--text-dark);min-height:56px}
+.land-fq summary::-webkit-details-marker{display:none}
+.land-fq summary>span:first-child{flex:1;min-width:0}
+.land-fq summary .ic{flex:0 0 auto;color:var(--primary);transition:transform .2s}
+.land-fq[open] summary .ic{transform:rotate(180deg)}
+.land-fq summary:hover{background:var(--light)}
+.land-fq p{margin:0;padding:0 20px 18px;font-size:14px;line-height:1.95;color:var(--text-2)}
+
+/*
+ * الظهور المتدرّج.
+ *
+ * الحالة الافتراضية ظاهرة لا مخفيّة: لو أخفيناها في التنسيق ثم تعطّل المراقب —
+ * أو طُبعت الصفحة أو قرأها زاحفٌ لا يشغّل جافاسكربت — بقي نصفُ الصفحة بياضاً.
+ * فالإخفاء لا يقع إلا بعد أن تُعلن الشجرةُ نفسها أنها ستراقب (`.js-anim`).
+ */
+.reveal{transition:opacity .5s ease,transform .5s ease}
+.js-anim .reveal:not(.in){opacity:0;transform:translateY(14px)}
+@media (prefers-reduced-motion:reduce){ .js-anim .reveal:not(.in){opacity:1;transform:none} }
 
 .land-sec{padding:clamp(24px,4vw,48px) clamp(14px,4vw,42px);max-width:78ch;margin-inline:auto}
 .land-sec h2{font-size:clamp(19px,2.6vw,25px);margin:0 0 10px}

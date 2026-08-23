@@ -1579,19 +1579,20 @@ function adminDialog(row, reload) {
  * يحرّر نسخةً في الذاكرة ولا يحفظ إلا بضغطة صريحة، فلا ينشر تعديلاً نصفَ مكتوب.
  * ومفتاح النشر منفصل عن الحفظ: يُحرَّر المحتوى مطفأً ثم يُنشر حين يجهز.
  */
-const LAND_LIMITS = { features: 12, stats: 6, sections: 8, links: 10 };
+const LAND_LIMITS = { features: 12, stats: 6, sections: 8, links: 10,
+  showcase: 8, steps: 6, testimonials: 6, faq: 12 };
 
 export async function landingTab() {
   const d = await api.get('/api/admin/landing');
   const L = structuredClone(d.landing);
 
   const wrap = el('div');
-  const draw = () => clear(wrap).append(landingEditor(L, d.defaults, draw));
+  const draw = () => clear(wrap).append(landingEditor(L, d.defaults, draw, d.screens || []));
   draw();
   return wrap;
 }
 
-function landingEditor(L, defaults, redraw) {
+function landingEditor(L, defaults, redraw, screens) {
   const bind = (obj, key, node) => {
     node.addEventListener('input', () => { obj[key] = node.value; });
     return node;
@@ -1625,8 +1626,12 @@ function landingEditor(L, defaults, redraw) {
       field('نص الزر الثانوي', bind(L.hero, 'secondary_label', input({ value: L.hero.secondary_label }))),
       field('رابط الزر الثانوي', bind(L.hero, 'secondary_href', input({ value: L.hero.secondary_href, dir: 'ltr' })))
     ]),
-    field('رابط صورة الواجهة', bind(L.hero, 'image_url', input({ value: L.hero.image_url, dir: 'ltr' })),
-      { hint: 'اتركه فارغاً لواجهة نصّية بلا صورة' })
+    el('div.grid-2', {}, [
+      field('صورة الواجهة (فاتح)', bind(L.hero, 'image_url', input({ value: L.hero.image_url, dir: 'ltr' })),
+        { hint: 'اتركه فارغاً لواجهة نصّية بلا صورة' }),
+      field('صورة الواجهة (داكن)', bind(L.hero, 'image_dark_url', input({ value: L.hero.image_dark_url || '', dir: 'ltr' })),
+        { hint: 'تُعرض لمن سمته داكنة — اتركها فارغة لتُستعمل الفاتحة في الحالين' })
+    ])
   ]);
 
   /* ── قوائم متكرّرة: مزايا وأرقام وأقسام وروابط ── */
@@ -1672,6 +1677,81 @@ function landingEditor(L, defaults, redraw) {
         bind(s, 'label', input({ value: s.label, placeholder: 'الوصف' }))
       ])
     ], 'شريط أرقام مختصر — اتركه فارغاً ليختفي الشريط كلّه.');
+
+  /* عناوين الأقسام: صندوقٌ واحد يجمعها، فلا يُبحَث عن عنوان «المزايا» داخل بطاقة المزايا */
+  L.headings ||= {};   /* كتلةٌ حُفظت قبل هذه الأقسام لا تحمل المفتاح */
+  const headings = card('عناوين الأقسام', [
+    el('p.hint', { style: { marginBottom: '10px' },
+      text: 'العنوان الفارغ يُخفي ترويسة قسمه — والقسم نفسه يبقى.' }),
+    ...[['features', 'المزايا'], ['showcase', 'معرض الشاشات'], ['steps', 'كيف تبدأ'],
+        ['testimonials', 'الشهادات'], ['faq', 'الأسئلة المتكرّرة']].map(([k, ar]) => {
+      const h = (L.headings[k] ||= { title: '', subtitle: '' });
+      return el('div.land-row', {}, [el('div.stack', { style: { gap: '7px' } }, [
+        el('b', { style: { fontSize: '13px' }, text: ar }),
+        el('div.land-row-main', {}, [
+          bind(h, 'title', input({ value: h.title, placeholder: 'العنوان' })),
+          bind(h, 'subtitle', input({ value: h.subtitle, placeholder: 'السطر التعريفي' }))
+        ])
+      ])]);
+    })
+  ]);
+
+  /*
+   * معرض الشاشات.
+   *
+   * الشاشات المشحونة تُختار من قائمة تملأ الحقول الأربعة دفعةً واحدة، فلا يُكتب
+   * مسار ملفٍ بالذاكرة ولا يُنسى الفرع الداكن منه. والحقول تبقى مفتوحةً لمن أراد
+   * صورةً من عنده.
+   */
+  const showcase = listCard('معرض الشاشات', 'showcase', LAND_LIMITS.showcase,
+    { label: '', caption: '', image: '', image_dark: '' }, (x, i) => {
+      const lbl = bind(x, 'label', input({ value: x.label, placeholder: 'اسم التبويب' }));
+      const img = bind(x, 'image', input({ value: x.image, placeholder: 'رابط الصورة (فاتح)', dir: 'ltr' }));
+      const imgD = bind(x, 'image_dark', input({ value: x.image_dark, placeholder: 'رابط الصورة (داكن)', dir: 'ltr' }));
+      const cap = bind(x, 'caption', input({ value: x.caption, placeholder: 'الشرح تحت الصورة' }));
+      const pick = select([{ value: '', label: 'شاشة جاهزة…' },
+        ...screens.map(sc => ({ value: sc.key, label: sc.label }))], { value: '' });
+      pick.addEventListener('change', () => {
+        const sc = screens.find(z => z.key === pick.value);
+        if (!sc) return;
+        Object.assign(x, { label: sc.label, caption: sc.caption, image: sc.image, image_dark: sc.image_dark });
+        lbl.value = sc.label; cap.value = sc.caption; img.value = sc.image; imgD.value = sc.image_dark;
+        pick.value = '';
+      });
+      return [el('div.stack', { style: { gap: '7px' } }, [
+        el('div.land-row-main', {}, [pick, lbl]),
+        cap,
+        el('div.land-row-main', {}, [img, imgD])
+      ])];
+    }, 'تبويبات تُقلَّب على لقطاتٍ من المنصّة — اختر شاشة جاهزة أو ضع صورتك.');
+
+  const steps = listCard('كيف تبدأ', 'steps', LAND_LIMITS.steps,
+    { icon: 'sparkles', title: '', body: '' }, (x) => [
+      el('div.land-row-main', {}, [
+        bind(x, 'icon', input({ value: x.icon, style: { maxWidth: '68px', textAlign: 'center' }, 'aria-label': 'الرمز' })),
+        bind(x, 'title', input({ value: x.title, placeholder: 'العنوان' })),
+        bind(x, 'body', input({ value: x.body, placeholder: 'الشرح' }))
+      ])
+    ], 'خطواتٌ مرقّمة — الرمز اسمُ أيقونة لوسايد كما في المزايا.');
+
+  const testimonials = listCard('الشهادات', 'testimonials', LAND_LIMITS.testimonials,
+    { quote: '', name: '', role: '' }, (x) => [
+      el('div.stack', { style: { gap: '7px' } }, [
+        bind(x, 'quote', textarea({ rows: 2, value: x.quote, placeholder: 'نصّ الشهادة' })),
+        el('div.land-row-main', {}, [
+          bind(x, 'name', input({ value: x.name, placeholder: 'الاسم' })),
+          bind(x, 'role', input({ value: x.role, placeholder: 'الصفة والمجمّع' }))
+        ])
+      ])
+    ], 'تُترك فارغةً حتى تصل شهاداتٌ حقيقية — والقسم لا يظهر ما دامت فارغة.');
+
+  const faq = listCard('الأسئلة المتكرّرة', 'faq', LAND_LIMITS.faq,
+    { q: '', a: '' }, (x) => [
+      el('div.stack', { style: { gap: '7px' } }, [
+        bind(x, 'q', input({ value: x.q, placeholder: 'السؤال' })),
+        bind(x, 'a', textarea({ rows: 2, value: x.a, placeholder: 'الجواب' }))
+      ])
+    ], 'تُعرض قائمةً تُفتح بالضغط — سؤالٌ بلا جواب يسقط.');
 
   const sections = listCard('أقسام إضافية', 'sections', LAND_LIMITS.sections,
     { type: 'text', title: '', body: '', cta_label: '', cta_href: '' }, (s) => {
@@ -1726,7 +1806,7 @@ function landingEditor(L, defaults, redraw) {
       el('a.btn.sm.ghost', { href: '/', target: '_blank', rel: 'noopener', icon: 'external-link', iconSize: 16, text: 'معاينة' }),
       el('button.btn.gold', { text: 'حفظ', onclick: save })
     ])]),
-    hero, features, stats, sections, footer, seo,
+    hero, headings, features, stats, showcase, steps, testimonials, faq, sections, footer, seo,
     el('div.row', { style: { justifyContent: 'flex-end', gap: '8px' } }, [
       el('button.btn.ghost', { text: 'استعادة المحتوى الافتراضي', onclick: async () => {
         if (!await confirmDialog('استبدال كل المحتوى بالمحتوى الافتراضي؟ لن يُحفظ حتى تضغط «حفظ».')) return;

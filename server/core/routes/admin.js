@@ -34,7 +34,7 @@ import { notifyUsers } from '../notify.js';
  * كل عملية فيها في سجل منصة مقفل (Append-only) مستقل عن سجلات الجهات.
  */
 import { plog } from '../plog.js';
-import { readLanding, normalizeLanding, DEFAULT_LANDING } from '../landing.js';
+import { readLanding, normalizeLanding, DEFAULT_LANDING, SCREEN_CATALOGUE } from '../landing.js';
 import { expandTemplate, DEFAULT_TEMPLATES } from '../term-templates.js';
 
 const router = new Hono();
@@ -737,7 +737,9 @@ router.post('/terms/:id/apply', h(async (req) => {
  */
 router.get('/landing', h(async (req) => ({
   landing: await readLanding(req.app),
-  defaults: DEFAULT_LANDING
+  defaults: DEFAULT_LANDING,
+  /* كتالوج الشاشات المشحونة — يختار منه المحرّر بدل أن يُكتب مسارٌ بالذاكرة */
+  screens: SCREEN_CATALOGUE
 })));
 
 router.put('/landing', h(async (req) => {
