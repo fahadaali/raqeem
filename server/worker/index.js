@@ -219,6 +219,26 @@ async function handleBootstrap(request, container) {
 }
 
 /* ───────────────── الوظائف الدورية (Cron Triggers) ───────────────── */
+
+/**
+ * الوظائف اليومية موزّعةً بساعة التشغيل العالمية.
+ *
+ * الخطة المجانية في Cloudflare تسمح بخمسة مُشغِّلات كرون للحساب كلِّه، وكانت
+ * سبعةً هنا فرُفض ضبطها جميعاً ووقف النشر. وأربعٌ منها يومية في ساعاتٍ متجاورة،
+ * فجُمعت في تعبيرٍ واحد `0 0,1,2,3 * * *` وتُوزَّع هنا بالساعة: لا وظيفةَ تسقط
+ * ولا موعدَ يتغيّر — الساعةُ نفسها لا تزال في التعبير.
+ */
+const DAILY_BY_HOUR = {
+  /* ٠٣:٠٠ بتوقيت الرياض: لقطة مؤشرات المنصة وتقليم السجلات */
+  0: (app) => periodic.metrics(app),
+  /* ٠٤:٠٠ بتوقيت الرياض: دورة الاشتراكات والفوترة (المرحلة الثانية) */
+  1: (app) => periodic.subscriptions(app),
+  /* ٠٥:٠٠ بتوقيت الرياض: النسخ الاحتياطي اليومي إلى R2 (البند ١٠) */
+  2: (app) => periodic.backup(app),
+  /* ٠٦:٠٠ بتوقيت الرياض: تذكير المهام المستحقة */
+  3: (app) => periodic.deadlines(app)
+};
+
 const CRON_JOBS = {
   /* كل ٥ دقائق: تصريف طابور المعالجة الخلفية وإعادة العالق منه */
   '*/5 * * * *': async (app) => ({ drained: await drain(app, { max: 40 }), requeued: await requeueStuck(app) }),
@@ -226,21 +246,25 @@ const CRON_JOBS = {
   '*/15 * * * *': async (app) => periodic.sla(app),
   /* كل ساعة: إعادة احتساب مؤشرات الأداء (البند ٧) */
   '0 * * * *': async (app) => periodic.kpi(app),
-  /* ٠٦:٠٠ بتوقيت الرياض = ٠٣:٠٠ عالمياً: تذكير المهام المستحقة */
+  /* اليوميات الأربع في مُشغِّلٍ واحد */
+  '0 0,1,2,3 * * *': async (app, at) => {
+    const hour = new Date(at).getUTCHours();
+    const job = DAILY_BY_HOUR[hour];
+    return job ? await job(app) : { skipped: hour };
+  },
+
+  /* المفاتيح المفردة تبقى: عاملٌ منشورٌ بضبطٍ قديم لا تسقط يومياته حتى يُحدَّث */
   '0 3 * * *': async (app) => periodic.deadlines(app),
-  /* ٠٥:٠٠ بتوقيت الرياض = ٠٢:٠٠ عالمياً: النسخ الاحتياطي اليومي إلى R2 (البند ١٠) */
   '0 2 * * *': async (app) => periodic.backup(app),
-  /* ٠٤:٠٠ بتوقيت الرياض = ٠١:٠٠ عالمياً: دورة الاشتراكات والفوترة (المرحلة الثانية) */
   '0 1 * * *': async (app) => periodic.subscriptions(app),
-  /* ٠٣:٠٠ بتوقيت الرياض = ٠٠:٠٠ عالمياً: لقطة مؤشرات المنصة وتقليم السجلات */
   '0 0 * * *': async (app) => periodic.metrics(app)
 };
 
-async function runCron(cron, container) {
+async function runCron(cron, container, at = Date.now()) {
   const results = {};
   const job = CRON_JOBS[cron];
   if (job) {
-    results[cron] = await job(container);
+    results[cron] = await job(container, at);
   } else {
     results.drained = await drain(container, { max: 40 });
     results.sla = await periodic.sla(container);
@@ -276,7 +300,9 @@ export default {
 
   async scheduled(event, env, ctx) {
     const container = createWorkerContainer(env, ctx);
-    ctx.waitUntil(runCron(event.cron, container).catch(e => console.error('[cron] خطأ:', e.message)));
+    /* وقتُ الحدث من Cloudflare لا من ساعة الجهاز — به تُعرَف أيُّ يوميّةٍ هذه */
+    ctx.waitUntil(runCron(event.cron, container, event.scheduledTime)
+      .catch(e => console.error('[cron] خطأ:', e.message)));
   },
 
   /** معالج Cloudflare Queues — يُستخدم تلقائياً عند ربط الطابور JOBS (خطة مدفوعة) */
