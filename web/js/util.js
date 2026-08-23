@@ -159,7 +159,8 @@ export function drawer({ title, body, footer, icon = '', onClose }) {
   const back = el('div.drawer-back');
   const panel = el('div.drawer');
   const close = () => { back.remove(); panel.remove(); document.body.style.overflow = ''; onClose?.(); };
-  panel.append(
+  /* `mount` لا `append`: درجٌ بلا تذييل كان يكتب النصّ «null» في أسفله */
+  mount(panel,
     el('div.modal-head', {}, [el('h3', { icon: icon || null, text: title }), el('button.x', { icon: 'x', onclick: close, 'aria-label': 'إغلاق' })]),
     el('div.modal-body', {}, [body]),
     footer ? el('div.modal-foot', {}, footer) : null

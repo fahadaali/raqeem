@@ -369,11 +369,19 @@ CREATE TABLE IF NOT EXISTS finance_requests (
   budget_id    INTEGER REFERENCES budgets(id),
   current_step INTEGER NOT NULL DEFAULT 0,
   status       TEXT NOT NULL DEFAULT 'pending', 
+  
+  settle_status   TEXT,                          
+  settled_amount  REAL NOT NULL DEFAULT 0,       
+  settle_note     TEXT,
+  settled_by      INTEGER REFERENCES users(id),
+  settled_at      TEXT,
   created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   updated_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
 CREATE INDEX IF NOT EXISTS ix_fin_scope ON finance_requests(tenant_id, branch_id, term_id, status);
+
+CREATE INDEX IF NOT EXISTS ix_fin_settle ON finance_requests(tenant_id, type, settle_status);
 
 CREATE TABLE IF NOT EXISTS finance_approvals (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -396,6 +404,7 @@ CREATE TABLE IF NOT EXISTS invoices (
   request_id INTEGER REFERENCES finance_requests(id) ON DELETE SET NULL,
   number     TEXT,
   vendor     TEXT,
+  description TEXT,                               
   amount     REAL NOT NULL DEFAULT 0,
   vat        REAL NOT NULL DEFAULT 0,
   total      REAL NOT NULL DEFAULT 0,

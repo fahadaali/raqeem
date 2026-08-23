@@ -755,6 +755,25 @@ table.tbl.editable td[contenteditable]:focus{background:var(--brand-50);box-shad
   color:var(--text-3);text-align:center}
 .gm-empty p{margin:0;font-size:12.5px}
 .checkin-map{width:100%;max-width:420px}
+
+/* ── بيان إغلاق العهدة ─────────────────────────────────── */
+.settle-scale{height:10px;border-radius:var(--r-pill);background:var(--surface-2);
+  overflow:hidden;border:1px solid var(--border)}
+.settle-scale .bar{height:100%;border-radius:var(--r-pill);transition:width .3s ease}
+.settle-scale .bar.full{background:var(--success)}
+.settle-scale .bar.short{background:var(--secondary)}
+.settle-totals{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));margin-top:11px}
+.settle-totals .t{display:flex;flex-direction:column;gap:2px;background:var(--surface-2);
+  border:1px solid var(--border);border-radius:var(--r);padding:9px 12px}
+.settle-totals .t span{font-size:11.5px;color:var(--text-3)}
+.settle-totals .t b{font-family:var(--font-head);font-size:16px;color:var(--text-dark)}
+.settle-totals .t b.ok{color:var(--primary-dark)}
+.settle-totals .t b.bad{color:var(--error)}
+.settle-row{display:flex;gap:10px;align-items:flex-start;padding:11px 12px;
+  border:1px solid var(--border);border-radius:var(--r);background:var(--surface)}
+.settle-row .n{flex:0 0 auto;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;
+  background:var(--mint);color:var(--primary-dark);font-size:12px;font-weight:700;margin-top:6px}
+.settle-row .f{flex:1;min-width:0;display:flex;flex-direction:column;gap:7px}
 /* تعذّرت المربّعات: شبكةٌ خفيفة بدل بياضٍ محض — يبقى المقياس مقروءاً */
 .geomap.gm-blind{background:
   repeating-linear-gradient(0deg,var(--surface-2) 0 15px,var(--surface) 15px 30px),

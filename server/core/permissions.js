@@ -38,6 +38,8 @@ export const PERMISSIONS = [
   ['finance.approve_supervisor','المالية',     'اعتماد المشرف'],
   ['finance.approve_finance',   'المالية',     'الاعتماد المالي'],
   ['finance.manage',            'المالية',     'إدارة النظام المالي'],
+  /* اعتمادُ إغلاقِ عهدةٍ بعجز: صلاحيةٌ مستقلّة — من يغلق ليس بالضرورة من يقبل العجز */
+  ['finance.settle_deficit',    'المالية',     'اعتماد إغلاق عهدة بعجز'],
   ['budgets.view',              'الميزانيات',  'عرض الميزانيات'],
   ['budgets.manage',            'الميزانيات',  'إدارة الميزانيات'],
   ['invoices.view',             'الفواتير',    'عرض الفواتير'],
@@ -102,7 +104,7 @@ export const DEFAULT_ROLES = [
     key: 'finance', name: 'المحاسب / المدير المالي', level: 3, is_system: 1,
     description: 'الاعتماد المالي وإدارة الفواتير والميزانيات والرواتب',
     permissions: [...BASE, 'branches.view', 'users.view', 'terms.view', 'finance.request',
-      'finance.view', 'finance.approve_finance', 'finance.manage', 'budgets.view',
+      'finance.view', 'finance.approve_finance', 'finance.manage', 'finance.settle_deficit', 'budgets.view',
       'budgets.manage', 'invoices.view', 'invoices.manage', 'workflows.view',
       'hr.payroll.view', 'hr.payroll.manage', 'hr.employees.view', 'reports.view',
       'reports.export', 'imports.manage', 'billing.view', 'billing.manage']

@@ -26,6 +26,14 @@ const ADDITIONS = [
   /* ── بطاقة تجهيز الجهة الجديدة ── */
   ['tenants', 'setup_dismissed_at', 'TEXT'],
 
+  /* ── إغلاق العهد المالية ── */
+  ['finance_requests', 'settle_status',  'TEXT'],
+  ['finance_requests', 'settled_amount', 'REAL NOT NULL DEFAULT 0'],
+  ['finance_requests', 'settle_note',    'TEXT'],
+  ['finance_requests', 'settled_by',     'INTEGER'],
+  ['finance_requests', 'settled_at',     'TEXT'],
+  ['invoices',         'description',    'TEXT'],
+
   /* ── تحقّق بخطوتين ── */
   ['users',   'totp_secret',        'TEXT'],
   ['users',   'totp_enabled',       'INTEGER NOT NULL DEFAULT 0'],

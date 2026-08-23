@@ -239,12 +239,28 @@ dashboardRouter.get('/', h(async (req) => {
     `SELECT COALESCE(SUM(amount),0) AS total, COALESCE(SUM(spent),0) AS spent FROM budgets
      WHERE tenant_id=? ${term ? 'AND term_id=' + term.id : ''}`, ctx.tenantId);
 
+  /*
+   * العهد المفتوحة: مبالغ سُلِّمت ولم تُغلَق بعد.
+   *
+   * المال الخارج بلا إثبات إنفاق أخطر من طلبٍ ينتظر اعتماداً، ولم يكن في اللوحة
+   * ما يقوله. وهنا ثلاثة: كم عهدةً مفتوحة، وكم مجموعها، وكم بيانٍ رُفع ينتظر
+   * اعتماد إغلاقه.
+   */
+  const cs = scoped(ctx, { alias: 'f' });
+  const custody = has(ctx, 'finance.view') ? await app.db.get(
+    `SELECT COUNT(*) AS open, COALESCE(SUM(f.amount),0) AS total,
+            COALESCE(SUM(CASE WHEN f.settle_status='submitted' THEN 1 ELSE 0 END),0) AS awaiting
+     FROM finance_requests f
+     WHERE ${cs.where} AND f.type='custody' AND f.status IN ('approved','paid')
+       AND COALESCE(f.settle_status,'open') <> 'settled'`, ...cs.params) : null;
+
   return {
     term, branch_id: ctx.activeBranchId || null,
     tasks: Object.fromEntries(tasks.map(t => [t.status, t.c])),
     tasks_total: tasks.reduce((s, t) => s + t.c, 0),
     my_open_tasks: myTasks, overdue,
     finance: Object.fromEntries(finance.map(f => [f.status, { count: f.c, total: f.total }])),
+    custody,
     attendance_today: Object.fromEntries(attendance.map(a => [a.status, a.c])),
     tickets: Object.fromEntries(tickets.map(t => [t.status, t.c])), tickets_sla_breached: breached,
     branches, recent_activity: recent, upcoming_tasks: upcoming, budgets

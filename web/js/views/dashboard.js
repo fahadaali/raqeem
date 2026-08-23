@@ -206,6 +206,23 @@ export async function render({ navigate }) {
       onclick: () => navigate('/tickets')
     }));
   }
+  /*
+   * العهد المفتوحة: مالٌ خرج ولم يُثبَت إنفاقه بعد.
+   *
+   * أخطرُ من طلبٍ ينتظر اعتماداً — ذاك لم يُصرَف، وهذا صُرِف ولا يُعرَف أين ذهب.
+   * فيُعرَض عدده ومجموعه، وما رُفع بيانه ينتظر اعتماد إغلاقه.
+   */
+  if (can('finance.view') && d.custody?.open) {
+    cards.append(stat('عهد مفتوحة', AR_NUM(d.custody.open), {
+      icon: 'wallet-minimal', kind: d.custody.open ? 'gold' : '',
+      hint: d.custody.awaiting
+        ? `${money(d.custody.total)} ر.س · ${counted(d.custody.awaiting, {
+            one: 'بيانٌ ينتظر الاعتماد', two: 'بيانان ينتظران الاعتماد',
+            few: 'بيانات تنتظر الاعتماد', many: 'بياناً ينتظر الاعتماد' })}`
+        : `${money(d.custody.total)} ر.س لم يُثبَت إنفاقها`,
+      onclick: () => navigate('/finance')
+    }));
+  }
   if (can('budgets.view') && d.budgets?.total) {
     const used = Math.round(d.budgets.spent * 100 / d.budgets.total);
     cards.append(stat('استهلاك الميزانية', pct(used), {

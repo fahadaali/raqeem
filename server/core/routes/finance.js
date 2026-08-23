@@ -321,4 +321,155 @@ router.delete('/invoices/:id', can('invoices.manage'), h(async (req) => {
   return { ok: true };
 }));
 
+/* ═══════════ إغلاق العهد المالية ═══════════
+ *
+ * العهدة مبلغٌ يُسلَّم ليُنفَق، وإغلاقُها إثباتُ ما أُنفِق منه. فلا تُغلَق بضغطة
+ * زر: تُرفَع فواتيرها سطراً سطراً (رقمٌ وتاجرٌ وبيانٌ ومبلغ) بمرفقاتها، فيبين
+ * المغطّى والمتبقّي — والفرقُ عجزٌ لا يُبتلَع بل يُعرَض ويُعتمَد بصلاحيةٍ له.
+ */
+
+const SETTLE_STATES = new Set(['open', 'submitted', 'settled']);
+
+/** حساب العهدة من فواتيرها — المصدر الوحيد، فلا يُخزَّن مجموعٌ يخالف سطوره */
+async function settlementOf(app, ctx, r) {
+  const lines = await app.db.all(
+    `SELECT i.*, f.original_name, f.mime FROM invoices i
+     LEFT JOIN files f ON f.id = i.file_id
+     WHERE i.request_id=? AND i.tenant_id=? ORDER BY i.id`, r.id, ctx.tenantId);
+  const covered = lines.reduce((a, x) => a + Number(x.total || x.amount || 0), 0);
+  const amount = Number(r.amount || 0);
+  /* التقريب على منزلتين: جمعُ العشريات يخلّف كسوراً لا تعني شيئاً في المال */
+  const round = (n) => Math.round(n * 100) / 100;
+  const deficit = round(Math.max(0, amount - covered));
+  const surplus = round(Math.max(0, covered - amount));
+  return {
+    lines: lines.map(x => ({
+      id: x.id, number: x.number, vendor: x.vendor, description: x.description,
+      amount: x.amount, vat: x.vat, total: x.total, date: x.date,
+      file: x.file_id ? { id: x.file_id, name: x.original_name, mime: x.mime, url: `/api/files/${x.file_id}` } : null
+    })),
+    amount, covered: round(covered), deficit, surplus,
+    status: r.settle_status || 'open',
+    settled_at: r.settled_at, settled_by: r.settled_by, note: r.settle_note,
+    /* من يملك اعتماد العجز يرى الزرّ مفتوحاً ولو بقي عجز */
+    can_settle: has(ctx, 'finance.manage') || has(ctx, 'finance.approve_finance'),
+    can_settle_deficit: has(ctx, 'finance.settle_deficit') || has(ctx, 'finance.manage')
+  };
+}
+
+/** العهدة وحالتها */
+router.get('/requests/:id/settlement', can('finance.view', 'finance.request'), h(async (req) => {
+  const r = await findScoped(req.app, req.ctx, 'finance_requests', req.params.id, { branchCheck: true });
+  if (!r) throw notFound('الطلب غير موجود');
+  return settlementOf(req.app, req.ctx, r);
+}));
+
+/**
+ * رفع بيان الإغلاق.
+ *
+ * الأسطر تُستبدل كاملةً لا تُضاف: البيان وحدةٌ واحدة يُراجعها المعتمِد، وإضافةٌ
+ * فوق إضافةٍ تُخلّف سطوراً منسيّة من محاولةٍ سابقة.
+ */
+router.post('/requests/:id/settlement', can('finance.request', 'finance.view', 'finance.manage'), h(async (req) => {
+  const app = req.app;
+  const r = await findScoped(app, req.ctx, 'finance_requests', req.params.id, { branchCheck: true });
+  if (!r) throw notFound('الطلب غير موجود');
+  if (r.type !== 'custody') throw badRequest('الإغلاق للعهد وحدها');
+  if (r.settle_status === 'settled') throw conflict('العهدة مغلقة ومعتمدة — لا تُعدَّل');
+  if (await termIsClosed(app, req.ctx.tenantId, r.term_id)) throw locked('الفصل مغلق');
+
+  const rows = Array.isArray(req.body?.lines) ? req.body.lines : [];
+  if (!rows.length) throw badRequest('أضف سطر فاتورةٍ واحداً على الأقل');
+  if (rows.length > 200) throw badRequest('عدد الفواتير أكبر من المسموح');
+
+  const clean = rows.map((x, i) => {
+    const amount = Number(x?.amount);
+    if (!Number.isFinite(amount) || amount <= 0) throw badRequest(`المبلغ في السطر ${i + 1} غير صحيح`);
+    if (!String(x?.number || '').trim()) throw badRequest(`رقم الفاتورة في السطر ${i + 1} إلزامي`);
+    if (!String(x?.vendor || '').trim()) throw badRequest(`اسم التاجر في السطر ${i + 1} إلزامي`);
+    const vat = Number(x?.vat) || 0;
+    return {
+      number: String(x.number).trim().slice(0, 60),
+      vendor: String(x.vendor).trim().slice(0, 120),
+      description: String(x?.description || '').trim().slice(0, 400),
+      amount, vat, total: Math.round((amount + vat) * 100) / 100,
+      date: String(x?.date || '').slice(0, 10) || null,
+      file_id: Number(x?.file_id) || null
+    };
+  });
+
+  /* المرفق يجب أن يكون ملفَّ هذه الجهة — لا رقمٌ يُكتَب بالهواء */
+  for (const c of clean) {
+    if (!c.file_id) continue;
+    const f = await app.db.get('SELECT id FROM files WHERE id=? AND tenant_id=?', c.file_id, req.ctx.tenantId);
+    if (!f) throw badRequest('مرفقٌ غير موجود أو لا يخصّ جهتك');
+  }
+
+  await app.db.run('DELETE FROM invoices WHERE request_id=? AND tenant_id=?', r.id, req.ctx.tenantId);
+  for (const c of clean) {
+    await app.db.run(
+      `INSERT INTO invoices(tenant_id,branch_id,term_id,request_id,number,vendor,description,
+         amount,vat,total,date,file_id,status)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'recorded')`,
+      req.ctx.tenantId, r.branch_id, r.term_id, r.id, c.number, c.vendor, c.description,
+      c.amount, c.vat, c.total, c.date, c.file_id);
+  }
+  const covered = clean.reduce((a, c) => a + c.total, 0);
+  await app.db.run(
+    `UPDATE finance_requests SET settle_status='submitted', settled_amount=?, settle_note=?, updated_at=?
+     WHERE id=? AND tenant_id=?`,
+    Math.round(covered * 100) / 100, String(req.body?.note || '').slice(0, 600) || null,
+    nowUTC(), r.id, req.ctx.tenantId);
+
+  await audit(req, { action: 'update', entity: 'finance_request', entityId: r.id,
+    summary: `${req.ctx.userName} رفع بيان إغلاق العهدة ${r.number || r.id}`,
+    meta: { lines: clean.length, covered } });
+  await notifyByPermission(app, req.ctx.tenantId, 'finance.manage', {
+    type: 'finance.settlement', category: 'finance',
+    title: 'بيان إغلاق عهدة بانتظار الاعتماد',
+    body: `${r.title} — غُطّي ${Math.round(covered * 100) / 100} من ${r.amount}`,
+    url: `/finance?id=${r.id}` }).catch(() => {});
+
+  const fresh = await app.db.get('SELECT * FROM finance_requests WHERE id=?', r.id);
+  return settlementOf(app, req.ctx, fresh);
+}));
+
+/**
+ * اعتماد الإغلاق.
+ *
+ * ويجوز مع بقاء عجزٍ لمن يملك `finance.settle_deficit` — والعجز يُثبَت في السجل
+ * بمقداره، فلا يُغلَق بابٌ على نقصٍ لا يعرفه أحد.
+ */
+router.post('/requests/:id/settlement/approve',
+  can('finance.approve_finance', 'finance.manage'), h(async (req) => {
+    const app = req.app;
+    const r = await findScoped(app, req.ctx, 'finance_requests', req.params.id, { branchCheck: true });
+    if (!r) throw notFound('الطلب غير موجود');
+    if (r.type !== 'custody') throw badRequest('الإغلاق للعهد وحدها');
+    if (r.settle_status === 'settled') throw conflict('العهدة مغلقة مسبقاً');
+    if (r.settle_status !== 'submitted') throw badRequest('لم يُرفع بيان الإغلاق بعد');
+
+    const st = await settlementOf(app, req.ctx, r);
+    if (st.deficit > 0 && !(has(req.ctx, 'finance.settle_deficit') || has(req.ctx, 'finance.manage'))) {
+      throw forbidden(`العهدة عليها عجز ${st.deficit} — اعتمادها بعجزٍ يحتاج صلاحية «اعتماد إغلاق عهدة بعجز»`);
+    }
+    await app.db.run(
+      `UPDATE finance_requests SET settle_status='settled', settled_by=?, settled_at=?, updated_at=?
+       WHERE id=? AND tenant_id=?`,
+      req.ctx.userId, nowUTC(), nowUTC(), r.id, req.ctx.tenantId);
+
+    await audit(req, { action: 'approve', entity: 'finance_request', entityId: r.id,
+      summary: st.deficit > 0
+        ? `${req.ctx.userName} اعتمد إغلاق العهدة ${r.number || r.id} بعجز ${st.deficit}`
+        : `${req.ctx.userName} اعتمد إغلاق العهدة ${r.number || r.id} مغطّاةً بالكامل`,
+      meta: { covered: st.covered, deficit: st.deficit, surplus: st.surplus } });
+    await notifyUsers(app, req.ctx.tenantId, [r.requester_id], {
+      type: 'finance.settled', category: 'finance', title: 'اعتُمد إغلاق عهدتك',
+      body: st.deficit > 0 ? `بعجز ${st.deficit} ر.س` : 'مغطّاةٌ بالكامل',
+      url: `/finance?id=${r.id}` }).catch(() => {});
+
+    const fresh = await app.db.get('SELECT * FROM finance_requests WHERE id=?', r.id);
+    return settlementOf(app, req.ctx, fresh);
+  }));
+
 export default router;

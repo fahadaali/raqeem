@@ -4,6 +4,11 @@
  * يعمل على أي بيئة تشغيل (Node أو Cloudflare Workers) عبر متغير BASE.
  */
 const BASE = process.env.BASE || 'http://localhost:3000';
+
+/* عدد الصلاحيات يُقرأ من الكتالوج لا يُكتَب رقماً: كل صلاحيةٍ تُضاف كانت
+   تُسقط ثلاثة فحوصٍ صحيحة وتُوهم بانكسارٍ ليس فيها. */
+const ALL_PERMS = (await import('../server/core/permissions.js')).PERMISSIONS.length;
+
 const only = process.env.ONLY || '';
 let pass = 0, fail = 0;
 const lines = [];
@@ -71,8 +76,15 @@ section('١. المصادقة والصلاحيات (RBAC)', async () => {
     ok(`دخول الدور «${roleKey}»`, r.status === 200 && r.data.user.role.key === roleKey, `status ${r.status}`);
   }
 
+  /*
+   * العدد يُقرأ من الكتالوج لا يُكتَب رقماً.
+   *
+   * كان `=== 60` في ثلاثة مواضع، فكلُّ صلاحيةٍ تُضاف تُسقط ثلاثة فحوصٍ صحيحة
+   * وتُوهم بانكسارٍ ليس فيها. والمقصد «يملك كلَّ ما في الكتالوج» لا «ستّون».
+   */
   ok('الجلسة تحمل كتالوج الصلاحيات', S.s_owner.permissions.length >= 60);
-  ok('مدير الجهة يملك كل الصلاحيات', S.s_owner.permissions.length === 60);
+  ok('مدير الجهة يملك كل الصلاحيات', S.s_owner.permissions.length === ALL_PERMS,
+    `${S.s_owner.permissions.length} من ${ALL_PERMS}`);
   ok('المعلم لا يرى صلاحيات مالية', !S.s_teacher.permissions.some(p => p.startsWith('finance.')));
   ok('المحاسب لا يرى نتائج تقييم المعلمين', !S.s_finance.permissions.includes('forms.results'));
   ok('المدقق للاطلاع فقط (لا صلاحيات إنشاء)',
@@ -746,7 +758,7 @@ section('١٧. لوحة التحكم والتخصيص الديناميكي', asy
   await call('PATCH', '/api/org/tenant', { token: S.owner, body: { primary_color: '#0F5132', settings: { late_after_minutes: 15 } } });
 
   const perms = (await call('GET', '/api/org/permissions', { token: S.owner })).data;
-  ok('كتالوج الصلاحيات مُجمَّع حسب الوحدة', perms.list.length === 60 && Object.keys(perms.grouped).length > 10);
+  ok('كتالوج الصلاحيات مُجمَّع حسب الوحدة', perms.list.length === ALL_PERMS && Object.keys(perms.grouped).length > 10);
 
   const roles = (await call('GET', '/api/org/roles', { token: S.owner })).data;
   const teacherRole = roles.find(r => r.key === 'teacher');
@@ -932,7 +944,7 @@ section('١٩. طبقة الـ SaaS (المرحلة الثانية)', async () =
   const nlog = await login(MAIL, 'Verify@2026');
   ok('مدير الجهة الجديدة يدخل مباشرةً', nlog.status === 200);
   S.newOwner = nlog.data.accessToken;
-  ok('الجهة الجديدة مجهّزة بأدوارها كاملة', nlog.data.permissions.length === 60);
+  ok('الجهة الجديدة مجهّزة بأدوارها كاملة', nlog.data.permissions.length === ALL_PERMS);
   ok('الجهة الجديدة لها فرع وفصل جاريان',
     nlog.data.branches.length === 1 && !!nlog.data.current_term);
   ok('الجهة الجديدة معزولة عن بيانات الجهة الأولى',
@@ -1965,6 +1977,23 @@ section('٢٣. الشاشة الرئيسية العامة ومحرّرها', asy
     && !/connect-src[^;]*openstreetmap/.test(readFileSync('web/_headers', 'utf8')));
   ok('الخريطة تُخفي المربّع الذي لا يصل',
     /gm-blind/.test(readFileSync('web/js/map.js', 'utf8')));
+
+  /* ── إغلاق العهد المالية ── */
+  {
+    const fin = readFileSync('server/core/routes/finance.js', 'utf8');
+    ok('مسارات إغلاق العهدة موجودة',
+      fin.includes("'/requests/:id/settlement'") && fin.includes("'/requests/:id/settlement/approve'"));
+    ok('العجز يُحتسَب من الفواتير لا يُخزَّن', /const covered = lines\.reduce/.test(fin));
+    ok('الاعتماد بعجزٍ يحتاج صلاحيته', /finance\.settle_deficit/.test(fin));
+    ok('صلاحية اعتماد العجز معرَّفة',
+      readFileSync('server/core/permissions.js', 'utf8').includes('finance.settle_deficit'));
+    ok('المرفق يُتحقَّق أنه ملفُّ الجهة', /FROM files WHERE id=\? AND tenant_id=\?/.test(fin));
+    ok('العهد المفتوحة في لوحة التحكم',
+      /type='custody'/.test(readFileSync('server/core/routes/data.js', 'utf8')));
+  }
+  /* `append` تحوّل القيمة الفارغة إلى نصّ «null» — فتُستعمل `mount` */
+  ok('الدرج لا يكتب null في أسفله',
+    /mount\(panel,/.test(readFileSync('web/js/util.js', 'utf8')));
 
   /* لا يُعرَض تفعيلُ إشعاراتٍ لا يستطيع الخادم إرسالها */
   ok('لا يُعرَض تفعيل الإشعارات وخدمة الدفع معطّلة',

@@ -119,9 +119,183 @@ export async function openRequest(id, reload) {
       ])))));
   }
 
+  /* العهدة وحدها لها بيان إغلاق — وهو الجزء الذي يُثبت أين ذهب المال */
+  if (r.type === 'custody') body.append(await settlementCard(r, () => { d.close(); reload?.(); }));
+
   if (can('chat.use')) body.append(card('المحادثة السياقية', [await chatBox('finance_request', r.id)], { icon: 'message-circle' }));
 
   const d = drawer({ title: 'تفاصيل الطلب المالي', body });
+}
+
+/* ═══════════ بيان إغلاق العهدة ═══════════
+ *
+ * العهدة مبلغٌ يُسلَّم ليُنفَق، وإغلاقُها إثباتُ ما أُنفِق. فالبطاقة تجمع ثلاثة:
+ * ميزانٌ يقول كم غُطّي وكم بقي، وأسطرُ الفواتير بمرفقاتها، وزرّ الاعتماد لمن
+ * يملكه — ويبقى مفتوحاً مع العجز لمن يملك اعتماده، وممنوعاً على غيره.
+ */
+async function settlementCard(r, done) {
+  const st = await api.get(`/api/finance/requests/${r.id}/settlement`).catch(() => null);
+  if (!st) return el('div');
+
+  const settled = st.status === 'settled';
+  /* الأسطر نسخةٌ محلّية تُحرَّر ثم تُرسَل كاملة — الخادم يستبدل لا يضيف */
+  const rows = st.lines.length ? st.lines.map(x => ({ ...x })) : [blankLine()];
+  const listBox = el('div.stack', { style: { gap: '9px' } });
+  const scale = el('div.settle-scale');
+  const totalsRow = el('div.settle-totals');
+
+  const sum = () => rows.reduce((a, x) => a + (Number(x.amount) || 0) + (Number(x.vat) || 0), 0);
+
+  const paintTotals = () => {
+    const covered = Math.round(sum() * 100) / 100;
+    const deficit = Math.max(0, r.amount - covered);
+    const surplus = Math.max(0, covered - r.amount);
+    const pct = r.amount > 0 ? Math.min(100, (covered / r.amount) * 100) : 0;
+    clear(scale).append(el('div.bar', { style: { width: `${pct}%` },
+      class: deficit > 0 ? 'short' : 'full' }));
+    clear(totalsRow).append(
+      el('div.t', {}, [el('span', { text: 'مبلغ العهدة' }), el('b', { text: money(r.amount) })]),
+      el('div.t', {}, [el('span', { text: 'المغطّى بفواتير' }), el('b.ok', { text: money(covered) })]),
+      deficit > 0
+        ? el('div.t', {}, [el('span', { text: 'العجز' }), el('b.bad', { text: money(deficit) })])
+        : el('div.t', {}, [el('span', { text: surplus > 0 ? 'الفائض المُعاد' : 'الحالة' }),
+            el('b.ok', { text: surplus > 0 ? money(surplus) : 'مغطّاة بالكامل' })])
+    );
+  };
+
+  const paintRows = () => {
+    mount(clear(listBox), ...rows.map((x, i) => settleRow(x, i, rows, () => { paintRows(); paintTotals(); }, settled)),
+      settled ? null : el('button.btn.sm.ghost', {
+        icon: 'plus', iconSize: 16, text: 'سطر فاتورة',
+        onclick: () => { rows.push(blankLine()); paintRows(); paintTotals(); }
+      }));
+  };
+  paintRows(); paintTotals();
+
+  const note = textarea({ rows: 2, value: st.note || '', placeholder: 'ملاحظة على الإغلاق (اختياري)',
+    disabled: settled });
+
+  const actions = el('div.row', { style: { gap: '8px', marginTop: '12px', flexWrap: 'wrap' } });
+  if (!settled) {
+    actions.append(el('button.btn', { icon: 'save', iconSize: 16, text: 'حفظ بيان الإغلاق',
+      onclick: async (e) => {
+        const bad = rows.find(x => !String(x.number || '').trim() || !String(x.vendor || '').trim()
+          || !(Number(x.amount) > 0));
+        if (bad) return toast('كل سطر يحتاج رقم فاتورة واسم تاجر ومبلغاً أكبر من صفر', 'warn');
+        e.target.disabled = true;
+        try {
+          await api.post(`/api/finance/requests/${r.id}/settlement`,
+            { lines: rows, note: note.value });
+          toast('حُفظ بيان الإغلاق وأُشعِر المسؤول المالي', 'ok');
+          done();
+        } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
+      } }));
+
+    /* زرّ الاعتماد لمن يملكه وحده، ومع العجز لمن يملك اعتماد العجز */
+    if (st.can_settle && st.status === 'submitted') {
+      const deficit = Math.max(0, r.amount - st.covered);
+      const blocked = deficit > 0 && !st.can_settle_deficit;
+      actions.append(el('button.btn.gold', {
+        icon: 'circle-check', iconSize: 16,
+        text: deficit > 0 ? 'اعتماد الإغلاق بعجز' : 'اعتماد الإغلاق',
+        disabled: blocked,
+        title: blocked ? 'اعتماد الإغلاق مع بقاء عجزٍ يحتاج صلاحية مستقلّة' : '',
+        onclick: async (e) => {
+          if (deficit > 0 && !await confirmDialog(
+            `سيُغلق على عجز ${money(deficit)} ر.س ويُثبَّت في سجل التدقيق باسمك.`,
+            { confirmText: 'اعتماد بعجز' })) return;
+          e.target.disabled = true;
+          try {
+            await api.post(`/api/finance/requests/${r.id}/settlement/approve`, {});
+            toast('اعتُمد إغلاق العهدة', 'ok');
+            done();
+          } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
+        }
+      }));
+      if (blocked) actions.append(el('span.hint', { style: { flex: '1 1 100%' },
+        text: 'العهدة عليها عجز — اعتمادها يحتاج صلاحية «اعتماد إغلاق عهدة بعجز».' }));
+    }
+  }
+
+  return card('بيان إغلاق العهدة', [
+    scale, totalsRow,
+    el('div.hint', { style: { margin: '10px 0 4px' },
+      text: settled ? 'العهدة مغلقةٌ ومعتمدة — البيان للاطّلاع.'
+        : 'أضف فواتير الإنفاق: رقم الفاتورة واسم التاجر وبيانها ومبلغها، وأرفق صورةً أو PDF لكل فاتورة.' }),
+    listBox,
+    el('label.field', { style: { marginTop: '10px' } }, [el('span', { text: 'ملاحظة' }), note]),
+    actions
+  ], { icon: 'receipt',
+    sub: settled ? 'مغلقة' : st.status === 'submitted' ? 'بانتظار اعتماد الإغلاق' : 'مفتوحة' });
+}
+
+const blankLine = () => ({ number: '', vendor: '', description: '', amount: '', vat: 0, date: '', file: null });
+
+/** سطر فاتورةٍ واحد: الحقول الأربعة ومرفقُه */
+function settleRow(x, i, rows, redraw, readOnly) {
+  const set = (k) => (e) => { x[k] = e.target.value; if (k === 'amount' || k === 'vat') redraw(); };
+  const fileSlot = el('div.row', { style: { gap: '6px', alignItems: 'center' } });
+
+  const paintFile = () => {
+    clear(fileSlot).append(x.file
+      ? el('button.btn.sm.ghost', { type: 'button', icon: 'file-text', iconSize: 15,
+          text: (x.file.name || 'مرفق').slice(0, 22),
+          onclick: () => previewFile(x.file.id, x.file.name) })
+      : el('span.hint', { text: 'بلا مرفق' }));
+    if (!readOnly) fileSlot.append(el('button.btn.sm.ghost', {
+      type: 'button', icon: x.file ? 'refresh-cw' : 'upload', iconSize: 15,
+      title: x.file ? 'استبدال المرفق' : 'إرفاق صورة أو PDF',
+      'aria-label': x.file ? 'استبدال المرفق' : 'إرفاق صورة أو PDF',
+      onclick: () => pickFile(async (f) => { x.file = f; x.file_id = f.id; paintFile(); })
+    }));
+  };
+  paintFile();
+
+  return el('div.settle-row', {}, [
+    el('div.n', { text: AR_NUM(i + 1) }),
+    el('div.f', {}, [
+      el('div.grid-2', {}, [
+        input({ value: x.number || '', placeholder: 'رقم الفاتورة', disabled: readOnly, oninput: set('number') }),
+        input({ value: x.vendor || '', placeholder: 'اسم التاجر', disabled: readOnly, oninput: set('vendor') })
+      ]),
+      input({ value: x.description || '', placeholder: 'بيان الفاتورة — ما اشتُري', disabled: readOnly, oninput: set('description') }),
+      el('div.grid-2', {}, [
+        input({ type: 'number', step: '0.01', min: 0, value: x.amount ?? '', placeholder: 'المبلغ', disabled: readOnly, oninput: set('amount') }),
+        input({ type: 'number', step: '0.01', min: 0, value: x.vat ?? 0, placeholder: 'الضريبة', disabled: readOnly, oninput: set('vat') })
+      ]),
+      fileSlot
+    ]),
+    readOnly ? null : el('button.btn.sm.ghost', {
+      icon: 'trash-2', iconSize: 16, title: 'حذف السطر', 'aria-label': 'حذف السطر',
+      onclick: () => { rows.splice(i, 1); if (!rows.length) rows.push(blankLine()); redraw(); }
+    })
+  ]);
+}
+
+/**
+ * انتقاء ملفٍ ورفعُه.
+ * الصيغ هي التي يقبلها الخادم نفسه — صورٌ وPDF ومستندات — فلا يُنتقى ما يُرفَض.
+ */
+function pickFile(onDone) {
+  const inp = el('input', { type: 'file', hidden: true,
+    accept: 'image/*,application/pdf,.pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.xls,.xlsx,.doc,.docx' });
+  document.body.append(inp);
+  inp.onchange = async () => {
+    const f = inp.files?.[0];
+    inp.remove();
+    if (!f) return;
+    const fd = new FormData();
+    fd.append('files', f);
+    fd.append('context', 'custody_settlement');
+    try {
+      const res = await api.post('/api/files', fd);
+      const up = (res.files || res)[0];
+      if (!up) throw new Error('تعذّر رفع الملف');
+      toast('أُرفق الملف', 'ok');
+      onDone({ id: up.id, name: up.name, mime: up.mime });
+    } catch (e) { toast(e.message || 'تعذّر رفع الملف', 'err'); }
+  };
+  inp.click();
 }
 
 export function previewFile(fileId, name = '') {
