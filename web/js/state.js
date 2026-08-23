@@ -38,6 +38,20 @@ export const setPref = (key, value) => {
   localStorage.setItem('raqeem_' + ({ branchId: 'branch', termId: 'term', calendar: 'cal', theme: 'theme' }[key] || key), value);
 };
 
+/**
+ * تطبيق السمة على الجذر.
+ *
+ * هنا لا في `app.js`: الصفحة العامة تحمل مفتاح المظهر أيضاً، ولو بقي في هيكل
+ * التطبيق لاحتاجت الصفحةُ أن تستورد الهيكلَ الذي يستوردها — دورةٌ لا داعي لها.
+ */
+export function applyTheme(pref) {
+  const dark = pref === 'dark' || (pref === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  /* لونا الهوية: أخضر سنا فاتحاً، والغامق في الوضع الداكن */
+  document.querySelector('meta[name="theme-color"]')
+    ?.setAttribute('content', dark ? '#1C5E4C' : '#2F8A6F');
+}
+
 /** التحقق من صلاحية — يقود إظهار/إخفاء عناصر الواجهة المرنة */
 export const can = (...keys) => {
   const p = state.session?.permissions || [];

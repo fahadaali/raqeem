@@ -1,5 +1,5 @@
 import api from './api.js';
-import { state, setState, setPref, saveTokens, clearSession, can, activeTerm, currentTermObj } from './state.js';
+import { state, setState, setPref, saveTokens, clearSession, can, activeTerm, currentTermObj, applyTheme } from './state.js';
 import { el, clear, qs, qsa, toast, timeAgo, T, avatar, skeleton, AR_NUM } from './util.js';
 import { icon as luIcon } from './icons.js';
 import * as rt from './realtime.js';
@@ -206,13 +206,6 @@ const openSidebar = () => {
   document.body.append(back);
 };
 const closeSidebar = () => { qs('#sidebar')?.classList.remove('open'); qs('.side-back')?.remove(); };
-
-function applyTheme(pref) {
-  const dark = pref === 'dark' || (pref === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
-  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-  /* لونا الهوية: أخضر سنا فاتحاً، والغامق في الوضع الداكن */
-  qs('meta[name="theme-color"]')?.setAttribute('content', dark ? '#1C5E4C' : '#2F8A6F');
-}
 
 /* ═══════════════ لوحة الإشعارات ═══════════════ */
 async function toggleNotifPanel() {
@@ -494,10 +487,15 @@ rt.on('task.updated', (m) => window.dispatchEvent(new CustomEvent('raqeem:task',
 /* وضع التراجع: إن تعذّرت القناة الدائمة تُحدَّث البيانات بالاستطلاع الدوري */
 rt.on('poll', () => { loadNotifications(); window.dispatchEvent(new CustomEvent('raqeem:poll')); });
 
-window.addEventListener('popstate', () => {
-  if (location.pathname.startsWith('/admin')) return void render();
-  refreshView();
-});
+/*
+ * زرّ الرجوع يمرّ بالمسار الكامل كما يمرّ `navigate`.
+ *
+ * كان يستدعي `refreshView` وحدها، وهي لا تبدّل إلا محتوى الهيكل: فمن رجع إلى
+ * الصفحة الرئيسية أو الدخول أو الأسعار — وكلُّها خارج الهيكل — رأى الرابط يتغيّر
+ * والشاشة تبقى، بل تخرج `refreshView` صامتةً لأن `#content` غير موجود أصلاً.
+ * و`render` تُبقي الهيكل القائم كما هو، فلا يكلّف التصحيحُ إعادةَ بناء.
+ */
+window.addEventListener('popstate', () => { render(); });
 window.addEventListener('raqeem:signout', async () => { clearSession(); rt.disconnect(); clear(qs('#app')); await render(); });
 window.addEventListener('raqeem:navigate', (e) => navigate(e.detail));
 window.addEventListener('raqeem:push', () => loadNotifications());

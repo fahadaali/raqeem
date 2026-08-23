@@ -1,6 +1,7 @@
 import api from '../api.js';
-import { el, AR_NUM } from '../util.js';
-import { hasIcon } from '../icons.js';
+import { el, clear, AR_NUM } from '../util.js';
+import { hasIcon, icon as luIcon } from '../icons.js';
+import { setPref, applyTheme } from '../state.js';
 
 /**
  * الشاشة الرئيسية العامة — ما يراه الزائر على `/` قبل أن يملك حساباً.
@@ -57,6 +58,27 @@ function themedImg(lightSrc, darkSrc, props = {}) {
   return img;
 }
 
+/** مفتاح المظهر — هو مفتاح اللوحة نفسه واختيارُه يُحفَظ للجلستين معاً */
+function themeToggle() {
+  const dark = () => document.documentElement.dataset.theme === 'dark';
+  const btn = el('button.icon-btn.land-theme', {
+    type: 'button', title: 'المظهر', 'aria-label': 'تبديل المظهر',
+    onclick: () => {
+      const next = dark() ? 'light' : 'dark';
+      applyTheme(next); setPref('theme', next);
+    }
+  });
+  /* الأيقونة تتبع السمة لا الضغطة: من ترك «تلقائي» وبدّل جهازُه ليلاً يجدها صحيحة */
+  const sync = () => {
+    clear(btn).append(luIcon(dark() ? 'sun' : 'moon', { size: 18 }));
+    btn.setAttribute('aria-pressed', String(dark()));
+  };
+  sync();
+  new MutationObserver(sync).observe(document.documentElement,
+    { attributes: true, attributeFilter: ['data-theme'] });
+  return btn;
+}
+
 /** عنوان قسمٍ متمركز — يسقط كلّه إن لم يُكتب له عنوان */
 const heading = (h, id) => (h?.title
   ? el('div.land-h', { id: id || null }, [
@@ -109,13 +131,26 @@ export async function render({ navigate, signedIn = false }) {
         el('img', { src: '/assets/brand/monogram-primary.svg', alt: '', width: 38, height: 38 }),
         el('b', { text: p.name || 'منصة رقيم' })
       ]),
+      /*
+       * الشريط العلوي يحمل ما يُقصَد: أقسام الصفحة ثم مفتاح المظهر ثم بابُ الحساب.
+       * كانت روابط الحساب في التذييل، وهو آخر ما يُرى — فمن أراد الدخول نزل الصفحة
+       * كلَّها ليجده. ومفتاح المظهر من الدليل: يلزم الصفحة العامة كما يلزم اللوحة.
+       */
       el('nav.land-nav', { 'aria-label': 'روابط الصفحة' }, [
-        d.features?.length ? jump('المزايا', 'features') : null,
-        d.showcase?.length ? jump('الشاشات', 'showcase') : null,
-        d.steps?.length ? jump('كيف تبدأ', 'steps') : null,
-        p.saas_enabled ? link('الأسعار', '/pricing', 'land-link', navigate) : null,
-        signedIn ? link('لوحتي', '/dashboard', 'btn.sm.ghost', navigate)
-                 : link('دخول', '/login', 'btn.sm.ghost', navigate)
+        el('div.land-jumps', {}, [
+          d.features?.length ? jump('المزايا', 'features') : null,
+          d.showcase?.length ? jump('الشاشات', 'showcase') : null,
+          d.steps?.length ? jump('كيف تبدأ', 'steps') : null,
+          d.faq?.length ? jump('الأسئلة', 'faq') : null,
+          p.saas_enabled ? link('الأسعار', '/pricing', 'land-link', navigate) : null
+        ]),
+        themeToggle(),
+        signedIn
+          ? link('لوحتي', '/dashboard', 'btn.sm.gold', navigate)
+          : el('div.row', { style: { gap: '8px' } }, [
+              link('دخول', '/login', 'btn.sm.ghost', navigate),
+              p.signup_enabled ? link('إنشاء جهة', '/signup', 'btn.sm.gold', navigate) : null
+            ])
       ])
     ]),
 
@@ -141,7 +176,7 @@ export async function render({ navigate, signedIn = false }) {
       el('span', { text: s.label })
     ]))) : null,
 
-    d.features?.length ? el('section.land-block.reveal', {}, [
+    d.features?.length ? el('section.land-block', {}, [
       heading(H.features, 'features'),
       el('div.land-features', {}, d.features.map(f => el('article.land-card', {}, [
         /* الأيقونة اسمُ لوسايد يحرّره الادمن — واسمٌ مجهول يسقط إلى «سنا» لا يكسر البطاقة */
@@ -153,7 +188,7 @@ export async function render({ navigate, signedIn = false }) {
 
     showcase(d.showcase, H.showcase),
 
-    d.steps?.length ? el('section.land-block.land-steps-wrap.reveal', {}, [
+    d.steps?.length ? el('section.land-block.land-steps-wrap', {}, [
       heading(H.steps, 'steps'),
       el('ol.land-steps', {}, d.steps.map((s, i) => el('li.land-step', {}, [
         el('span.n', { text: AR_NUM(i + 1) }),
@@ -163,7 +198,7 @@ export async function render({ navigate, signedIn = false }) {
       ])))
     ]) : null,
 
-    d.testimonials?.length ? el('section.land-block.reveal', {}, [
+    d.testimonials?.length ? el('section.land-block', {}, [
       heading(H.testimonials),
       el('div.land-quotes', {}, d.testimonials.map(t => el('figure.land-quote', {}, [
         el('span.ic', { icon: 'sparkles', iconSize: 18 }),
@@ -175,7 +210,7 @@ export async function render({ navigate, signedIn = false }) {
       ])))
     ]) : null,
 
-    d.faq?.length ? el('section.land-block.reveal', {}, [
+    d.faq?.length ? el('section.land-block', {}, [
       heading(H.faq, 'faq'),
       el('div.land-faq', {}, d.faq.map(f =>
         /* `details` أصليّة: تعمل بلا جافاسكربت، ولوحة المفاتيح وقارئ الشاشة
@@ -198,7 +233,6 @@ export async function render({ navigate, signedIn = false }) {
     ])
   ]);
 
-  reveal(page);
   return page;
 }
 
@@ -251,28 +285,9 @@ function showcase(items, head) {
     ]));
   });
 
-  return el('section.land-block.land-show.reveal', {}, [
+  return el('section.land-block.land-show', {}, [
     heading(head, 'showcase'),
     el('div.land-tabs', { role: 'tablist', 'aria-label': 'شاشات المنصّة' }, tabs),
     ...panels
   ]);
-}
-
-/**
- * ظهورٌ متدرّج للأقسام عند بلوغها.
- * ومن طلب تقليل الحركة يراها ظاهرةً من أول لحظة — لا حركة تُفرض عليه.
- */
-function reveal(root) {
-  const nodes = [...root.querySelectorAll('.reveal')];
-  if (!nodes.length) return;
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches || !('IntersectionObserver' in window)) {
-    nodes.forEach(n => n.classList.add('in'));
-    return;
-  }
-  /* الإخفاء يُعلَن هنا لا في التنسيق: ما لم نصل إلى هذا السطر تبقى الأقسام ظاهرة */
-  root.classList.add('js-anim');
-  const io = new IntersectionObserver((entries) => {
-    for (const e of entries) if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
-  }, { rootMargin: '0px 0px -8% 0px', threshold: 0.06 });
-  nodes.forEach(n => io.observe(n));
 }
