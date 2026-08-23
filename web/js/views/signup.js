@@ -97,7 +97,8 @@ export async function render({ navigate }) {
       }
       toast('تم إنشاء جهتك — جارٍ تسجيل الدخول', 'ok');
       await api.login(email.value.trim(), password.value);
-      location.href = '/';
+      /* من أنشأ جهته يريد لوحتها لا صفحة تعريف المنصة */
+      location.href = '/dashboard';
     } catch (err) {
       msg.textContent = err.message || 'تعذّر إتمام التسجيل';
       btn.disabled = false; btn.textContent = label;

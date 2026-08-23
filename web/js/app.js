@@ -8,7 +8,7 @@ import * as pwa from './push.js';
 /* ═══════════════ خريطة الشاشات (الواجهة المرنة بحسب الصلاحيات) ═══════════════ */
 const NAV = [
   { group: 'الرئيسية' },
-  { path: '/', label: 'لوحة التحكم', icon: 'layout-dashboard', view: 'dashboard' },
+  { path: '/dashboard', label: 'لوحة التحكم', icon: 'layout-dashboard', view: 'dashboard' },
   { path: '/checkin', label: 'تسجيل الحضور', icon: 'map-pin', view: 'hr', perm: ['hr.attendance.self'], sub: 'checkin' },
   { path: '/notifications', label: 'الإشعارات', icon: 'bell', view: 'notifications', badge: 'notifications' },
 
@@ -37,7 +37,7 @@ const NAV = [
 ];
 
 const BOTTOM = [
-  { path: '/', label: 'الرئيسية', icon: 'layout-dashboard' },
+  { path: '/dashboard', label: 'لوحتي', icon: 'layout-dashboard' },
   { path: '/tasks', label: 'المهام', icon: 'clipboard-list', perm: ['tasks.view', 'tasks.view_all'] },
   { path: '/checkin', label: 'تحضير', icon: 'map-pin', perm: ['hr.attendance.self'] },
   { path: '/notifications', label: 'الإشعارات', icon: 'bell', badge: 'notifications' },
@@ -354,8 +354,8 @@ async function refreshView() {
 }
 
 /**
- * هل نشر الادمن الشاشة الرئيسية؟ يُقرأ مرّة واحدة لكل إقلاع.
- * الافتراض عند أي تعذّر: «غير منشورة» — فيرى الزائر شاشة الدخول لا شاشة فارغة.
+ * هل الشاشة الرئيسية منشورة؟ يُقرأ مرّة واحدة لكل إقلاع.
+ * الافتراض عند تعذّر الجلب: «غير منشورة» — فيُعرَض الدخول لا شاشة فارغة.
  */
 let landingState;
 async function landingPublished() {
@@ -365,6 +365,17 @@ async function landingPublished() {
     landingState = !!d?.enabled;
   } catch { landingState = false; }
   return landingState;
+}
+
+/** يعرض الشاشة الرئيسية على الجذر، ويُرجع false إن تعذّر ذلك */
+async function showLanding(app) {
+  if (!await landingPublished()) return false;
+  try {
+    const { render: view } = await import('./views/landing.js');
+    clear(app).append(await view({ navigate, signedIn: !!state.session }));
+    app.hidden = false; hideBoot();
+    return true;
+  } catch (e) { console.error(e); return false; }
 }
 
 async function render() {
@@ -391,22 +402,11 @@ async function render() {
       } catch (e) { console.error(e); }
     }
     /*
-     * `/` للزائر: الشاشة الرئيسية إن نشرها الادمن، وشاشة الدخول إن لم ينشرها.
-     * الرجوع إلى الدخول عند الإطفاء — أو عند تعذّر الجلب — يعني أن المنصة لا
-     * تنكسر لا قبل تحرير المحتوى ولا حين يسقط المسار العام.
+     * الجذر صفحةُ المنصة الرئيسية، والدخول امتدادٌ لها (`/login`) — لا العكس.
+     * وإن تعذّر عرضها (غير منشورة أو سقط المسار العام) رجع الجذر إلى الدخول،
+     * فلا تصير الواجهة العامة نقطةَ فشلٍ تحجب المنصة كلّها.
      */
-    /*
-     * والتطبيق المثبَّت يتخطّاها: من ثبّت التطبيق قصد الدخول لا القراءة عن
-     * المنصة، فإقلاعه على صفحة تعريفية في كل مرة تراجعٌ لا ترحيب.
-     */
-    if (path === '/' && !pwa.isStandalone() && await landingPublished()) {
-      try {
-        const { render: view } = await import('./views/landing.js');
-        clear(app).append(await view({ navigate }));
-        app.hidden = false; hideBoot();
-        return;
-      } catch (e) { console.error(e); }
-    }
+    if (path === '/' && await showLanding(app)) return;
     const { render: loginView } = await import('./views/login.js');
     clear(app).append(await loginView({ onSuccess: boot, navigate }));
     app.hidden = false;
@@ -414,12 +414,15 @@ async function render() {
     return;
   }
   /*
-   * مسارات الزائر لا معنى لها بعد الدخول: تُستبدل بالجذر في التاريخ نفسه فلا
-   * يبقى شريط العنوان يقول `/login` والمستخدم داخلٌ فعلاً.
+   * مسارات الدخول لا معنى لها بعد الدخول: تُستبدل بلوحة المجمّع في التاريخ
+   * نفسه فلا يبقى شريط العنوان يقول `/login` والمستخدم داخلٌ فعلاً.
    */
-  if (['/login', '/signup', '/pricing'].includes(parseRoute().path)) {
-    history.replaceState({}, '', '/');
+  if (['/login', '/signup'].includes(parseRoute().path)) {
+    history.replaceState({}, '', '/dashboard');
   }
+
+  /* والجذر يبقى الصفحة الرئيسية للمسجَّل أيضاً — لكن روابطها تقوده إلى لوحته */
+  if (parseRoute().path === '/' && await showLanding(app)) return;
 
   if (!qs('.shell')) {
     clear(app).append(el('div.shell', {}, [
@@ -449,7 +452,7 @@ function consumeImpersonation() {
   if (!token) return;
   saveTokens(token, null);
   u.searchParams.delete('impersonate');
-  history.replaceState({}, '', u.pathname + (u.search || '') );
+  history.replaceState({}, '', '/dashboard' + (u.search || ''));
 }
 
 async function boot() {
