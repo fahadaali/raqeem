@@ -9,10 +9,10 @@ import { chatBox } from './tasks.js';
 
 export async function render({ route }) {
   const items = [];
-  if (can('finance.view', 'finance.request')) items.push({ label: '📄 الطلبات المالية', build: requestsTab });
-  if (can('invoices.view')) items.push({ label: '🧾 الفواتير', build: invoicesTab });
-  if (can('budgets.view')) items.push({ label: '📊 الميزانيات', build: budgetsTab });
-  if (can('workflows.view')) items.push({ label: '🌳 مسارات الاعتماد', build: workflowsTab });
+  if (can('finance.view', 'finance.request')) items.push({ label: 'الطلبات المالية', icon: 'file-text', build: requestsTab });
+  if (can('invoices.view')) items.push({ label: 'الفواتير', icon: 'receipt', build: invoicesTab });
+  if (can('budgets.view')) items.push({ label: 'الميزانيات', icon: 'chart-column', build: budgetsTab });
+  if (can('workflows.view')) items.push({ label: 'مسارات الاعتماد', icon: 'workflow', build: workflowsTab });
   const t = tabs(items, (it) => { const n = el('div'); Promise.resolve(it.build()).then(x => n.replaceChildren(x)); return n; });
   if (route.query.id) setTimeout(() => openRequest(Number(route.query.id)), 200);
   if (route.query.new === '1') setTimeout(() => openRequestForm(null, () => location.reload()), 200);
@@ -28,9 +28,9 @@ async function requestsTab() {
     const rows = await api.get('/api/finance/requests' + api.qs({ status: filter }));
     const pending = rows.filter(r => r.can_approve);
     mount(clear(body),
-      pending.length ? card(`⏳ بانتظار اعتمادك (${AR_NUM(pending.length)})`,
+      pending.length ? card(`بانتظار اعتمادك (${AR_NUM(pending.length)})`,
         el('div.stack', { style: { gap: '8px' } }, pending.map(r => el('div.check-row', { onclick: () => openRequest(r.id, load) }, [
-          el('span', { text: '💰' }),
+          el('span.ic', { icon: 'banknote', iconSize: 16 }),
           el('div.t', {}, [`${r.number} — ${r.title}`,
             el('small', { text: `${r.requester_name} · ${money(r.amount)} ر.س · ${r.current_step_name}` })]),
           chip('اعتمد الآن', 'gold')
@@ -55,7 +55,7 @@ async function requestsTab() {
     card(null, [el('div.row.between', {}, [
       el('div.row', {}, [el('h3', { text: 'الطلبات المالية' }), statusSel]),
       can('finance.request') && !termIsArchived()
-        ? el('button.btn.sm', { text: '＋ طلب مالي جديد', onclick: () => openRequestForm(null, load) }) : null
+        ? el('button.btn.sm', { icon: 'plus', iconSize: 16, text: 'طلب مالي جديد', onclick: () => openRequestForm(null, load) }) : null
     ])]),
     body
   ]);
@@ -66,7 +66,8 @@ export async function openRequest(id, reload) {
   if (!r) return toast('الطلب غير موجود', 'err');
 
   const timeline = el('div.flow', {}, r.timeline.map((s, i) => el('div.flow-step.' + s.state, {}, [
-    el('div.flow-dot', { text: s.state === 'approved' ? '✓' : s.state === 'rejected' ? '✕' : AR_NUM(i + 1) }),
+    el('div.flow-dot', s.state === 'approved' ? { icon: 'check', iconSize: 16 }
+      : s.state === 'rejected' ? { icon: 'x', iconSize: 16 } : { text: AR_NUM(i + 1) }),
     el('div.n', { text: s.name }),
     el('div.w', { text: s.at ? fmtDate(s.at, state.calendar, 'short') : (s.state === 'current' ? 'بانتظار الإجراء' : 'لم تبدأ') }),
     s.by ? el('div.w', { style: { fontWeight: '600' }, text: s.by }) : null,
@@ -86,7 +87,7 @@ export async function openRequest(id, reload) {
       ]),
       r.description ? el('p', { text: r.description, style: { fontSize: '13px', color: 'var(--text-2)', marginTop: '11px' } }) : null
     ]),
-    card('🌳 مسار الاعتماد', timeline, { sub: r.workflow_name || 'المسار الافتراضي' })
+    card('مسار الاعتماد', timeline, { icon: 'workflow', sub: r.workflow_name || 'المسار الافتراضي' })
   ]);
 
   if (r.can_approve) {
@@ -94,8 +95,8 @@ export async function openRequest(id, reload) {
     body.append(card('إجراء الاعتماد', [
       note,
       el('div.row', { style: { marginTop: '10px' } }, [
-        el('button.btn', { text: '✓ اعتماد', style: { flex: 1 }, onclick: () => decide('approve') }),
-        el('button.btn.danger', { text: '✕ رفض', style: { flex: 1 }, onclick: () => decide('reject') })
+        el('button.btn', { icon: 'check', iconSize: 16, text: 'اعتماد', style: { flex: 1 }, onclick: () => decide('approve') }),
+        el('button.btn.danger', { icon: 'x', iconSize: 16, text: 'رفض', style: { flex: 1 }, onclick: () => decide('reject') })
       ])
     ], { sub: `أنت مخوّل بمرحلة: ${r.current_step_name}` }));
 
@@ -110,15 +111,15 @@ export async function openRequest(id, reload) {
   }
 
   if (r.invoices?.length) {
-    body.append(card('🧾 الفواتير المرفقة', el('div.stack', { style: { gap: '8px' } }, r.invoices.map(i =>
+    body.append(card('الفواتير المرفقة', el('div.stack', { style: { gap: '8px' } }, r.invoices.map(i =>
       el('div.check-row', { style: { cursor: i.file_id ? 'pointer' : 'default' }, onclick: () => i.file_id && previewFile(i.file_id, i.original_name) }, [
-        el('span', { text: '🧾' }),
+        el('span.ic', { icon: 'receipt', iconSize: 16 }),
         el('div.t', {}, [`${i.number} — ${i.vendor || 'مورد'}`, el('small', { text: `${money(i.total)} ر.س · ${fmtDate(i.date, state.calendar, 'short')}` })]),
         i.file_id ? chip('معاينة', 'info') : null
       ])))));
   }
 
-  if (can('chat.use')) body.append(card('💬 المحادثة السياقية', [await chatBox('finance_request', r.id)]));
+  if (can('chat.use')) body.append(card('المحادثة السياقية', [await chatBox('finance_request', r.id)], { icon: 'message-circle' }));
 
   const d = drawer({ title: 'تفاصيل الطلب المالي', body });
 }
@@ -133,7 +134,7 @@ export function previewFile(fileId, name = '') {
         ? el('img', { src: url, alt: name, style: { maxWidth: '100%', borderRadius: '10px' } })
         : el('iframe', { src: url, style: { width: '100%', height: '68vh', border: '1px solid var(--border)', borderRadius: '10px' } }),
       el('div', { style: { marginTop: '12px' } }, [
-        el('a.btn.sm.ghost', { href: url + '?download=1', download: name, text: '⬇ تنزيل الملف' })
+        el('a.btn.sm.ghost', { href: url + '?download=1', download: name, icon: 'download', iconSize: 16, text: 'تنزيل الملف' })
       ])
     ])
   });
@@ -166,7 +167,7 @@ async function openRequestForm(req, reload) {
   const fileInput = el('input', { type: 'file', accept: 'image/*,application/pdf', multiple: true, hidden: true });
   const fileList = el('div.row', { style: { marginTop: '8px' } });
   const drop = el('div.file-drop', { onclick: () => fileInput.click() }, [
-    el('span.ic', { text: '🧾' }),
+    el('span.ic', { icon: 'receipt', iconSize: 'card' }),
     el('div', { text: 'اسحب صور الفواتير هنا أو اضغط للاختيار' }),
     el('div.hint', { text: 'JPG · PNG · PDF — حتى ١٥ ميجابايت للملف' })
   ]);
@@ -179,7 +180,7 @@ async function openRequestForm(req, reload) {
     try {
       const res = await api.post('/api/files', fd);
       uploaded = uploaded.concat(res.files);
-      clear(fileList).append(...uploaded.map(f => chip('🧾 ' + f.name, 'ok')));
+      clear(fileList).append(...uploaded.map(f => chip(f.name, 'ok', 'receipt')));
       toast(`تم رفع ${AR_NUM(res.files.length)} ملف`, 'ok');
     } catch {}
   };
@@ -229,7 +230,7 @@ async function invoicesTab() {
     { header: 'الإجمالي (ر.س)', key: 'total', num: true, render: r => el('b', { text: money(r.total) }) },
     { header: 'التاريخ', key: 'date', render: r => fmtDate(r.date, state.calendar, 'short') },
     { header: 'المرفق', key: 'f', render: r => r.file_id
-        ? el('button.btn.sm.ghost', { text: '👁 معاينة', onclick: (e) => { e.stopPropagation(); previewFile(r.file_id, r.original_name); } })
+        ? el('button.btn.sm.ghost', { icon: 'eye', iconSize: 16, text: 'معاينة', onclick: (e) => { e.stopPropagation(); previewFile(r.file_id, r.original_name); } })
         : '—' }
   ], rows, { emptyText: 'لا توجد فواتير مسجلة' }), { p0: true });
 }
@@ -252,12 +253,12 @@ async function budgetsTab() {
         el('span', { text: `المعتمد: ${money(b.amount)} ر.س` }), el('span', { text: `${pct(b.usage_pct)} مستهلك` })
       ])
     ])]))));
-    if (!rows.length) clear(body).append(empty('📊', 'لا توجد ميزانيات', 'أنشئ بنود ميزانية لضبط المصروفات.'));
+    if (!rows.length) clear(body).append(empty('chart-column', 'لا توجد ميزانيات', 'أنشئ بنود ميزانية لضبط المصروفات.'));
   };
   await load();
   return el('div.stack', {}, [
     card(null, [el('div.row.between', {}, [el('h3', { text: 'بنود الميزانية' }),
-      can('budgets.manage') ? el('button.btn.sm', { text: '＋ بند جديد', onclick: () => openBudget(load) }) : null])]),
+      can('budgets.manage') ? el('button.btn.sm', { icon: 'plus', iconSize: 16, text: 'بند جديد', onclick: () => openBudget(load) }) : null])]),
     body
   ]);
 }
@@ -291,7 +292,7 @@ async function workflowsTab() {
         el('div', {}, [el('h4', { text: w.name }), el('div.hint', { text: `نوع المستند: ${T.financeType[w.doc_type] || w.doc_type}` })]),
         el('div.row', {}, [
           chip(w.is_active ? 'مفعّل' : 'معطّل', w.is_active ? 'ok' : ''),
-          can('workflows.manage') ? el('button.btn.sm.ghost', { text: '✏️ تعديل', onclick: () => openWorkflow(w, load) }) : null
+          can('workflows.manage') ? el('button.btn.sm.ghost', { icon: 'pencil', iconSize: 16, text: 'تعديل', onclick: () => openWorkflow(w, load) }) : null
         ])
       ]),
       el('div.flow', { style: { marginTop: '11px' } }, w.steps.map((s, i) => el('div.flow-step', {}, [
@@ -304,7 +305,7 @@ async function workflowsTab() {
     card(null, [el('div.row.between', {}, [
       el('div', {}, [el('h3', { text: 'شجرة الاعتمادات' }),
         el('div.hint', { text: 'رتّب مراحل الاعتماد لكل نوع مستند — لا يمكن تجاوز أي خطوة إلا من صاحب الصلاحية.' })]),
-      can('workflows.manage') ? el('button.btn.sm', { text: '＋ مسار جديد', onclick: () => openWorkflow(null, load) }) : null
+      can('workflows.manage') ? el('button.btn.sm', { icon: 'plus', iconSize: 16, text: 'مسار جديد', onclick: () => openWorkflow(null, load) }) : null
     ])]),
     body
   ]);
@@ -333,12 +334,12 @@ function openWorkflow(w, reload) {
         el('div.avatar.sm', { text: AR_NUM(i + 1) }),
         el('div', { style: { flex: '2' } }, [nm]),
         el('div', { style: { flex: '1' } }, [rl]),
-        el('button.btn.sm.ghost', { text: '↑', disabled: i === 0, onclick: () => { [steps[i - 1], steps[i]] = [steps[i], steps[i - 1]]; paint(); } }),
-        el('button.btn.sm.ghost', { text: '✕', onclick: () => { steps.splice(i, 1); paint(); } })
+        el('button.btn.sm.ghost', { icon: 'arrow-up', iconSize: 16, title: 'أعلى', 'aria-label': 'أعلى', disabled: i === 0, onclick: () => { [steps[i - 1], steps[i]] = [steps[i], steps[i - 1]]; paint(); } }),
+        el('button.btn.sm.ghost', { icon: 'x', iconSize: 16, title: 'حذف', 'aria-label': 'حذف', onclick: () => { steps.splice(i, 1); paint(); } })
       ]));
     });
     stepsBox.append(el('button.btn.sm.ghost', {
-      text: '＋ إضافة مرحلة', style: { marginTop: '7px' },
+      icon: 'plus', iconSize: 16, text: 'إضافة مرحلة', style: { marginTop: '7px' },
       onclick: () => { steps.push({ name: 'مرحلة جديدة', role_key: 'finance', permission: 'finance.approve_finance' }); paint(); }
     }));
   };

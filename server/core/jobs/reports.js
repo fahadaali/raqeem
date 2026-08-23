@@ -275,7 +275,7 @@ export const REPORTS = {
           number: r.number, subject: r.subject, category: r.category,
           priority: PRIORITY_AR[r.priority] || r.priority, status: ST[r.status] || r.status,
           requester: r.requester, assignee: r.assignee || '—', date: r.created_at.slice(0, 10),
-          sla: r.escalated ? '⚠ مُصعّدة' : (r.first_response_at ? 'ملتزمة' : 'بانتظار الرد')
+          sla: r.escalated ? 'مُصعّدة' : (r.first_response_at ? 'ملتزمة' : 'بانتظار الرد')
         })),
         summary: [
           { label: 'إجمالي التذاكر', value: raw.length },

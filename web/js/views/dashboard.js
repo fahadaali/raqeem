@@ -11,7 +11,7 @@ export async function render({ navigate }) {
 
   if (termIsArchived()) {
     wrap.append(el('div.archived-bar', {}, [
-      el('span', { text: '🔒' }),
+      el('span.ic', { icon: 'lock', iconSize: 16 }),
       `أنت تستعرض الفصل «${term?.name}» وهو مؤرشف ومغلق للقراءة فقط — لا يمكن إجراء أي تعديل على بياناته.`
     ]));
   }
@@ -25,39 +25,39 @@ export async function render({ navigate }) {
       el('h3', { text: `${greet}، ${state.session.user.name.split('—').pop().trim()}` }),
       el('div', { style: { color: 'var(--text-2)', fontSize: '12.5px' } }, [
         el('span', { text: state.session.user.role.name }),
-        el('span', { style: { margin: '0 6px', opacity: '.5' }, text: '•' }),
+        el('span', { style: { margin: '0 6px', opacity: '.5' }, text: '·' }),
         el('span', { text: fmtDate(new Date(), cal) })
       ])
     ]),
     term ? chip(`الفصل: ${term.name}`, term.status === 'open' ? 'brand' : 'warn') : null,
-    can('hr.attendance.self') ? el('button.btn.gold', { text: '📍 تسجيل الحضور', onclick: () => navigate('/checkin') }) : null
+    can('hr.attendance.self') ? el('button.btn.gold', { icon: 'map-pin', iconSize: 16, text: 'تسجيل الحضور', onclick: () => navigate('/checkin') }) : null
   ])]));
 
   // البطاقات الإحصائية
   const cards = el('div.grid.g4');
   cards.append(
-    stat('مهامي المفتوحة', AR_NUM(d.my_open_tasks), { icon: '📋', kind: 'brand', hint: 'مهام مسندة إليك ولم تكتمل', onclick: () => navigate('/tasks?mine=1') }),
+    stat('مهامي المفتوحة', AR_NUM(d.my_open_tasks), { icon: 'clipboard-list', kind: 'brand', hint: 'مهام مسندة إليك ولم تكتمل', onclick: () => navigate('/tasks?mine=1') }),
     stat('إجمالي المهام', AR_NUM(d.tasks_total), {
-      icon: '🗂️', hint: `${AR_NUM(d.tasks?.done || 0)} مكتملة`, onclick: () => navigate('/tasks')
+      icon: 'folder-kanban', hint: `${AR_NUM(d.tasks?.done || 0)} مكتملة`, onclick: () => navigate('/tasks')
     }),
-    stat('مهام متأخرة', AR_NUM(d.overdue), { icon: '⏰', kind: d.overdue ? 'danger' : 'ok', hint: 'تجاوزت تاريخ الاستحقاق', onclick: () => navigate('/tasks?overdue=1') })
+    stat('مهام متأخرة', AR_NUM(d.overdue), { icon: 'alarm-clock', kind: d.overdue ? 'danger' : 'ok', hint: 'تجاوزت تاريخ الاستحقاق', onclick: () => navigate('/tasks?overdue=1') })
   );
   if (can('finance.view')) {
     const pending = (d.finance.pending?.count || 0) + (d.finance.in_review?.count || 0);
     cards.append(stat('طلبات بانتظار الاعتماد', AR_NUM(pending), {
-      icon: '💰', kind: pending ? 'gold' : '', hint: money((d.finance.pending?.total || 0) + (d.finance.in_review?.total || 0)) + ' ر.س',
+      icon: 'banknote', kind: pending ? 'gold' : '', hint: money((d.finance.pending?.total || 0) + (d.finance.in_review?.total || 0)) + ' ر.س',
       onclick: () => navigate('/finance')
     }));
   }
   if (can('hr.attendance.view')) {
     const a = d.attendance_today || {};
     cards.append(stat('الحضور اليوم', AR_NUM((a.present || 0) + (a.late || 0)), {
-      icon: '🕌', kind: 'ok', hint: `${AR_NUM(a.absent || 0)} غياب · ${AR_NUM(a.late || 0)} تأخير`, onclick: () => navigate('/hr')
+      icon: 'user-check', kind: 'ok', hint: `${AR_NUM(a.absent || 0)} غياب · ${AR_NUM(a.late || 0)} تأخير`, onclick: () => navigate('/hr')
     }));
   }
   if (can('tickets.view_all')) {
     cards.append(stat('تذاكر مفتوحة', AR_NUM((d.tickets.open || 0) + (d.tickets.in_progress || 0)), {
-      icon: '🎧', kind: d.tickets_sla_breached ? 'danger' : 'info',
+      icon: 'headset', kind: d.tickets_sla_breached ? 'danger' : 'info',
       hint: d.tickets_sla_breached ? `${AR_NUM(d.tickets_sla_breached)} تجاوزت مدة الخدمة` : 'ضمن اتفاقية الخدمة',
       onclick: () => navigate('/tickets')
     }));
@@ -65,7 +65,7 @@ export async function render({ navigate }) {
   if (can('budgets.view') && d.budgets?.total) {
     const used = Math.round(d.budgets.spent * 100 / d.budgets.total);
     cards.append(stat('استهلاك الميزانية', pct(used), {
-      icon: '📊', kind: used > 85 ? 'danger' : 'ok',
+      icon: 'database', kind: used > 85 ? 'danger' : 'ok',
       hint: `${money(d.budgets.spent)} من ${money(d.budgets.total)} ر.س`, onclick: () => navigate('/finance')
     }));
   }
@@ -88,11 +88,12 @@ export async function render({ navigate }) {
     card('المهام القادمة', d.upcoming_tasks.length
       ? el('div.stack', { style: { gap: '8px' } }, d.upcoming_tasks.map(t =>
           el('div.check-row', { onclick: () => navigate(`/tasks?id=${t.id}`) }, [
-            el('span', { text: { urgent: '🔴', high: '🟠', medium: '🔵', low: '⚪' }[t.priority] }),
+            /* درجة العجلة نقطةٌ ملوّنة بأيقونة واحدة — اللون يحمل المعنى لا الشكل */
+            el('span.ic.prio', { icon: 'circle', iconSize: 12, class: 'prio-' + t.priority }),
             el('div.t', {}, [t.title, el('small', { text: `${t.assignee_name || 'غير مُسند'} · يستحق ${fmtDate(t.due_date, cal, 'short')}` })]),
             chip(T.taskStatus[t.status], T.taskStatusChip[t.status])
           ])))
-      : empty('✅', 'لا توجد مهام قادمة', 'كل المهام في موعدها.'))
+      : empty('circle-check', 'لا توجد مهام قادمة', 'كل المهام في موعدها.'))
   ]));
 
   // مقارنة الفروع (لوحة القيادة العليا)

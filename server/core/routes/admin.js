@@ -208,7 +208,7 @@ router.post('/tenants', h(async (req) => {
     adminName: b.admin_name, email: b.email, password, phone: b.phone || null,
     planCode: b.plan_code || null, cycle: CYCLES.includes(b.cycle) ? b.cycle : 'monthly',
     trialDays: b.trial_days !== undefined ? Number(b.trial_days) : null,
-    primaryColor: b.primary_color || '#0F5132', accentColor: b.accent_color || '#C9A227'
+    primaryColor: b.primary_color || '#2F8A6F', accentColor: b.accent_color || '#E8A25C'
   });
 
   await plog(req, { action: 'create', entity: 'tenant', entityId: result.tenant.id, tenantId: result.tenant.id,

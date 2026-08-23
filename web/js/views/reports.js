@@ -53,7 +53,7 @@ export async function render() {
           { emptyText: 'لا توجد بيانات مطابقة لعوامل التصفية' }
         ), { p0: true, actions: d.rows.length > 300 ? chip(`يُعرض أول ٣٠٠ من ${AR_NUM(d.rows.length)} — التصدير يشمل الكل`, 'warn') : null })
       );
-    } catch (e) { clear(result).append(empty('⚠️', 'تعذّر تشغيل التقرير', e.message)); }
+    } catch (e) { clear(result).append(empty('triangle-alert', 'تعذّر تشغيل التقرير', e.message)); }
   }
 
   function selectReport(r) {
@@ -68,16 +68,16 @@ export async function render() {
     clear(filterBox).append(card(null, [
       el('div.row.between', { style: { marginBottom: '11px' } }, [
         el('div', {}, [el('h3', { text: r.label }), el('div.hint', { text: r.description })]),
-        el('button.btn.sm.ghost', { text: '↩ كل التقارير', onclick: () => { clear(filterBox); clear(result); current = null; list.hidden = false; } })
+        el('button.btn.sm.ghost', { icon: 'undo-2', iconSize: 16, text: 'كل التقارير', onclick: () => { clear(filterBox); clear(result); current = null; list.hidden = false; } })
       ]),
       grid,
       el('div.row', { style: { marginTop: '9px' } }, [
-        el('button.btn', { text: '▶ تشغيل التقرير', onclick: run }),
-        can('reports.export') ? el('button.btn.ghost', { text: '📄 طباعة / PDF رسمي', onclick: () =>
+        el('button.btn', { icon: 'play', iconSize: 16, text: 'تشغيل التقرير', onclick: run }),
+        can('reports.export') ? el('button.btn.ghost', { icon: 'printer', iconSize: 16, text: 'طباعة / PDF رسمي', onclick: () =>
           api.openPrint(`/api/reports/${r.key}/export`, { format: 'pdf', filters: collect() }) }) : null,
-        can('reports.export') ? el('button.btn.ghost', { text: '📊 تصدير Excel', onclick: () =>
+        can('reports.export') ? el('button.btn.ghost', { icon: 'table', iconSize: 16, text: 'تصدير Excel', onclick: () =>
           api.download(`/api/reports/${r.key}/export`, { format: 'xlsx', filters: collect() }) }) : null,
-        can('reports.export') ? el('button.btn.ghost', { text: '📋 تصدير CSV', onclick: () =>
+        can('reports.export') ? el('button.btn.ghost', { icon: 'file-text', iconSize: 16, text: 'تصدير CSV', onclick: () =>
           api.download(`/api/reports/${r.key}/export`, { format: 'csv', filters: collect() }) }) : null
       ])
     ]));

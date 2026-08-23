@@ -26,7 +26,7 @@ export async function seed(app, { force = false } = {}) {
       `INSERT INTO tenants(code,name,name_en,primary_color,accent_color,timezone,locale,calendar_default,plan,settings)
        VALUES(?,?,?,?,?,?,?,?,?,?)`,
       'RQ', 'مجمّع الرياض لتحفيظ القرآن الكريم', 'Riyadh Quran Complex',
-      '#0F5132', '#C9A227', 'Asia/Riyadh', 'ar', 'hijri', 'phase1',
+      '#2F8A6F', '#E8A25C', 'Asia/Riyadh', 'ar', 'hijri', 'phase1',
       JSON.stringify({ workday: { start: '07:30', end: '13:30', days: [0, 1, 2, 3, 4] },
         late_after_minutes: 15, absence_deduction_per_day: 1, ticket_sla_hours: 24, vat_rate: 15 }));
     tenant = { id: r.lastId };
@@ -131,13 +131,13 @@ export async function seed(app, { force = false } = {}) {
      VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(tenant_id,user_id) DO UPDATE SET job_title=excluded.job_title`,
     [T, branches[br], users[email], no, title, dept, dayStr(addDays(TODAY, -(400 + i * 30))), basic, allow, 'SA' + (4400000000000000000 + i)]]));
 
-  /* ── اللجان ── */
+  /* ── اللجان — ألوانها من لوحة الهوية وحدها (الدليل · البند ١٠) ── */
   const comRows = [
-    ['اللجنة التعليمية', 'متابعة الخطط الدراسية وجودة التحفيظ', 'B01', 'supervisor@riyadh-qu.sa', '#0F5132'],
-    ['لجنة الاختبارات', 'إعداد وتنفيذ اختبارات نهاية الفصل', 'B01', 'committee@riyadh-qu.sa', '#C9A227'],
-    ['اللجنة المالية', 'مراجعة الميزانيات والمصروفات', 'B01', 'finance@riyadh-qu.sa', '#1D4ED8'],
-    ['لجنة الأنشطة', 'المسابقات والبرامج الإثرائية', 'B02', 'branch1@riyadh-qu.sa', '#9333EA'],
-    ['لجنة السلامة', 'سلامة المباني وخطط الإخلاء', 'B03', 'branch3@riyadh-qu.sa', '#DC2626']
+    ['اللجنة التعليمية', 'متابعة الخطط الدراسية وجودة التحفيظ', 'B01', 'supervisor@riyadh-qu.sa', '#2F8A6F'],
+    ['لجنة الاختبارات', 'إعداد وتنفيذ اختبارات نهاية الفصل', 'B01', 'committee@riyadh-qu.sa', '#E8A25C'],
+    ['اللجنة المالية', 'مراجعة الميزانيات والمصروفات', 'B01', 'finance@riyadh-qu.sa', '#3E7CA6'],
+    ['لجنة الأنشطة', 'المسابقات والبرامج الإثرائية', 'B02', 'branch1@riyadh-qu.sa', '#1C5E4C'],
+    ['لجنة السلامة', 'سلامة المباني وخطط الإخلاء', 'B03', 'branch3@riyadh-qu.sa', '#B4552E']
   ];
   const committees = [];
   for (const [name, desc, br, lead, color] of comRows) {

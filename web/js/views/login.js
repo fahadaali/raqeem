@@ -21,9 +21,10 @@ export async function render({ onSuccess, navigate }) {
   const tenant = brand?.tenant || null;
   const saas = !!brand?.platform?.saas_enabled;
 
+  /* تخصيص الجهة يُبدّل توكنَي الهوية لا قيماً متفرّقة، فيسري على كل الشاشة */
   if (tenant?.colors?.primary) {
-    document.documentElement.style.setProperty('--brand', tenant.colors.primary);
-    if (tenant.colors.accent) document.documentElement.style.setProperty('--gold', tenant.colors.accent);
+    document.documentElement.style.setProperty('--primary', tenant.colors.primary);
+    if (tenant.colors.accent) document.documentElement.style.setProperty('--secondary', tenant.colors.accent);
   }
 
   const email = input({ type: 'email', name: 'email', placeholder: 'name@riyadh-qu.sa', autocomplete: 'username', required: true, dir: 'ltr' });
@@ -32,7 +33,7 @@ export async function render({ onSuccess, navigate }) {
     style: { textAlign: 'center', letterSpacing: '6px' } });
   const totpField = field('رمز التحقّق بخطوتين', totp, { hint: 'من تطبيق المصادقة، أو أحد رموز الاسترداد' });
   totpField.hidden = true;
-  const btn = el('button.btn.lg.block', { type: 'submit', text: 'تسجيل الدخول' });
+  const btn = el('button.btn.lg.block.gold', { type: 'submit', text: 'تسجيل الدخول' });
   const msg = el('div.hint', { style: { color: 'var(--danger)', textAlign: 'center', minHeight: '18px' } });
 
   const submit = async (e) => {
@@ -77,7 +78,7 @@ export async function render({ onSuccess, navigate }) {
   return el('div.login-wrap', {}, [
     el('div.login-card', {}, [
       el('div.login-brand', {}, [
-        el('img', { src: tenant?.logo_url || '/assets/icons/icon-192.png', alt: '' }),
+        el('img', { src: tenant?.logo_url || '/assets/brand/monogram-primary.svg', alt: '' }),
         el('h1', { text: tenant?.name || brand?.platform?.name || 'منصة رقيم' }),
         el('p', { text: tenant
           ? (brand?.platform?.tagline || 'الإدارة المتكاملة لمجمعات تحفيظ القرآن الكريم')

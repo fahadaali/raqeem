@@ -8,8 +8,8 @@
 
 <!-- تثبيت التطبيق على الشاشة الرئيسية -->
 <link rel="manifest" href="/manifest.webmanifest">
-<meta name="theme-color" content="#0F5132" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0B3A26" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#2F8A6F" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1C5E4C" media="(prefers-color-scheme: dark)">
 <meta name="color-scheme" content="light dark">
 
 <!-- دعم التثبيت على آيفون / آيباد -->
@@ -22,16 +22,22 @@
 <link rel="apple-touch-icon" sizes="167x167" href="/assets/icons/icon-167.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/assets/icons/icon-180.png">
 <link rel="icon" href="/assets/icons/favicon.png" type="image/png">
-<link rel="mask-icon" href="/assets/icons/favicon.png" color="#0F5132">
+<link rel="icon" href="/assets/brand/app-icon.svg" type="image/svg+xml">
+<link rel="mask-icon" href="/assets/brand/monogram-mono-green.svg" color="#2F8A6F">
 
+<!-- خطوط الهوية: زين للعناوين، آي بي إم بلكس سانس عربي للنصوص — لا خط ثالث -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Zain:wght@400;700;800;900&display=swap">
 <link rel="stylesheet" href="/css/app.css">
 </head>
 <body>
+  <!--
+    شاشة الإقلاع: أخضر غامق يحمل النجمة الثمانية بشفافية منخفضة،
+    والمونوغرام في وسطه — لا نمط خلف النص، وشريط التقدّم هو نقطة سنا.
+  -->
   <div id="boot" class="boot">
-    <div class="boot-logo"><img src="/assets/icons/icon-192.png" alt="منصة رقيم" width="88" height="88"></div>
+    <div class="boot-logo"><img src="/assets/brand/monogram-primary.svg" alt="منصة رقيم" width="92" height="92"></div>
     <div class="boot-name">منصة رقيم</div>
     <div class="boot-sub">الإدارة المتكاملة لمجمعات تحفيظ القرآن الكريم</div>
     <div class="boot-bar"><span></span></div>

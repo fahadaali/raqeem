@@ -1,5 +1,6 @@
 import api from '../api.js';
 import { el, AR_NUM } from '../util.js';
+import { hasIcon } from '../icons.js';
 
 /**
  * الشاشة الرئيسية العامة — ما يراه الزائر على `/` قبل أن يملك حساباً.
@@ -48,7 +49,7 @@ export async function render({ navigate }) {
       el('a.land-brand', {
         href: '/', onclick: (e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
       }, [
-        el('img', { src: '/assets/icons/icon-192.png', alt: '', width: 34, height: 34 }),
+        el('img', { src: '/assets/brand/monogram-primary.svg', alt: '', width: 38, height: 38 }),
         el('b', { text: p.name || 'منصة رقيم' })
       ]),
       el('nav.land-nav', {}, [
@@ -75,7 +76,8 @@ export async function render({ navigate }) {
     ]))) : null,
 
     d.features?.length ? el('section.land-features', {}, d.features.map(f => el('article.land-card', {}, [
-      f.icon ? el('span.ic', { text: f.icon }) : null,
+      /* الأيقونة اسمُ لوسايد يحرّره الادمن — واسمٌ مجهول يسقط إلى «سنا» لا يكسر البطاقة */
+      el('span.ic', { icon: hasIcon(f.icon) ? f.icon : 'sparkles', iconSize: 'card' }),
       el('h3', { text: f.title }),
       f.body ? el('p', { text: f.body }) : null
     ]))) : null,

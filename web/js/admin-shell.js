@@ -13,33 +13,33 @@ import * as S from './views/admin/sections.js';
 
 const NAV = [
   { group: 'المنصة' },
-  { path: '/admin', label: 'نظرة عامة', icon: '📊', build: S.overviewTab },
-  { path: '/admin/growth', label: 'النمو', icon: '📈', build: S.growthTab },
-  { path: '/admin/health', label: 'صحة المجمّعات', icon: '❤️', build: S.healthTab },
+  { path: '/admin', label: 'نظرة عامة', icon: 'gauge', build: S.overviewTab },
+  { path: '/admin/growth', label: 'النمو', icon: 'trending-up', build: S.growthTab },
+  { path: '/admin/health', label: 'صحة المجمّعات', icon: 'heart-pulse', build: S.healthTab },
 
   { group: 'المجمّعات' },
-  { path: '/admin/tenants', label: 'المجمّعات', icon: '🏛', build: S.tenantsTab },
-  { path: '/admin/terms', label: 'قوالب الفصول', icon: '🗓', build: S.termsTab },
-  { path: '/admin/signups', label: 'طلبات التسجيل', icon: '📝', build: S.signupsTab },
+  { path: '/admin/tenants', label: 'المجمّعات', icon: 'landmark', build: S.tenantsTab },
+  { path: '/admin/terms', label: 'قوالب الفصول', icon: 'calendar-range', build: S.termsTab },
+  { path: '/admin/signups', label: 'طلبات التسجيل', icon: 'user-plus', build: S.signupsTab },
 
   { group: 'الواجهة العامة' },
-  { path: '/admin/landing', label: 'الشاشة الرئيسية', icon: '🖥', build: S.landingTab },
-  { path: '/admin/announcements', label: 'الإعلانات', icon: '📣', build: S.announceTab },
+  { path: '/admin/landing', label: 'الشاشة الرئيسية', icon: 'monitor', build: S.landingTab },
+  { path: '/admin/announcements', label: 'الإعلانات', icon: 'megaphone', build: S.announceTab },
 
   { group: 'التجارة' },
-  { path: '/admin/plans', label: 'الخطط', icon: '💠', build: S.plansTab },
-  { path: '/admin/coupons', label: 'الكوبونات', icon: '🎟', build: S.couponsTab },
-  { path: '/admin/invoices', label: 'الفواتير', icon: '🧾', build: S.invoicesTab },
+  { path: '/admin/plans', label: 'الخطط', icon: 'layers', build: S.plansTab },
+  { path: '/admin/coupons', label: 'الكوبونات', icon: 'ticket-percent', build: S.couponsTab },
+  { path: '/admin/invoices', label: 'الفواتير', icon: 'receipt', build: S.invoicesTab },
 
   { group: 'التشغيل والحوكمة' },
-  { path: '/admin/support', label: 'صندوق الدعم', icon: '🎧', build: S.supportTab },
-  { path: '/admin/ops', label: 'التشغيل', icon: '⚡', build: S.opsTab },
-  { path: '/admin/security', label: 'الأمن', icon: '🔒', build: S.securityTab },
-  { path: '/admin/logs', label: 'سجل المنصة', icon: '🛡️', build: S.logsTab },
+  { path: '/admin/support', label: 'صندوق الدعم', icon: 'headset', build: S.supportTab },
+  { path: '/admin/ops', label: 'التشغيل', icon: 'zap', build: S.opsTab },
+  { path: '/admin/security', label: 'الأمن', icon: 'lock', build: S.securityTab },
+  { path: '/admin/logs', label: 'سجل المنصة', icon: 'scroll-text', build: S.logsTab },
 
   { group: 'الإعدادات' },
-  { path: '/admin/settings', label: 'إعدادات المنصة', icon: '⚙️', build: S.settingsTab },
-  { path: '/admin/admins', label: 'حسابات الادمن', icon: '👤', build: S.adminsTab }
+  { path: '/admin/settings', label: 'إعدادات المنصة', icon: 'settings', build: S.settingsTab },
+  { path: '/admin/admins', label: 'حسابات الادمن', icon: 'user-round', build: S.adminsTab }
 ];
 
 const ROUTES = Object.fromEntries(NAV.filter(i => i.path).map(i => [i.path, i]));
@@ -87,7 +87,7 @@ function loginScreen() {
   return el('div.admin-login', {}, [
     el('form.admin-login-card', { onsubmit: submit, novalidate: true }, [
       el('div.admin-login-brand', {}, [
-        el('span.ic', { text: '🛰️' }),
+        el('img', { src: '/assets/brand/monogram-primary.svg', alt: '', width: 64, height: 64 }),
         el('h1', { text: 'لوحة منصة رقيم' }),
         el('p', { text: 'الدخول مقصور على حسابات إدارة المنصة' })
       ]),
@@ -96,7 +96,8 @@ function loginScreen() {
       totpField,
       btn,
       msg,
-      el('a.admin-login-back', { href: '/', text: '→ العودة إلى المنصة' })
+      /* «العودة» في RTL تشير يميناً — اتجاه القراءة (دليل الهوية · البند ٨) */
+      el('a.admin-login-back', { href: '/', icon: 'arrow-right', iconSize: 16, text: 'العودة إلى المنصة' })
     ])
   ]);
 }
@@ -112,11 +113,11 @@ function sidebar(active) {
       dataset: { path: item.path },
       class: item.path === active ? 'admin-link active' : 'admin-link',
       onclick: (e) => { e.preventDefault(); document.body.classList.remove('admin-open'); adminNavigate(item.path); }
-    }, [el('span.ic', { text: item.icon }), el('span', { text: item.label })]));
+    }, [el('span.ic', { icon: item.icon }), el('span', { text: item.label })]));
   }
   return el('aside.admin-side', {}, [
     el('div.admin-brand', {}, [
-      el('span.ic', { text: '🛰️' }),
+      el('img', { src: '/assets/brand/monogram-primary.svg', alt: '' }),
       el('div', {}, [
         el('b', { text: 'لوحة المنصة' }),
         el('span', { text: admin.session?.platform?.name || 'منصة رقيم' })
@@ -130,14 +131,14 @@ function sidebar(active) {
 function topbar(item) {
   return el('header.admin-top', {}, [
     el('button.icon-btn.admin-burger', {
-      text: '☰', 'aria-label': 'القائمة',
+      icon: 'menu', 'aria-label': 'القائمة',
       onclick: () => document.body.classList.toggle('admin-open')
     }),
     el('h2#admin-title', { text: item?.label || 'لوحة المنصة' }),
     el('div.spacer'),
     el('span.admin-who', { text: admin.session?.admin?.name || '' }),
     el('button.icon-btn', {
-      text: '⏻', title: 'خروج',
+      icon: 'log-out', title: 'خروج', 'aria-label': 'خروج',
       onclick: async () => { await api.logout(); await renderAdmin(); }
     })
   ]);
@@ -188,7 +189,7 @@ export async function renderAdmin() {
     content.scrollTop = 0;
   } catch (e) {
     if (e?.code === 'ABORTED' || route.path !== parse().path) return;
-    clear(content).append(empty('⚠️', 'تعذّر تحميل الشاشة', e.message || 'حدث خطأ غير متوقع'));
+    clear(content).append(empty('triangle-alert', 'تعذّر تحميل الشاشة', e.message || 'حدث خطأ غير متوقع'));
   }
 }
 

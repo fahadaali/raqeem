@@ -7,15 +7,15 @@ import {
 import { fmtDate, todayISO } from '../hijri.js';
 
 const TYPES = [
-  { type: 'text', label: 'نص قصير', icon: '📝' },
-  { type: 'textarea', label: 'نص طويل', icon: '📄' },
-  { type: 'number', label: 'رقم', icon: '🔢' },
-  { type: 'date', label: 'تاريخ', icon: '📅' },
-  { type: 'select', label: 'قائمة اختيار', icon: '▼' },
-  { type: 'multiselect', label: 'اختيار متعدد', icon: '☑' },
-  { type: 'checkbox', label: 'مربع تأكيد', icon: '✔' },
-  { type: 'rating', label: 'تقييم بالنجوم', icon: '⭐' },
-  { type: 'section', label: 'عنوان قسم', icon: '➖' }
+  { type: 'text', label: 'نص قصير', icon: 'pen-line' },
+  { type: 'textarea', label: 'نص طويل', icon: 'file-text' },
+  { type: 'number', label: 'رقم', icon: 'hash' },
+  { type: 'date', label: 'تاريخ', icon: 'calendar-days' },
+  { type: 'select', label: 'قائمة اختيار', icon: 'chevron-down' },
+  { type: 'multiselect', label: 'اختيار متعدد', icon: 'list-checks' },
+  { type: 'checkbox', label: 'مربع تأكيد', icon: 'square-check' },
+  { type: 'rating', label: 'تقييم بالنجوم', icon: 'star' },
+  { type: 'section', label: 'عنوان قسم', icon: 'minus' }
 ];
 
 export async function render() {
@@ -24,14 +24,14 @@ export async function render() {
     clear(body).append(skeleton(4));
     const forms = await api.get('/api/forms');
     clear(body).append(forms.length ? el('div.grid.g3', {}, forms.map(f => formCard(f, load)))
-      : empty('📝', 'لا توجد نماذج', 'ابنِ نموذج تقييم أو استبانة بالسحب والإفلات دون برمجة.'));
+      : empty('file-pen-line', 'لا توجد نماذج', 'ابنِ نموذج تقييم أو استبانة بالسحب والإفلات دون برمجة.'));
   };
   await load();
   return el('div.stack', {}, [
     card(null, [el('div.row.between', {}, [
       el('div', {}, [el('h3', { text: 'النماذج والتقييمات' }),
         el('div.hint', { text: 'صمّم نماذجك بالسحب والإفلات — تُحفظ بنيتها بصيغة JSON مرنة تسمح بعدد لا نهائي من النماذج.' })]),
-      can('forms.manage') ? el('button.btn.sm', { text: '＋ نموذج جديد', onclick: () => builder(null, load) }) : null
+      can('forms.manage') ? el('button.btn.sm', { icon: 'plus', iconSize: 16, text: 'نموذج جديد', onclick: () => builder(null, load) }) : null
     ])]),
     body
   ]);
@@ -50,9 +50,9 @@ function formCard(f, reload) {
       f.is_active ? null : chip('معطّل', 'warn')
     ]),
     el('div.row', { style: { marginTop: '11px' } }, [
-      can('forms.submit') && f.is_active ? el('button.btn.sm', { text: '✍️ تعبئة', onclick: () => fill(f, reload) }) : null,
-      can('forms.results') ? el('button.btn.sm.ghost', { text: '📊 النتائج', onclick: () => results(f) }) : null,
-      can('forms.manage') ? el('button.btn.sm.ghost', { text: '✏️', onclick: () => builder(f, reload) }) : null
+      can('forms.submit') && f.is_active ? el('button.btn.sm', { icon: 'pen-line', iconSize: 16, text: 'تعبئة', onclick: () => fill(f, reload) }) : null,
+      can('forms.results') ? el('button.btn.sm.ghost', { icon: 'chart-column', iconSize: 16, text: 'النتائج', onclick: () => results(f) }) : null,
+      can('forms.manage') ? el('button.btn.sm.ghost', { icon: 'pencil', iconSize: 16, title: 'تعديل', 'aria-label': 'تعديل', onclick: () => builder(f, reload) }) : null
     ])
   ])]);
 }
@@ -88,15 +88,15 @@ function builder(form, reload) {
 
   function paint() {
     clear(canvas);
-    if (!fields.length) canvas.append(el('div.empty', {}, [el('span.ic', { text: '🖱' }),
+    if (!fields.length) canvas.append(el('div.empty', {}, [el('span.ic', { icon: 'mouse-pointer-click', iconSize: 'card' }),
       el('h4', { text: 'اسحب الحقول هنا' }), el('p', { text: 'أو اضغط على أي نوع حقل من القائمة لإضافته.' })]));
     fields.forEach((f, i) => {
       const node = el('div.fld' + (selected === f.id ? '.sel' : ''), {
         draggable: true, dataset: { i }, onclick: () => { selected = f.id; paint(); }
       }, [
-        el('button.del', { text: '✕', onclick: (e) => { e.stopPropagation(); fields.splice(i, 1); selected = null; paint(); } }),
+        el('button.del', { icon: 'x', iconSize: 16, 'aria-label': 'حذف الحقل', onclick: (e) => { e.stopPropagation(); fields.splice(i, 1); selected = null; paint(); } }),
         el('div.t', {}, [
-          el('span', { text: TYPES.find(t => t.type === f.type)?.icon || '📝' }),
+          el('span.ic', { icon: TYPES.find(t => t.type === f.type)?.icon || 'pen-line', iconSize: 16 }),
           f.label, f.required ? el('span', { text: ' *', style: { color: 'var(--danger)' } }) : null
         ]),
         el('div.m', { text: `${TYPES.find(t => t.type === f.type)?.label}${f.weight ? ` · وزن ${f.weight}` : ''}${f.options ? ` · ${f.options.length} خيارات` : ''}` })
@@ -198,12 +198,13 @@ async function fill(form, reload) {
     else if (f.type === 'rating') {
       const stars = el('div.row', { style: { gap: '5px' } });
       for (let i = 1; i <= (f.max || 5); i++) {
-        stars.append(el('button', {
-          type: 'button', text: '☆', dataset: { v: i },
-          style: { fontSize: '27px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gold)', padding: '0 2px', lineHeight: '1' },
+        stars.append(el('button.star-btn', {
+          type: 'button', icon: 'star', iconSize: 26, dataset: { v: i },
+          'aria-label': `تقييم ${i}`,
           onclick: () => {
             answers[f.id] = i;
-            [...stars.children].forEach((b, k) => { b.textContent = k < i ? '★' : '☆'; });
+            /* النجمة الممتلئة = نفس أيقونة لوسايد بتعبئة `currentColor` */
+            [...stars.children].forEach((b, k) => b.classList.toggle('filled', k < i));
           }
         }));
       }
@@ -263,7 +264,7 @@ function showAnswers(form, sub) {
       let v = sub.answers[f.id];
       if (Array.isArray(v)) v = v.join('، ');
       if (typeof v === 'boolean') v = v ? 'نعم' : 'لا';
-      if (f.type === 'rating' && v) v = '★'.repeat(Number(v)) + '☆'.repeat((f.max || 5) - Number(v));
+      if (f.type === 'rating' && v) v = `${AR_NUM(v)} / ${AR_NUM(f.max || 5)}`;
       return el('div', { style: { padding: '7px 0', borderBottom: '1px solid var(--border)' } }, [
         el('div', { style: { fontSize: '11.5px', color: 'var(--text-3)' }, text: f.label }),
         el('div', { style: { fontSize: '13px', fontWeight: '600' }, text: v ?? '—' })

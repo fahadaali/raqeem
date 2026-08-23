@@ -73,7 +73,7 @@ router.get('/devices', h(async (req) =>
 
 router.post('/test', h(async (req) => {
   const result = await notifyUsers(req.app, req.ctx.tenantId, [req.ctx.userId], {
-    type: 'system.test', category: 'system', title: '🔔 إشعار تجريبي من منصة رقيم',
+    type: 'system.test', category: 'system', title: 'إشعار تجريبي من منصة رقيم',
     body: 'وصلك هذا الإشعار بنجاح — نظام الإشعارات يعمل على هذا الجهاز.', url: '/notifications'
   });
   return { ok: true, ...result, push_enabled: pushEnabled(req.app.cfg) };

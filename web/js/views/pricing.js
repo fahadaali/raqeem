@@ -58,7 +58,7 @@ export async function render({ navigate }) {
 
   return el('div.public-wrap', {}, [
     el('header.public-head', {}, [
-      el('img', { src: '/assets/icons/icon-192.png', alt: '', width: 56, height: 56 }),
+      el('img', { src: '/assets/brand/monogram-primary.svg', alt: '', width: 60, height: 60 }),
       el('h1', { text: platform.name || 'منصة رقيم' }),
       el('p', { text: platform.tagline || 'الإدارة المتكاملة لمجمعات تحفيظ القرآن الكريم' }),
       platform.tenants_count

@@ -1,18 +1,19 @@
 import api from '../api.js';
 import { state, can } from '../state.js';
 import {
-  el, clear, card, chip, empty, table, toast, modal, field, input, select, tabs,
+  el, clear, card, chip, empty, table, toast, modal, field, input, searchInput, select, tabs,
   AR_NUM, avatar, confirmDialog, skeleton, debounce, qs
 } from '../util.js';
 import { fmtDate } from '../hijri.js';
+import { icon as luIcon } from '../icons.js';
 import { openEmployeeFile } from './hr.js';
 
 export async function render() {
   const items = [];
-  if (can('users.view')) items.push({ label: '👥 المستخدمون', build: usersTab });
-  if (can('branches.view')) items.push({ label: '🏢 الفروع', build: branchesTab });
-  if (can('roles.view')) items.push({ label: '🔐 الأدوار والصلاحيات', build: rolesTab });
-  if (!items.length) return empty('🔒', 'لا تملك صلاحية الوصول', '');
+  if (can('users.view')) items.push({ label: 'المستخدمون', icon: 'users', build: usersTab });
+  if (can('branches.view')) items.push({ label: 'الفروع', icon: 'building-2', build: branchesTab });
+  if (can('roles.view')) items.push({ label: 'الأدوار والصلاحيات', icon: 'key-round', build: rolesTab });
+  if (!items.length) return empty('lock', 'لا تملك صلاحية الوصول', '');
   const t = tabs(items, (it) => { const n = el('div'); Promise.resolve(it.build()).then(x => n.replaceChildren(x)); return n; });
   return t.node;
 }
@@ -25,8 +26,8 @@ async function usersTab() {
   ]);
   const body = el('div');
   const filters = {};
-  const q = input({ placeholder: '🔍 بحث بالاسم أو البريد...', style: { maxWidth: '230px' } });
-  q.addEventListener('input', debounce((e) => { filters.q = e.target.value; load(); }, 340));
+  const q = searchInput({ placeholder: 'بحث بالاسم أو البريد...', style: { maxWidth: '230px' } });
+  q.field.addEventListener('input', debounce((e) => { filters.q = e.target.value; load(); }, 340));
   const roleSel = select([{ value: '', label: 'كل الأدوار' }, ...roles.map(r => ({ value: r.id, label: r.name }))],
     { onchange: (e) => { filters.role_id = e.target.value; load(); } });
   const branchSel = select([{ value: '', label: 'كل الفروع' }, ...branches.map(b => ({ value: b.id, label: b.name }))],
@@ -47,10 +48,10 @@ async function usersTab() {
       { header: 'الحالة', key: 'status', render: r => chip(r.status === 'active' ? 'نشط' : 'موقوف', r.status === 'active' ? 'ok' : 'danger') },
       { header: 'آخر دخول', key: 'last_login_at', render: r => r.last_login_at ? fmtDate(r.last_login_at, state.calendar, 'short') : 'لم يدخل بعد' },
       { header: '', key: 'a', render: r => el('div.row', { style: { flexWrap: 'nowrap', gap: '5px' } }, [
-          can('hr.employees.view') ? el('button.btn.sm.ghost', { text: '📁', title: 'الملف الشامل', onclick: (e) => { e.stopPropagation(); openEmployeeFile(r.id); } }) : null,
-          can('users.manage') ? el('button.btn.sm.ghost', { text: '✏️', onclick: (e) => { e.stopPropagation(); openUser(r, roles, branches, load); } }) : null,
+          can('hr.employees.view') ? el('button.btn.sm.ghost', { icon: 'folder-open', iconSize: 16, title: 'الملف الشامل', 'aria-label': 'الملف الشامل', onclick: (e) => { e.stopPropagation(); openEmployeeFile(r.id); } }) : null,
+          can('users.manage') ? el('button.btn.sm.ghost', { icon: 'pencil', iconSize: 16, title: 'تعديل', 'aria-label': 'تعديل', onclick: (e) => { e.stopPropagation(); openUser(r, roles, branches, load); } }) : null,
           can('users.manage') && r.status === 'active' && r.id !== state.session.user.id
-            ? el('button.btn.sm.ghost', { text: '🚫', title: 'إيقاف', onclick: async (e) => {
+            ? el('button.btn.sm.ghost', { icon: 'ban', iconSize: 16, title: 'إيقاف', 'aria-label': 'إيقاف', onclick: async (e) => {
                 e.stopPropagation();
                 if (!await confirmDialog(`سيتم إيقاف حساب «${r.name}» وإنهاء جلساته.`, { danger: true, confirmText: 'إيقاف' })) return;
                 await api.del(`/api/org/users/${r.id}`); toast('تم إيقاف الحساب', 'ok'); load();
@@ -63,7 +64,7 @@ async function usersTab() {
   return el('div.stack', {}, [
     card(null, [el('div.row.between', {}, [
       el('div.row', {}, [q, roleSel, branchSel]),
-      can('users.manage') ? el('button.btn.sm', { text: '＋ مستخدم جديد', onclick: () => openUser(null, roles, branches, load) }) : null
+      can('users.manage') ? el('button.btn.sm', { icon: 'plus', iconSize: 16, text: 'مستخدم جديد', onclick: () => openUser(null, roles, branches, load) }) : null
     ])]),
     body
   ]);
@@ -123,14 +124,14 @@ async function branchesTab() {
       el('div.row.between', {}, [el('h4', { text: b.name }), chip(b.code, 'brand')]),
       el('div.hint', { text: b.address || '—' }),
       el('div.row', { style: { marginTop: '10px' } }, [
-        chip(`👥 ${AR_NUM(b.users_count)} منسوب`), chip(`📋 ${AR_NUM(b.tasks_count)} مهمة`),
-        chip(`📍 نطاق ${AR_NUM(b.geofence_radius)} م`, 'info'),
+        chip(`${AR_NUM(b.users_count)} منسوب`, '', 'users'), chip(`${AR_NUM(b.tasks_count)} مهمة`, '', 'clipboard-list'),
+        chip(`نطاق ${AR_NUM(b.geofence_radius)} م`, 'info', 'map-pin'),
         b.is_active ? null : chip('معطّل', 'danger')
       ]),
       b.manager_name ? el('div.hint', { style: { marginTop: '7px' }, text: 'مدير الفرع: ' + b.manager_name }) : null,
-      b.lat ? el('div.hint', { style: { direction: 'ltr', fontSize: '11px' }, text: `${b.lat}, ${b.lng}` }) : el('div.hint', { style: { color: 'var(--warn)' }, text: '⚠️ لم تُضبط الإحداثيات — لن يعمل التحضير الجغرافي' }),
+      b.lat ? el('div.hint', { style: { direction: 'ltr', fontSize: '11px' }, text: `${b.lat}, ${b.lng}` }) : el('div.hint', { style: { color: 'var(--warn)' }, text: 'لم تُضبط الإحداثيات — لن يعمل التحضير الجغرافي' }),
       can('branches.manage') ? el('div.row', { style: { marginTop: '10px' } }, [
-        el('button.btn.sm.ghost', { text: '✏️ تعديل', onclick: () => openBranch(b, load) })
+        el('button.btn.sm.ghost', { icon: 'pencil', iconSize: 16, text: 'تعديل', onclick: () => openBranch(b, load) })
       ]) : null
     ])]))));
   };
@@ -138,7 +139,7 @@ async function branchesTab() {
   return el('div.stack', {}, [
     card(null, [el('div.row.between', {}, [
       el('div', {}, [el('h3', { text: 'الفروع' }), el('div.hint', { text: 'حدّد إحداثيات كل فرع ونطاق التحضير المسموح به بالمتر.' })]),
-      can('branches.manage') ? el('button.btn.sm', { text: '＋ فرع جديد', onclick: () => openBranch(null, load) }) : null
+      can('branches.manage') ? el('button.btn.sm', { icon: 'plus', iconSize: 16, text: 'فرع جديد', onclick: () => openBranch(null, load) }) : null
     ])]),
     body
   ]);
@@ -153,14 +154,16 @@ function openBranch(b, reload) {
   const radius = input({ type: 'number', min: 20, max: 1000, value: b?.geofence_radius || 50 });
   const phone = input({ value: b?.phone || '', dir: 'ltr' });
 
-  const locate = el('button.btn.sm.ghost', { type: 'button', text: '📍 استخدام موقعي الحالي', onclick: () => {
+  /* إعادة الزر إلى حاله تُعيد بناء محتواه: `textContent` وحده يمحو الأيقونة */
+  const resetLocate = () => { clear(locate); locate.append(luIcon('map-pin', { size: 16 }), 'استخدام موقعي الحالي'); };
+  const locate = el('button.btn.sm.ghost', { type: 'button', icon: 'map-pin', iconSize: 16, text: 'استخدام موقعي الحالي', onclick: () => {
     if (!navigator.geolocation) return toast('جهازك لا يدعم تحديد الموقع', 'warn');
     locate.disabled = true; locate.textContent = 'جارٍ التحديد...';
     navigator.geolocation.getCurrentPosition((p) => {
       lat.value = p.coords.latitude.toFixed(6); lng.value = p.coords.longitude.toFixed(6);
-      locate.disabled = false; locate.textContent = '📍 استخدام موقعي الحالي';
+      locate.disabled = false; resetLocate();
       toast('تم تعبئة الإحداثيات من موقعك', 'ok');
-    }, () => { locate.disabled = false; locate.textContent = '📍 استخدام موقعي الحالي'; toast('تعذّر تحديد الموقع', 'err'); },
+    }, () => { locate.disabled = false; resetLocate(); toast('تعذّر تحديد الموقع', 'err'); },
     { enableHighAccuracy: true });
   } });
 
@@ -208,7 +211,7 @@ async function rolesTab() {
         chip(`المستوى ${r.level}`)
       ]),
       can('roles.manage') && r.key !== 'owner'
-        ? el('button.btn.sm.ghost', { style: { marginTop: '11px' }, text: '🔐 تعديل الصلاحيات', onclick: () => openPerms(r, perms, load) })
+        ? el('button.btn.sm.ghost', { style: { marginTop: '11px' }, icon: 'key-round', iconSize: 16, text: 'تعديل الصلاحيات', onclick: () => openPerms(r, perms, load) })
         : el('div.hint', { style: { marginTop: '11px' }, text: r.key === 'owner' ? 'صلاحيات كاملة غير قابلة للتعديل' : '' })
     ])]))));
   };

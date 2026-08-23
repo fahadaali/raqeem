@@ -1,46 +1,47 @@
 import api from './api.js';
 import { state, setState, setPref, saveTokens, clearSession, can, activeTerm, currentTermObj } from './state.js';
 import { el, clear, qs, qsa, toast, timeAgo, T, avatar, skeleton, AR_NUM } from './util.js';
+import { icon as luIcon } from './icons.js';
 import * as rt from './realtime.js';
 import * as pwa from './push.js';
 
 /* ═══════════════ خريطة الشاشات (الواجهة المرنة بحسب الصلاحيات) ═══════════════ */
 const NAV = [
   { group: 'الرئيسية' },
-  { path: '/', label: 'لوحة التحكم', icon: '🏠', view: 'dashboard' },
-  { path: '/checkin', label: 'تسجيل الحضور', icon: '📍', view: 'hr', perm: ['hr.attendance.self'], sub: 'checkin' },
-  { path: '/notifications', label: 'الإشعارات', icon: '🔔', view: 'notifications', badge: 'notifications' },
+  { path: '/', label: 'لوحة التحكم', icon: 'layout-dashboard', view: 'dashboard' },
+  { path: '/checkin', label: 'تسجيل الحضور', icon: 'map-pin', view: 'hr', perm: ['hr.attendance.self'], sub: 'checkin' },
+  { path: '/notifications', label: 'الإشعارات', icon: 'bell', view: 'notifications', badge: 'notifications' },
 
   { group: 'العمل التشغيلي' },
-  { path: '/tasks', label: 'المهام', icon: '📋', view: 'tasks', perm: ['tasks.view', 'tasks.view_all'] },
-  { path: '/committees', label: 'اللجان', icon: '🧑‍🤝‍🧑', view: 'committees', perm: ['committees.view'] },
-  { path: '/terms', label: 'الفصول الدراسية', icon: '📅', view: 'terms', perm: ['terms.view'] },
-  { path: '/forms', label: 'النماذج والتقييم', icon: '📝', view: 'forms', perm: ['forms.view', 'forms.submit'] },
-  { path: '/kpi', label: 'مؤشرات الأداء', icon: '📈', view: 'kpi', perm: ['kpi.view', 'kpi.view_all'] },
+  { path: '/tasks', label: 'المهام', icon: 'clipboard-list', view: 'tasks', perm: ['tasks.view', 'tasks.view_all'] },
+  { path: '/committees', label: 'اللجان', icon: 'users-round', view: 'committees', perm: ['committees.view'] },
+  { path: '/terms', label: 'الفصول الدراسية', icon: 'calendar-days', view: 'terms', perm: ['terms.view'] },
+  { path: '/forms', label: 'النماذج والتقييم', icon: 'file-pen-line', view: 'forms', perm: ['forms.view', 'forms.submit'] },
+  { path: '/kpi', label: 'مؤشرات الأداء', icon: 'chart-line', view: 'kpi', perm: ['kpi.view', 'kpi.view_all'] },
 
   { group: 'الموارد والمالية' },
-  { path: '/hr', label: 'الموارد البشرية', icon: '🕌', view: 'hr', perm: ['hr.attendance.self'] },
-  { path: '/finance', label: 'النظام المالي', icon: '💰', view: 'finance', perm: ['finance.view', 'finance.request'] },
+  { path: '/hr', label: 'الموارد البشرية', icon: 'briefcase-business', view: 'hr', perm: ['hr.attendance.self'] },
+  { path: '/finance', label: 'النظام المالي', icon: 'banknote', view: 'finance', perm: ['finance.view', 'finance.request'] },
 
   { group: 'التواصل' },
-  { path: '/tickets', label: 'الدعم الفني', icon: '🎧', view: 'tickets', perm: ['tickets.create', 'tickets.view_all'] },
+  { path: '/tickets', label: 'الدعم الفني', icon: 'headset', view: 'tickets', perm: ['tickets.create', 'tickets.view_all'] },
 
   { group: 'الإدارة والحوكمة' },
-  { path: '/reports', label: 'التقارير', icon: '📊', view: 'reports', perm: ['reports.view'] },
-  { path: '/imports', label: 'استيراد البيانات', icon: '📥', view: 'imports', perm: ['imports.manage'] },
-  { path: '/org', label: 'المستخدمون والفروع', icon: '🏢', view: 'org', perm: ['users.view', 'branches.view'] },
-  { path: '/audit', label: 'سجل النشاطات', icon: '🛡️', view: 'audit', perm: ['audit.view'] },
-  { path: '/billing', label: 'الاشتراك والفوترة', icon: '💳', view: 'billing', perm: ['billing.view'], saas: true },
-  { path: '/settings', label: 'الإعدادات', icon: '⚙️', view: 'settings' },
+  { path: '/reports', label: 'التقارير', icon: 'chart-column', view: 'reports', perm: ['reports.view'] },
+  { path: '/imports', label: 'استيراد البيانات', icon: 'import', view: 'imports', perm: ['imports.manage'] },
+  { path: '/org', label: 'المستخدمون والفروع', icon: 'building-2', view: 'org', perm: ['users.view', 'branches.view'] },
+  { path: '/audit', label: 'سجل النشاطات', icon: 'shield-check', view: 'audit', perm: ['audit.view'] },
+  { path: '/billing', label: 'الاشتراك والفوترة', icon: 'credit-card', view: 'billing', perm: ['billing.view'], saas: true },
+  { path: '/settings', label: 'الإعدادات', icon: 'settings', view: 'settings' },
 
 ];
 
 const BOTTOM = [
-  { path: '/', label: 'الرئيسية', icon: '🏠' },
-  { path: '/tasks', label: 'المهام', icon: '📋', perm: ['tasks.view', 'tasks.view_all'] },
-  { path: '/checkin', label: 'تحضير', icon: '📍', perm: ['hr.attendance.self'] },
-  { path: '/notifications', label: 'الإشعارات', icon: '🔔', badge: 'notifications' },
-  { path: '/settings', label: 'حسابي', icon: '⚙️' }
+  { path: '/', label: 'الرئيسية', icon: 'layout-dashboard' },
+  { path: '/tasks', label: 'المهام', icon: 'clipboard-list', perm: ['tasks.view', 'tasks.view_all'] },
+  { path: '/checkin', label: 'تحضير', icon: 'map-pin', perm: ['hr.attendance.self'] },
+  { path: '/notifications', label: 'الإشعارات', icon: 'bell', badge: 'notifications' },
+  { path: '/settings', label: 'حسابي', icon: 'user-round' }
 ];
 
 const VIEWS = {
@@ -103,7 +104,7 @@ function buildSidebar() {
       dataset: { path: item.path },
       onclick: (e) => { e.preventDefault(); closeSidebar(); navigate(item.path); }
     }, [
-      el('span.ic', { text: item.icon }),
+      el('span.ic', { icon: item.icon }),
       el('span', { text: item.label }),
       item.badge === 'notifications' && state.notifications.unread
         ? el('span.badge', { text: state.notifications.unread > 99 ? '٩٩+' : AR_NUM(state.notifications.unread) }) : null
@@ -112,7 +113,7 @@ function buildSidebar() {
   }
   return el('aside.sidebar#sidebar', {}, [
     el('div.side-head', {}, [
-      el('img', { src: s.tenant.logo_url || '/assets/icons/icon-192.png', alt: '' }),
+      el('img', { src: s.tenant.logo_url || '/assets/brand/monogram-primary.svg', alt: '' }),
       el('div.t', {}, [
         el('b', { text: s.tenant.name }),
         el('span', { text: s.user.role.name })
@@ -140,18 +141,18 @@ function buildTopbar() {
   termSel.value = String(activeTerm() || '');
 
   const bell = el('button.icon-btn', {
-    'aria-label': 'الإشعارات', onclick: toggleNotifPanel
+    'aria-label': 'الإشعارات', dataset: { role: 'bell' }, onclick: toggleNotifPanel
   }, [
-    el('span', { text: '🔔' }),
+    el('span.ic', { icon: 'bell' }),
     state.notifications.unread ? el('span.dot', { text: state.notifications.unread > 99 ? '٩٩+' : AR_NUM(state.notifications.unread) }) : null
   ]);
 
   return el('header.topbar', {}, [
-    el('button.icon-btn.menu-btn', { text: '☰', 'aria-label': 'القائمة', onclick: openSidebar }),
+    el('button.icon-btn.menu-btn', { icon: 'menu', 'aria-label': 'القائمة', onclick: openSidebar }),
     el('h2#page-title', { text: 'لوحة التحكم' }),
     el('div.spacer'),
-    s.branches.length ? el('div.switcher.branch', { title: 'مبدّل الفروع' }, [el('span.ic', { text: '🏢' }), branchSel]) : null,
-    s.terms.length ? el('div.switcher.term', { title: 'الفصل الدراسي' }, [el('span.ic', { text: '📅' }), termSel]) : null,
+    s.branches.length ? el('div.switcher.branch', { title: 'مبدّل الفروع' }, [el('span.ic', { icon: 'building-2', iconSize: 16 }), branchSel]) : null,
+    s.terms.length ? el('div.switcher.term', { title: 'الفصل الدراسي' }, [el('span.ic', { icon: 'calendar-days', iconSize: 16 }), termSel]) : null,
     el('button.icon-btn', {
       title: 'تبديل التقويم الهجري/الميلادي',
       text: state.calendar === 'hijri' ? 'هـ' : 'م',
@@ -165,11 +166,13 @@ function buildTopbar() {
       }
     }),
     el('button.icon-btn', {
-      title: 'المظهر', text: document.documentElement.dataset.theme === 'dark' ? '☀️' : '🌙',
+      title: 'المظهر', 'aria-label': 'تبديل المظهر',
+      icon: document.documentElement.dataset.theme === 'dark' ? 'sun' : 'moon',
       onclick: (e) => {
         const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
         applyTheme(next); setPref('theme', next);
-        e.target.textContent = next === 'dark' ? '☀️' : '🌙';
+        const btn = e.currentTarget;
+        clear(btn).append(luIcon(next === 'dark' ? 'sun' : 'moon'));
       }
     }),
     bell,
@@ -186,7 +189,7 @@ function buildBottomNav() {
       dataset: { path: item.path },
       onclick: (e) => { e.preventDefault(); navigate(item.path); }
     }, [
-      el('span.ic', { text: item.icon }),
+      el('span.ic', { icon: item.icon, iconSize: 22 }),
       el('span', { text: item.label }),
       item.badge === 'notifications' && state.notifications.unread
         ? el('span.badge', { text: AR_NUM(Math.min(99, state.notifications.unread)) }) : null
@@ -204,7 +207,8 @@ const closeSidebar = () => { qs('#sidebar')?.classList.remove('open'); qs('.side
 function applyTheme(pref) {
   const dark = pref === 'dark' || (pref === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-  qs('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0B3A26' : '#0F5132');
+  /* لونا الهوية: أخضر سنا فاتحاً، والغامق في الوضع الداكن */
+  qs('meta[name="theme-color"]')?.setAttribute('content', dark ? '#1C5E4C' : '#2F8A6F');
 }
 
 /* ═══════════════ لوحة الإشعارات ═══════════════ */
@@ -231,7 +235,7 @@ async function toggleNotifPanel() {
   const list = qs('.notif-list', panel);
   clear(list);
   if (!data?.items?.length) {
-    list.append(el('div.empty', {}, [el('span.ic', { text: '🔕' }), el('h4', { text: 'لا توجد إشعارات' })]));
+    list.append(el('div.empty', {}, [el('span.ic', { icon: 'bell-off', iconSize: 'card' }), el('h4', { text: 'لا توجد إشعارات' })]));
   } else {
     for (const n of data.items) {
       list.append(el('div.notif' + (n.is_read ? '' : '.unread'), {
@@ -241,7 +245,7 @@ async function toggleNotifPanel() {
           if (n.url) navigate(n.url);
         }
       }, [
-        el('span.ic', { text: T.notifIcon[n.category] || '🔔' }),
+        el('span.ic', { icon: T.notifIcon[n.category] || 'bell' }),
         el('div.tx', {}, [
           el('b', { text: n.title }),
           n.body ? el('p', { text: n.body }) : null,
@@ -265,8 +269,7 @@ export async function loadNotifications() {
 
 function updateBadges() {
   const n = state.notifications.unread;
-  const dot = qs('.topbar .icon-btn .dot');
-  const bell = qsa('.topbar .icon-btn').find(b => b.textContent.includes('🔔'));
+  const bell = qs('.topbar .icon-btn[data-role="bell"]');
   if (bell) {
     bell.querySelector('.dot')?.remove();
     if (n) bell.append(el('span.dot', { text: n > 99 ? '٩٩+' : AR_NUM(n) }));
@@ -293,7 +296,7 @@ function buildBanners() {
         el('b', { text: b.title }),
         b.body ? el('span', { text: ' — ' + b.body }) : null
       ]),
-      el('button.x', { text: '✕', 'aria-label': 'إخفاء', onclick: (e) => {
+      el('button.x', { icon: 'x', iconSize: 16, 'aria-label': 'إخفاء', onclick: (e) => {
         dismissed.add(b.id);
         localStorage.setItem('raqeem_dismissed_banners', JSON.stringify([...dismissed]));
         e.currentTarget.closest('.platform-banner').remove();
@@ -325,7 +328,7 @@ async function refreshView() {
 
   if (item && !allowed(item)) {
     clear(content).append(el('div.empty', {}, [
-      el('span.ic', { text: '🔒' }), el('h4', { text: 'لا تملك صلاحية الوصول لهذه الشاشة' }),
+      el('span.ic', { icon: 'lock', iconSize: 'card' }), el('h4', { text: 'لا تملك صلاحية الوصول لهذه الشاشة' }),
       el('p', { text: 'راجع مدير النظام لمنحك الصلاحية المناسبة.' })
     ]));
     return;
@@ -343,7 +346,7 @@ async function refreshView() {
     if (e?.code === 'ABORTED' || route.path !== parseRoute().path) return;
     console.error(e);
     clear(content).append(el('div.empty', {}, [
-      el('span.ic', { text: '⚠️' }), el('h4', { text: 'تعذّر تحميل الشاشة' }),
+      el('span.ic', { icon: 'triangle-alert', iconSize: 'card' }), el('h4', { text: 'تعذّر تحميل الشاشة' }),
       el('p', { text: e.message || 'حدث خطأ غير متوقع' }),
       el('button.btn', { text: 'إعادة المحاولة', onclick: () => refreshView() })
     ]));
@@ -495,7 +498,7 @@ window.addEventListener('raqeem:push', () => loadNotifications());
 window.addEventListener('online', () => { setState({ online: true }); qs('.offline-bar')?.remove(); rt.connect(); loadNotifications(); });
 window.addEventListener('offline', () => {
   setState({ online: false });
-  if (!qs('.offline-bar')) document.body.append(el('div.offline-bar', { text: '⚠️ لا يوجد اتصال بالإنترنت — تعرض المنصة آخر بيانات محفوظة' }));
+  if (!qs('.offline-bar')) document.body.append(el('div.offline-bar', { icon: 'triangle-alert', iconSize: 16, text: 'لا يوجد اتصال بالإنترنت — تعرض المنصة آخر بيانات محفوظة' }));
 });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && state.session) { rt.connect(); loadNotifications(); }

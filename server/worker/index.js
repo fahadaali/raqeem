@@ -104,30 +104,39 @@ function bootstrapPage(hasToken) {
   const html = `<!doctype html><html dir="rtl" lang="ar"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow"><title>تهيئة منصة رقيم</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600&family=Zain:wght@800&display=swap">
 <style>
- :root{--brand:#0F5132;--gold:#C9A227;--bg:#f6f7f5;--card:#fff;--line:#e3e6e1;--txt:#1c2320;--dim:#6b736e}
- *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--txt);
-  font:15px/1.9 system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif;
+ /* توكنز هوية رقيم — الصفحة قائمة بذاتها فلا تصل إليها app.css */
+ :root{--primary:#2F8A6F;--primary-dark:#1C5E4C;--secondary:#E8A25C;--mint:#CBE7DC;
+  --cream:#FBF7EF;--ink:#22302B;--line:#EDE5D8;--light:#F6F0E6;
+  --text:#55645C;--dim:#8A9790;--error:#B4552E;--warning:#D9A036;--clay:#EFD4C8;--mint-2:#F6E1C6}
+ *{box-sizing:border-box} body{margin:0;background:var(--cream);color:var(--text);
+  font:15px/1.9 "IBM Plex Sans Arabic",system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif;
   display:grid;place-items:center;min-height:100dvh;padding:20px}
- .card{background:var(--card);border:1px solid var(--line);border-radius:16px;
-  padding:28px;max-width:560px;width:100%;box-shadow:0 6px 24px rgba(0,0,0,.06)}
- h1{margin:0 0 4px;font-size:20px;color:var(--brand)} p.sub{margin:0 0 20px;color:var(--dim);font-size:13.5px}
- label{display:block;font-size:13px;font-weight:600;margin:14px 0 6px}
- input[type=text]{width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:10px;
+ .card{background:#fff;border:1px solid var(--line);border-radius:22px;
+  padding:28px;max-width:560px;width:100%;box-shadow:0 10px 45px rgba(34,48,43,.05)}
+ h1{margin:0 0 4px;font:800 24px/1.35 "Zain","IBM Plex Sans Arabic",sans-serif;color:var(--primary-dark)}
+ p.sub{margin:0 0 20px;color:var(--dim);font-size:13.5px}
+ label{display:block;font-size:13px;font-weight:600;margin:14px 0 6px;color:var(--ink)}
+ input[type=text]{width:100%;padding:11px 14px;border:1px solid var(--line);border-radius:12px;
   font:inherit;direction:ltr;text-align:left}
+ input[type=text]:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--mint)}
  .row{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;font-size:13.5px}
  .row label{display:flex;align-items:center;gap:7px;font-weight:400;margin:0}
- button{margin-top:20px;width:100%;padding:13px;border:0;border-radius:11px;background:var(--brand);
-  color:#fff;font:600 15px/1 inherit;cursor:pointer;min-height:48px}
+ /* التهيئة إجراءٌ رئيسي — المشمشي هنا في موضعه الوحيد */
+ button{margin-top:20px;width:100%;padding:13px;border:0;border-radius:999px;background:var(--secondary);
+  color:#fff;font:600 15px/1 inherit;cursor:pointer;min-height:48px;transition:.2s}
+ button:hover:not(:disabled){background:#D98F45;box-shadow:0 5px 24px rgba(232,162,92,.35)}
  button:disabled{opacity:.55;cursor:default}
- pre{background:#0f1613;color:#d6e4dc;padding:14px;border-radius:11px;overflow:auto;
+ pre{background:var(--ink);color:var(--cream);padding:14px;border-radius:12px;overflow:auto;
   font-size:12.5px;direction:ltr;text-align:left;margin-top:18px;white-space:pre-wrap;word-break:break-word}
- .msg{margin-top:16px;padding:12px 14px;border-radius:11px;font-size:13.5px;display:none}
- .ok{background:#e7f4ec;color:#15633a;border:1px solid #bfe0cd}
- .err{background:#fdeaea;color:#a32020;border:1px solid #f3c4c4}
- .warn{background:#fdf6e3;color:#8a6d1f;border:1px solid #ecdcae}
+ .msg{margin-top:16px;padding:12px 14px;border-radius:12px;font-size:13.5px;display:none}
+ .ok{background:var(--mint);color:var(--primary-dark);border:1px solid var(--primary)}
+ .err{background:var(--clay);color:var(--error);border:1px solid var(--error)}
+ .warn{background:var(--mint-2);color:#8A5A20;border:1px solid var(--warning)}
  ol{margin:10px 0 0;padding-inline-start:20px;font-size:13.5px;color:var(--dim)}
- code{background:#eef1ee;padding:1px 6px;border-radius:5px;font-size:12.5px;direction:ltr;display:inline-block}
+ code{background:var(--light);padding:1px 6px;border-radius:6px;font-size:12.5px;direction:ltr;display:inline-block}
 </style></head><body><div class="card">
  <h1>تهيئة منصة رقيم</h1>
  <p class="sub">تُنفَّذ مرّة واحدة: تُنشئ جداول قاعدة البيانات وتعبّئ الجهة رقم ١.</p>
@@ -166,7 +175,7 @@ f.addEventListener('submit',async(e)=>{
     +'<li>لوحة المنصة على <code>/admin</code> بحساب مستقل: <code>admin@raqeem.sa</code> / <code>Admin@123</code></li>'
     +'<li>غيّر كل كلمات المرور الافتراضية فوراً</li>'
     +'<li>احذف السرّ <code>BOOTSTRAP_TOKEN</code> من إعدادات العامل</li></ol>');
-   b.textContent='تمّت التهيئة ✔';
+   b.textContent='تمّت التهيئة';
   }else{
    show('err',(d.error||'فشلت التهيئة')+' — رمز الاستجابة '+r.status);
    b.disabled=false;b.textContent='إعادة المحاولة';

@@ -34,8 +34,8 @@ export async function render() {
       el('h4', { text: t.label }),
       el('p', { text: t.description, style: { fontSize: '12.5px', color: 'var(--text-2)', margin: '6px 0 10px', minHeight: '38px' } }),
       el('div.row', {}, [
-        el('button.btn.sm', { text: '📤 استيراد', onclick: () => wizard(t, loadHistory) }),
-        el('a.btn.sm.ghost', { href: `/api/imports/template/${t.key}`, text: '⬇ قالب Excel', download: '' })
+        el('button.btn.sm', { icon: 'upload', iconSize: 16, text: 'استيراد', onclick: () => wizard(t, loadHistory) }),
+        el('a.btn.sm.ghost', { href: `/api/imports/template/${t.key}`, icon: 'download', iconSize: 16, text: 'قالب Excel', download: '' })
       ])
     ])]))),
     history
@@ -60,7 +60,7 @@ function wizard(type, reload) {
   let file = null, validation = null;
   const fileInput = el('input', { type: 'file', accept: '.xlsx,.csv,.tsv,text/csv', hidden: true });
   const drop = el('div.file-drop', { onclick: () => fileInput.click() }, [
-    el('span.ic', { text: '📄' }),
+    el('span.ic', { icon: 'file-up', iconSize: 'card' }),
     el('div', { text: 'اسحب ملف Excel أو CSV هنا، أو اضغط للاختيار' }),
     el('div.hint', { text: 'يجب أن تطابق ترويسة الملف أعمدة القالب' })
   ]);
@@ -71,13 +71,13 @@ function wizard(type, reload) {
   const handle = async (f) => {
     if (!f) return;
     file = f;
-    clear(drop).append(el('span.ic', { text: '✅' }), el('div', { text: f.name }),
+    clear(drop).append(el('span.ic', { icon: 'circle-check', iconSize: 'card' }), el('div', { text: f.name }),
       el('div.hint', { text: `${(f.size / 1024).toFixed(1)} كيلوبايت — جارٍ الفحص...` }));
     const fd = new FormData(); fd.append('type', type.key); fd.append('file', f);
     try {
       validation = await api.post('/api/imports/validate', fd);
       renderValidation();
-    } catch (e) { clear(info).append(el('div.archived-bar', {}, [el('span', { text: '⚠️' }), e.message])); }
+    } catch (e) { clear(info).append(el('div.archived-bar', { icon: 'triangle-alert', iconSize: 16 }, [e.message])); }
   };
 
   function renderValidation() {
@@ -89,13 +89,13 @@ function wizard(type, reload) {
       el('div.stat.danger', {}, [el('div.label', { text: 'صفوف مرفوضة' }), el('div.value', { text: AR_NUM(v.errors.length) })])
     ]));
     clear(preview);
-    if (v.errors.length) preview.append(card('❌ تقرير الأخطاء المرئي', table([
+    if (v.errors.length) preview.append(card('تقرير الأخطاء المرئي', table([
       { header: 'الصف', key: 'row', num: true },
       { header: 'الحقل', key: 'field' },
       { header: 'القيمة', key: 'value' },
       { header: 'سبب الرفض', key: 'message' }
     ], v.errors.slice(0, 60)), { p0: true, sub: 'صحّح هذه الصفوف في الملف وأعد رفعه — الصفوف الصالحة يمكن استيرادها الآن' }));
-    if (v.preview?.length) preview.append(card('✅ معاينة الصفوف الصالحة', table(
+    if (v.preview?.length) preview.append(card('معاينة الصفوف الصالحة', table(
       v.columns.map(c => ({ header: c.header, key: c.key })), v.preview), { p0: true }));
   }
 
@@ -109,7 +109,7 @@ function wizard(type, reload) {
     const fd = new FormData(); fd.append('type', type.key); fd.append('file', file);
     try {
       const r = await api.post('/api/imports/run', fd);
-      toast(`جارٍ استيراد ${AR_NUM(r.queued)} سجل في الخلفية${r.skipped ? ` (تم تخطي ${AR_NUM(r.skipped)})` : ''}`, 'ok', '📥 بدأ الاستيراد');
+      toast(`جارٍ استيراد ${AR_NUM(r.queued)} سجل في الخلفية${r.skipped ? ` (تم تخطي ${AR_NUM(r.skipped)})` : ''}`, 'ok', 'بدأ الاستيراد');
       m.close();
       setTimeout(reload, 3000);
       setTimeout(reload, 8000);
@@ -125,7 +125,7 @@ function wizard(type, reload) {
       drop, fileInput, info, preview
     ]),
     footer: [
-      el('a.btn.ghost', { href: `/api/imports/template/${type.key}`, text: '⬇ تنزيل القالب', download: '' }),
+      el('a.btn.ghost', { href: `/api/imports/template/${type.key}`, icon: 'download', iconSize: 16, text: 'تنزيل القالب', download: '' }),
       el('button.btn.ghost', { text: 'إلغاء', onclick: () => m.close() }),
       runBtn
     ]

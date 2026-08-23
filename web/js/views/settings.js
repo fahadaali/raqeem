@@ -9,14 +9,14 @@ import { pushStatus, subscribePush, unsubscribePush, promptInstall, isStandalone
 
 export async function render({ navigate }) {
   const items = [
-    { label: '👤 حسابي', build: profileTab },
-    { label: '🔔 الإشعارات', build: notifTab },
-    { label: '📱 التطبيق', build: appTab }
+    { label: 'حسابي', icon: 'user-round', build: profileTab },
+    { label: 'الإشعارات', icon: 'bell', build: notifTab },
+    { label: 'التطبيق', icon: 'smartphone', build: appTab }
   ];
-  if (can('settings.manage')) items.push({ label: '🏛 هوية الجهة', build: tenantTab });
-  if (can('settings.manage')) items.push({ label: '💾 النسخ الاحتياطي', build: backupTab });
-  items.push({ label: '🔐 التحقّق بخطوتين', build: twoFactorTab });
-  if (can('api.keys.manage')) items.push({ label: '🔗 مفاتيح الربط', build: apiTab });
+  if (can('settings.manage')) items.push({ label: 'هوية الجهة', icon: 'landmark', build: tenantTab });
+  if (can('settings.manage')) items.push({ label: 'النسخ الاحتياطي', icon: 'database', build: backupTab });
+  items.push({ label: 'التحقّق بخطوتين', icon: 'shield-check', build: twoFactorTab });
+  if (can('api.keys.manage')) items.push({ label: 'مفاتيح الربط', icon: 'key', build: apiTab });
   const t = tabs(items, (it) => { const n = el('div'); Promise.resolve(it.build(navigate)).then(x => n.replaceChildren(x)); return n; });
   return t.node;
 }
@@ -83,7 +83,7 @@ async function profileTab() {
     ]),
     card('الجلسات النشطة', sessionsBox, { p0: true }),
     card('الخروج من المنصة', [
-      el('button.btn.danger', { text: '🚪 تسجيل الخروج', onclick: async () => {
+      el('button.btn.danger', { icon: 'log-out', iconSize: 16, text: 'تسجيل الخروج', onclick: async () => {
         if (!await confirmDialog('سيتم إنهاء جلستك على هذا الجهاز.', { confirmText: 'خروج', danger: true })) return;
         await api.logout(); location.href = '/';
       } })
@@ -106,15 +106,15 @@ async function notifTab() {
   return el('div.stack', {}, [
     card('حالة الإشعارات على هذا الجهاز', [
       el('div.row', {}, [
-        chip(st.subscribed ? '✅ مفعّلة' : '⚠️ غير مفعّلة', st.subscribed ? 'ok' : 'warn'),
+        chip(st.subscribed ? 'مفعّلة' : 'غير مفعّلة', st.subscribed ? 'ok' : 'warn', st.subscribed ? 'circle-check' : 'triangle-alert'),
         chip(d.push_enabled ? 'خدمة الدفع تعمل على الخادم' : 'خدمة الدفع معطّلة', d.push_enabled ? 'info' : 'danger'),
         d.online ? chip('متصل لحظياً', 'brand') : null
       ]),
       el('div.row', { style: { marginTop: '11px' } }, [
         st.subscribed
           ? el('button.btn.ghost', { text: 'إيقاف على هذا الجهاز', onclick: async (e) => { e.target.disabled = true; await unsubscribePush(); location.reload(); } })
-          : el('button.btn', { text: '🔔 تفعيل الإشعارات', onclick: async (e) => { e.target.disabled = true; const r = await subscribePush(); if (r.ok) location.reload(); else e.target.disabled = false; } }),
-        el('button.btn.ghost', { text: '📨 إشعار تجريبي', onclick: async () => {
+          : el('button.btn', { icon: 'bell', iconSize: 16, text: 'تفعيل الإشعارات', onclick: async (e) => { e.target.disabled = true; const r = await subscribePush(); if (r.ok) location.reload(); else e.target.disabled = false; } }),
+        el('button.btn.ghost', { icon: 'send', iconSize: 16, text: 'إشعار تجريبي', onclick: async () => {
           const r = await api.post('/api/notifications/test', {});
           toast(r.pushed ? 'أُرسل إشعار الدفع إلى جهازك' : 'أُنشئ الإشعار داخل المنصة', 'ok');
         } })
@@ -147,23 +147,24 @@ async function appTab() {
   return el('div.stack', {}, [
     card('تثبيت التطبيق على جهازك', [
       el('div.row', { style: { marginBottom: '12px' } }, [
-        el('img', { src: '/assets/icons/icon-192.png', alt: '', style: { width: '62px', height: '62px', borderRadius: '17px' } }),
+        el('img', { src: '/assets/brand/monogram-primary.svg', alt: '', style: { width: '64px', height: '64px', borderRadius: '26%' } }),
         el('div', { style: { flex: 1, minWidth: '190px' } }, [
           el('h3', { text: 'منصة رقيم' }),
           el('div.hint', { text: 'تطبيق ويب تقدمي (PWA) يعمل بملء الشاشة ودون اتصال، ويستقبل الإشعارات كتطبيق أصلي.' })
         ]),
-        chip(installed ? '✅ مثبّت' : 'غير مثبّت', installed ? 'ok' : 'warn')
+        chip(installed ? 'مثبّت' : 'غير مثبّت', installed ? 'ok' : 'warn', installed ? 'circle-check' : 'download')
       ]),
       el('div.row', {}, [
-        chip(p === 'ios' ? '📱 iOS / iPadOS' : p === 'android' ? '🤖 Android' : '💻 سطح المكتب', 'brand'),
+        chip(p === 'ios' ? 'iOS / iPadOS' : p === 'android' ? 'Android' : 'سطح المكتب', 'brand',
+          p === 'desktop' ? 'monitor' : 'smartphone'),
         chip(navigator.onLine ? 'متصل' : 'دون اتصال', navigator.onLine ? 'ok' : 'warn'),
         chip('يعمل دون اتصال', 'info')
       ]),
-      !installed ? el('button.btn.lg', { style: { marginTop: '14px' }, text: '📲 تثبيت التطبيق الآن', onclick: () => promptInstall() }) : null,
+      !installed ? el('button.btn.lg.gold', { style: { marginTop: '14px' }, icon: 'download', iconSize: 18, text: 'تثبيت التطبيق الآن', onclick: () => promptInstall() }) : null,
       el('div', { style: { marginTop: '16px' } }, [
         el('h4', { style: { fontSize: '13px', marginBottom: '8px' }, text: p === 'ios' ? 'خطوات التثبيت على الآيفون / الآيباد' : p === 'android' ? 'خطوات التثبيت على الأندرويد' : 'خطوات التثبيت على الحاسب' }),
         ...(p === 'ios'
-          ? ['افتح المنصة في متصفح Safari', 'اضغط زر المشاركة ⬆️ في الشريط السفلي', 'اختر «إضافة إلى الشاشة الرئيسية»', 'اضغط «إضافة» — ستظهر أيقونة رقيم بين تطبيقاتك', 'افتح التطبيق من الأيقونة ثم فعّل الإشعارات']
+          ? ['افتح المنصة في متصفح Safari', 'اضغط زر المشاركة في الشريط السفلي', 'اختر «إضافة إلى الشاشة الرئيسية»', 'اضغط «إضافة» — ستظهر أيقونة رقيم بين تطبيقاتك', 'افتح التطبيق من الأيقونة ثم فعّل الإشعارات']
           : p === 'android'
           ? ['اضغط زر التثبيت أعلاه أو افتح قائمة المتصفح (⋮)', 'اختر «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية»', 'أكّد التثبيت', 'افتح التطبيق وفعّل الإشعارات من تبويب الإشعارات']
           : ['اضغط أيقونة التثبيت ⊕ في شريط عنوان المتصفح', 'أو من قائمة المتصفح اختر «تثبيت منصة رقيم»', 'سيُفتح التطبيق في نافذة مستقلة']
@@ -173,11 +174,11 @@ async function appTab() {
     card('الذاكرة المؤقتة والتحديثات', [
       el('div.hint', { text: 'تحتفظ المنصة بنسخة من الشاشات والبيانات الأخيرة للعمل دون اتصال. امسح الذاكرة إن واجهت مشكلة في التحديث.' }),
       el('div.row', { style: { marginTop: '11px' } }, [
-        el('button.btn.ghost', { text: '🔄 التحقق من التحديثات', onclick: async () => {
+        el('button.btn.ghost', { icon: 'refresh-cw', iconSize: 16, text: 'التحقق من التحديثات', onclick: async () => {
           const reg = await navigator.serviceWorker?.getRegistration();
           await reg?.update(); toast('تم التحقق من وجود تحديثات', 'info');
         } }),
-        el('button.btn.ghost', { text: '🧹 مسح الذاكرة المؤقتة', onclick: async () => {
+        el('button.btn.ghost', { icon: 'eraser', iconSize: 16, text: 'مسح الذاكرة المؤقتة', onclick: async () => {
           if (!await confirmDialog('سيُعاد تحميل التطبيق بعد مسح الذاكرة المؤقتة.')) return;
           const reg = await navigator.serviceWorker?.getRegistration();
           reg?.active?.postMessage({ type: 'CLEAR_CACHE' });
@@ -241,7 +242,7 @@ async function tenantTab() {
         const branch = select([{ value: '', label: 'كل منسوبي الجهة' }, ...state.session.branches.map(b => ({ value: b.id, label: b.name }))]);
         return el('div', {}, [
           field('العنوان', title, { required: true }), field('النص', body), field('الفئة المستهدفة', branch),
-          el('button.btn.gold', { text: '📢 بث الإشعار', onclick: async (e) => {
+          el('button.btn.gold', { icon: 'megaphone', iconSize: 16, text: 'بث الإشعار', onclick: async (e) => {
             if (!title.value.trim()) return toast('عنوان الإشعار إلزامي', 'warn');
             if (!await confirmDialog('سيصل هذا الإشعار لجميع المستهدفين على أجهزتهم فوراً.', { confirmText: 'بث الآن' })) return;
             e.target.disabled = true;
@@ -267,7 +268,7 @@ async function twoFactorTab() {
     if (st.enabled) {
       const pw = input({ type: 'password', autocomplete: 'current-password' });
       clear(body).append(
-        el('div.alert.ok', { text: '✔ التحقّق بخطوتين مفعّل على حسابك' }),
+        el('div.alert.ok', { icon: 'shield-check', iconSize: 16, text: 'التحقّق بخطوتين مفعّل على حسابك' }),
         el('p.hint', { text: `رموز الاسترداد المتبقية: ${AR_NUM(st.backup_codes_left)}` }),
         st.required
           ? el('div.alert.info', { text: 'التحقّق بخطوتين إلزامي على مالكي المنصة ولا يمكن تعطيله.' })
@@ -287,9 +288,9 @@ async function twoFactorTab() {
 
     clear(body).append(
       st.required
-        ? el('div.alert.warn', { text: '⚠ التحقّق بخطوتين إلزامي على مالكي المنصة — فعّله الآن.' })
+        ? el('div.alert.warn', { icon: 'triangle-alert', iconSize: 16, text: 'التحقّق بخطوتين إلزامي على مالكي المنصة — فعّله الآن.' })
         : el('div.alert.info', { text: 'طبقة حماية ثانية: رمز متغيّر كل ٣٠ ثانية من تطبيق مصادقة على جوالك.' }),
-      el('button.btn.gold', { text: '🔐 بدء التفعيل', onclick: async (e) => {
+      el('button.btn.gold', { icon: 'shield-check', iconSize: 16, text: 'بدء التفعيل', onclick: async (e) => {
         e.target.disabled = true;
         try {
           const setup = await api.post('/api/auth/2fa/setup', {});
@@ -314,7 +315,7 @@ function setupDialog(setup, done) {
       el('p', { text: '٢) أضف حساباً جديداً بإدخال هذا المفتاح يدوياً:' }),
       card('المفتاح السرّي', el('div.stack', {}, [
         el('code', { text: setup.secret, style: { direction: 'ltr', fontSize: '15px', letterSpacing: '2px', wordBreak: 'break-all' } }),
-        el('button.btn.sm.ghost', { text: '📋 نسخ المفتاح', onclick: async () => {
+        el('button.btn.sm.ghost', { icon: 'copy', iconSize: 16, text: 'نسخ المفتاح', onclick: async () => {
           try { await navigator.clipboard.writeText(setup.secret); toast('نُسخ المفتاح', 'ok'); }
           catch { toast('حدّد المفتاح وانسخه يدوياً', 'warn'); }
         } })
@@ -332,12 +333,12 @@ function setupDialog(setup, done) {
         const r = await api.post('/api/auth/2fa/enable', { token: token.value.trim() });
         m.close();
         modal({
-          title: '✔ فُعّل التحقّق بخطوتين',
+          title: 'فُعّل التحقّق بخطوتين', icon: 'shield-check',
           body: el('div.stack', {}, [
             el('div.alert.warn', { text: 'احفظ رموز الاسترداد التالية في مكان آمن — تُعرض مرة واحدة فقط، وكل رمز يُستخدم مرة واحدة عند فقد جوالك.' }),
             el('div.grid-2', {}, r.backup_codes.map(c =>
               el('code', { text: c, style: { direction: 'ltr', fontSize: '14px', letterSpacing: '2px', padding: '6px' } }))),
-            el('button.btn.ghost', { text: '📋 نسخ كل الرموز', onclick: async () => {
+            el('button.btn.ghost', { icon: 'copy', iconSize: 16, text: 'نسخ كل الرموز', onclick: async () => {
               try { await navigator.clipboard.writeText(r.backup_codes.join('\n')); toast('نُسخت الرموز', 'ok'); }
               catch { toast('انسخها يدوياً', 'warn'); }
             } })
@@ -367,10 +368,10 @@ async function backupTab() {
         { header: 'الملف', key: 'name', render: r => el('code', { text: r.name, style: { direction: 'ltr', fontSize: '11px' } }) },
         { header: 'التاريخ', key: 'created_at', render: r => (r.created_at ? fmtDateTime(r.created_at) : '—') },
         { header: '', key: 'a', render: r => el('button.btn.sm.ghost', {
-            text: '⬇ تنزيل',
+            icon: 'download', iconSize: 16, text: 'تنزيل',
             onclick: () => api.downloadGet(`/api/org/backups/${encodeURIComponent(r.name)}/download`, r.name)
           }) }
-      ], rows) : empty('💾', 'لا توجد نسخ بعد', 'أنشئ نسخة يدوية أو انتظر النسخ التلقائي اليومي.')),
+      ], rows) : empty('database', 'لا توجد نسخ بعد', 'أنشئ نسخة يدوية أو انتظر النسخ التلقائي اليومي.')),
       el('p.hint', { text: 'تُخزَّن كل نسخة داخل مجلّد الجهة المعزول، وهي ملف SQL مضغوط يمكن استعادته مباشرةً على قاعدة البيانات.' })
     );
   };
@@ -378,8 +379,8 @@ async function backupTab() {
   load();
   return el('div', {}, [
     el('div.row', { style: { justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' } }, [
-      el('h3', { text: '💾 النسخ الاحتياطي' }),
-      el('button.btn.gold', { text: '＋ إنشاء نسخة الآن', onclick: async (e) => {
+      el('h3', { icon: 'database', text: 'النسخ الاحتياطي' }),
+      el('button.btn.gold', { icon: 'plus', iconSize: 16, text: 'إنشاء نسخة الآن', onclick: async (e) => {
         e.target.disabled = true;
         try {
           const r = await api.post('/api/org/backups', {});
@@ -419,10 +420,10 @@ async function apiTab() {
     card(null, [el('div.row.between', {}, [
       el('div', {}, [el('h3', { text: 'إعدادات المطورين — مفاتيح الربط' }),
         el('div.hint', { text: 'أصدر مفاتيح للأنظمة الخارجية (مثل منصة الطلاب) للوصول لبيانات محددة فقط، مع حد أقصى للطلبات لحماية الخوادم.' })]),
-      el('button.btn.sm', { text: '＋ إصدار مفتاح', onclick: () => openKey(scopes, load) })
+      el('button.btn.sm', { icon: 'plus', iconSize: 16, text: 'إصدار مفتاح', onclick: () => openKey(scopes, load) })
     ])]),
     body,
-    card('📖 توثيق الواجهة البرمجية', [
+    card('توثيق الواجهة البرمجية', [
       el('div.hint', { text: 'استخدم المفتاح في ترويسة الطلب:' }),
       el('div.code', { text: `curl -H "Authorization: Bearer raqeem_rq_xxx.xxxxx" \\\n  ${base}/api/v1/teachers` }),
       el('h4', { style: { fontSize: '13px', margin: '14px 0 8px' }, text: 'نقاط الاتصال المتاحة' }),
@@ -471,11 +472,11 @@ function openKey(scopes, reload) {
 
 function showKey(r) {
   const m = modal({
-    title: '🔑 مفتاح الربط الجديد', size: 'narrow',
+    title: 'مفتاح الربط الجديد', icon: 'key', size: 'narrow',
     body: el('div', {}, [
-      el('div.archived-bar', {}, [el('span', { text: '⚠️' }), r.warning]),
+      el('div.archived-bar', { icon: 'triangle-alert', iconSize: 16 }, [r.warning]),
       el('div.code', { text: r.key }),
-      el('button.btn.block', { style: { marginTop: '11px' }, text: '📋 نسخ المفتاح', onclick: async () => {
+      el('button.btn.block', { style: { marginTop: '11px' }, icon: 'copy', iconSize: 16, text: 'نسخ المفتاح', onclick: async () => {
         try { await navigator.clipboard.writeText(r.key); toast('تم نسخ المفتاح', 'ok'); }
         catch { toast('انسخ المفتاح يدوياً', 'warn'); }
       } })

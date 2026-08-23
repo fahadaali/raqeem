@@ -34,11 +34,13 @@ export async function render() {
           el('div.lb', { text: T.taskStatus[s] })
         ]);
       }))),
-      card('🏆 لوحة مؤشرات الأداء', table([
-        { header: '#', key: 'r', render: (r, i) => el('b', { text: i < 3 ? ['🥇', '🥈', '🥉'][i] : AR_NUM(i + 1) }) },
+      card('لوحة مؤشرات الأداء', table([
+        { header: '#', key: 'r', render: (r, i) => i < 3
+      ? el('b.rank', { icon: ['trophy', 'medal', 'award'][i], iconSize: 18, class: 'rank-' + (i + 1) })
+      : el('b', { text: AR_NUM(i + 1) }) },
         { header: 'المنسوب', key: 'user_name', render: r => r.user_name
             ? el('div.row', { style: { gap: '7px', flexWrap: 'nowrap' } }, [avatar(r.user_name, 'sm'), el('span', { text: r.user_name, style: { fontSize: '12.5px' } })])
-            : el('b', { text: '🧑‍🤝‍🧑 ' + (r.committee_name || '—') }) },
+            : el('b', { icon: 'users-round', iconSize: 16, text: r.committee_name || '—' }) },
         { header: 'الفرع', key: 'branch_name' },
         { header: 'المهام', key: 't', render: r => `${AR_NUM(r.tasks_done)} / ${AR_NUM(r.tasks_total)}` },
         { header: 'متأخرة', key: 'tasks_overdue', num: true, render: r => r.tasks_overdue ? chip(AR_NUM(r.tasks_overdue), 'danger') : '—' },
@@ -51,7 +53,7 @@ export async function render() {
       ], d.leaderboard, { emptyText: 'لم تُحتسب المؤشرات بعد' }), {
         p0: true,
         actions: can('kpi.view_all') ? el('button.btn.sm.ghost', {
-          text: '🔄 إعادة الاحتساب',
+          icon: 'refresh-cw', iconSize: 16, text: 'إعادة الاحتساب',
           onclick: async (e) => { e.target.disabled = true; const r = await api.post('/api/forms/kpi/recompute', {}); toast(`تم تحديث ${AR_NUM(r.updated)} مؤشر`, 'ok'); load(); }
         }) : null
       })

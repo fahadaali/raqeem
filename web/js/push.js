@@ -57,14 +57,14 @@ export async function registerServiceWorker() {
 
 function showUpdateBanner() {
   const bar = el('div.install-banner', {}, [
-    el('img', { src: '/assets/icons/icon-192.png', alt: '' }),
+    el('img', { src: '/assets/brand/monogram-primary.svg', alt: '' }),
     el('div.tx', {}, [el('b', { text: 'يتوفر تحديث جديد للمنصة' }),
       el('p', { text: 'أعد التحميل للحصول على آخر التحسينات.' })]),
     el('button.btn.sm', {
       text: 'تحديث',
       onclick: () => { registration?.waiting?.postMessage({ type: 'SKIP_WAITING' }); location.reload(); }
     }),
-    el('button.icon-btn', { text: '✕', onclick: () => bar.remove() })
+    el('button.icon-btn', { icon: 'x', iconSize: 16, 'aria-label': 'إخفاء', onclick: () => bar.remove() })
   ]);
   document.body.append(bar);
 }
@@ -110,7 +110,7 @@ export async function subscribePush({ silent = false, ask = true } = {}) {
 
   await api.post('/api/notifications/subscribe', { subscription: sub.toJSON(), platform: platform() });
   localStorage.setItem('raqeem_push', '1');
-  if (!silent) toast('تم تفعيل الإشعارات على هذا الجهاز بنجاح', 'ok', '🔔 الإشعارات مفعّلة');
+  if (!silent) toast('تم تفعيل الإشعارات على هذا الجهاز بنجاح', 'ok', 'الإشعارات مفعّلة');
   return { ok: true };
 }
 
@@ -150,7 +150,7 @@ window.addEventListener('beforeinstallprompt', (e) => {
 window.addEventListener('appinstalled', () => {
   deferredPrompt = null;
   localStorage.setItem('raqeem_installed', '1');
-  toast('تم تثبيت منصة رقيم على جهازك بنجاح', 'ok', '📱 تم التثبيت');
+  toast('تم تثبيت منصة رقيم على جهازك بنجاح', 'ok', 'تم التثبيت');
   setTimeout(() => subscribePush({ silent: true }), 1800);
 });
 
@@ -184,7 +184,7 @@ export function showIosInstallGuide(forNotifications = false) {
           ? 'نظام iOS يتيح الإشعارات للمواقع بعد إضافتها للشاشة الرئيسية فقط (iOS 16.4 فأحدث). اتبع الخطوات ثم فعّل الإشعارات من داخل التطبيق:'
           : 'أضف منصة رقيم إلى شاشتك الرئيسية لتعمل كتطبيق مستقل بملء الشاشة:' }),
       guideRow(1, 'افتح المنصة في متصفح Safari (وليس Chrome).'),
-      guideRow(2, 'اضغط زر المشاركة ⬆️ في شريط المتصفح السفلي.'),
+      guideRow(2, 'اضغط زر المشاركة في شريط المتصفح السفلي.'),
       guideRow(3, 'اختر «إضافة إلى الشاشة الرئيسية» Add to Home Screen.'),
       guideRow(4, 'اضغط «إضافة»، وسيظهر تطبيق رقيم بين تطبيقاتك.'),
       forNotifications ? guideRow(5, 'افتح التطبيق من الأيقونة الجديدة ثم فعّل الإشعارات من الإعدادات.') : null,
@@ -230,7 +230,7 @@ export function maybeShowInstallBanner() {
       ]),
       el('button.btn.sm', { text: 'تثبيت', onclick: async () => { bar.remove(); await promptInstall(); } }),
       el('button.icon-btn', {
-        text: '✕', 'aria-label': 'إخفاء',
+        icon: 'x', iconSize: 16, 'aria-label': 'إخفاء',
         onclick: () => { bar.remove(); localStorage.setItem('raqeem_install_dismissed', '1'); }
       })
     ]);
@@ -252,7 +252,7 @@ export function maybeAskNotifications() {
     if (document.querySelector('.modal-back, .drawer, .install-banner')) return setTimeout(show, 15000);
     localStorage.setItem('raqeem_notif_asked', '1');
     const bar = el('div.install-banner', {}, [
-      el('div', { text: '🔔', style: { fontSize: '30px', flex: '0 0 auto' } }),
+      el('span.ic', { icon: 'bell', iconSize: 32, style: { flex: '0 0 auto' } }),
       el('div.tx', {}, [
         el('b', { text: 'فعّل الإشعارات الفورية' }),
         el('p', { text: 'تنبيهات المهام والاعتمادات المالية والرسائل — تصلك حتى والتطبيق مغلق.' })

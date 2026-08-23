@@ -16,9 +16,9 @@ const CATEGORIES = [
 
 /* حالات التذكرة لدى مزوّد المنصة كما يكتبها الخادم */
 const VENDOR_STATE = {
-  open:     { label: '⏳ بانتظار رد المزوّد', kind: 'warn' },
-  answered: { label: '💬 ردّ المزوّد والتذكرة مفتوحة', kind: 'ok' },
-  closed:   { label: '✅ عالجها المزوّد وأغلقها', kind: 'ok' }
+  open:     { label: 'بانتظار رد المزوّد', kind: 'warn', icon: 'hourglass' },
+  answered: { label: 'ردّ المزوّد والتذكرة مفتوحة', kind: 'ok', icon: 'message-circle' },
+  closed:   { label: 'عالجها المزوّد وأغلقها', kind: 'ok', icon: 'circle-check' }
 };
 
 export async function render({ route }) {
@@ -29,14 +29,14 @@ export async function render({ route }) {
     const rows = await api.get('/api/comms/tickets' + api.qs({ status: filter }));
     const breached = rows.filter(r => r.sla_breached || r.escalated);
     mount(clear(body),
-      breached.length && can('tickets.view_all') ? card('⚠️ تذاكر تجاوزت اتفاقية مستوى الخدمة',
+      breached.length && can('tickets.view_all') ? card('تذاكر تجاوزت اتفاقية مستوى الخدمة',
         el('div.stack', { style: { gap: '7px' } }, breached.map(t => el('div.check-row', {
           style: { borderColor: 'var(--danger)' }, onclick: () => openTicket(t.id, load)
         }, [
-          el('span', { text: '🔴' }),
+          el('span.ic', { icon: 'siren', iconSize: 16 }),
           el('div.t', {}, [`${t.number} — ${t.subject}`, el('small', { text: `${t.requester_name} · ${timeAgo(t.created_at)}` })]),
           chip('مُصعّدة', 'danger')
-        ])))) : null,
+        ]))), { icon: 'triangle-alert' }) : null,
       card(null, table([
         { header: 'رقم التذكرة', key: 'number' },
         { header: 'الموضوع', key: 'subject' },
@@ -58,7 +58,7 @@ export async function render({ route }) {
   return el('div.stack', {}, [
     card(null, [el('div.row.between', {}, [
       el('div.row', {}, [el('h3', { text: 'مركز الدعم الفني' }), statusSel]),
-      can('tickets.create') ? el('button.btn.sm', { text: '＋ تذكرة جديدة', onclick: () => openForm(load) }) : null
+      can('tickets.create') ? el('button.btn.sm', { icon: 'plus', iconSize: 16, text: 'تذكرة جديدة', onclick: () => openForm(load) }) : null
     ])]),
     body
   ]);
@@ -90,15 +90,16 @@ async function openTicket(id, reload) {
       el('div.row', { style: { marginTop: '8px' } }, [
         chip(T.priority[t.priority], T.priorityChip[t.priority]),
         chip(CATEGORIES.find(c => c.value === t.category)?.label || t.category),
-        t.escalated ? chip('⚠️ مُصعّدة لتجاوز مدة الاستجابة', 'danger') : null,
+        t.escalated ? chip('مُصعّدة لتجاوز مدة الاستجابة', 'danger', 'triangle-alert') : null,
         t.first_response_at ? chip('تم الرد خلال المدة', 'ok') : chip(`مدة الاستجابة: ${AR_NUM(t.sla_hours)} ساعة`, 'warn')
       ]),
       t.body ? el('p', { text: t.body, style: { marginTop: '11px', fontSize: '13px', color: 'var(--text-2)', whiteSpace: 'pre-wrap' } }) : null
     ]),
     t.vendor ? card('دعم مزوّد المنصة', el('div.stack', { style: { gap: '8px' } }, [
       el('div.row', {}, [
-        chip(VENDOR_STATE[t.vendor.status]?.label || '⏳ بانتظار رد المزوّد',
-          VENDOR_STATE[t.vendor.status]?.kind || 'warn'),
+        chip(VENDOR_STATE[t.vendor.status]?.label || 'بانتظار رد المزوّد',
+          VENDOR_STATE[t.vendor.status]?.kind || 'warn',
+          VENDOR_STATE[t.vendor.status]?.icon || 'hourglass'),
         chip(`صُعّدت ${timeAgo(t.vendor.escalated_at)}`)
       ]),
       t.vendor.reply ? el('div', { style: { background: 'var(--ok-bg)', border: '1px solid var(--border)', borderRadius: '11px', padding: '10px 13px' } }, [
@@ -124,7 +125,8 @@ async function openTicket(id, reload) {
         } finally { e.target.disabled = false; }
       } }),
       t.vendor ? null : el('button.btn.ghost.block', {
-        style: { marginTop: '8px' }, text: '⤴️ تصعيد إلى دعم مزوّد المنصة',
+        style: { marginTop: '8px' }, icon: 'arrow-up-right', iconSize: 16,
+        text: 'تصعيد إلى دعم مزوّد المنصة',
         onclick: async (e) => {
           if (!confirm('سيُرسَل نص التذكرة إلى فريق منصة رقيم لمعالجتها. متابعة؟')) return;
           e.target.disabled = true;

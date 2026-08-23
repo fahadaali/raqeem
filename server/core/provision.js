@@ -50,7 +50,7 @@ export async function emailAvailable(app, email) {
 export async function provisionTenant(app, {
   code, name, nameEn = null, adminName, email, password, passwordHash = null, phone = null,
   planCode = null, cycle = 'monthly', trialDays = null, subscriptionStatus = null,
-  primaryColor = '#0F5132', accentColor = '#C9A227', branchName = null, timezone = 'Asia/Riyadh'
+  primaryColor = '#2F8A6F', accentColor = '#E8A25C', branchName = null, timezone = 'Asia/Riyadh'
 } = {}) {
   const db = app.db;
   const tenantCode = validateCode(code);

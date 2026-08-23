@@ -42,7 +42,7 @@ router.post('/committees', can('committees.manage'), h(async (req) => {
 
   const r = await app.db.run(
     `INSERT INTO committees(tenant_id,branch_id,term_id,name,description,lead_user_id,color) VALUES(?,?,?,?,?,?,?)`,
-    req.ctx.tenantId, bid, tid, String(name).trim(), description || null, lead_user_id || null, color || '#0F5132');
+    req.ctx.tenantId, bid, tid, String(name).trim(), description || null, lead_user_id || null, color || '#2F8A6F');
 
   const rows = [];
   if (lead_user_id) rows.push(['INSERT OR IGNORE INTO committee_members(tenant_id,committee_id,user_id,role_in) VALUES(?,?,?,?)',
@@ -205,7 +205,7 @@ router.get('/view/gantt', can('tasks.view', 'tasks.view_all'), h(async (req) => 
   const deps = await req.app.db.all('SELECT task_id, depends_on_id FROM task_dependencies WHERE tenant_id=?', req.ctx.tenantId);
   const items = rows.filter(t => t.start_date || t.due_date).map(t => ({
     id: t.id, title: t.title, status: t.status, progress: t.progress,
-    color: t.committee_color || '#0F5132', assignee: t.assignee_name,
+    color: t.committee_color || '#2F8A6F', assignee: t.assignee_name,
     start: t.start_date || t.due_date, end: t.due_date || t.start_date,
     depends_on: deps.filter(d => d.task_id === t.id).map(d => d.depends_on_id)
   }));
@@ -324,7 +324,8 @@ router.patch('/:id', can('tasks.update'), h(async (req) => {
   const watchers = [...new Set([t.created_by, t.assignee_id, p.assignee_id].filter(x => x && x !== req.ctx.userId))];
   if (changed && watchers.length) await notifyUsers(app, req.ctx.tenantId, watchers, {
     type: 'task.status', category: 'tasks', title: 'تحديث حالة مهمة',
-    body: `${t.title} → ${STATUS_AR[status]}`, url: `/tasks?id=${t.id}`, data: { id: t.id }
+    /* السهم في RTL يشير يساراً — «صارت الحالة» لا «رجعت» (دليل الهوية · البند ٨) */
+    body: `${t.title} ← ${STATUS_AR[status]}`, url: `/tasks?id=${t.id}`, data: { id: t.id }
   });
   if (p.assignee_id && p.assignee_id !== t.assignee_id) await notifyUsers(app, req.ctx.tenantId, [p.assignee_id], {
     type: 'task.assigned', category: 'tasks', title: 'أُسندت إليك مهمة',

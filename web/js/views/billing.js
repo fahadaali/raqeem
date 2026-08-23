@@ -66,12 +66,12 @@ export async function render({ navigate }) {
       ]) : null,
 
       manage && sub ? el('div.row.wrap', { style: { gap: '8px' } }, [
-        el('button.btn.gold', { text: '⭑ تغيير الخطة', onclick: () => planPicker(plansData, data, refresh) }),
+        el('button.btn.gold', { icon: 'arrow-left-right', iconSize: 16, text: 'تغيير الخطة', onclick: () => planPicker(plansData, data, refresh) }),
         sub.cancel_at_period_end
-          ? el('button.btn.ghost', { text: '↻ استئناف التجديد', onclick: async () => {
+          ? el('button.btn.ghost', { icon: 'refresh-cw', iconSize: 16, text: 'استئناف التجديد', onclick: async () => {
               await api.post('/api/billing/resume', {}); toast('أُعيد تفعيل التجديد التلقائي', 'ok'); await refresh();
             } })
-          : el('button.btn.ghost', { text: '⏸ إيقاف التجديد', onclick: async () => {
+          : el('button.btn.ghost', { icon: 'pause', iconSize: 16, text: 'إيقاف التجديد', onclick: async () => {
               if (!await confirmDialog('سيستمر اشتراكك حتى نهاية الفترة الحالية ثم يتوقف.', { confirmText: 'إيقاف التجديد', danger: true })) return;
               await api.post('/api/billing/cancel', {}); toast('أُوقف التجديد التلقائي', 'ok'); await refresh();
             } })
@@ -94,10 +94,10 @@ export async function render({ navigate }) {
       { header: 'الحالة', key: 'status', render: r => chip(r.status_label, INV_KIND[r.status] || '') },
       { header: 'الاستحقاق', key: 'due_at', render: r => (r.due_at ? fmtDate(r.due_at, state.calendar) : '—') },
       { header: '', key: 'a', render: r => el('div.row', { style: { gap: '4px' } }, [
-        el('button.btn.sm.ghost', { text: '🖨 طباعة', onclick: () => api.openPrintGet(`/api/billing/invoices/${r.id}/print`) }),
+        el('button.btn.sm.ghost', { icon: 'printer', iconSize: 16, text: 'طباعة', onclick: () => api.openPrintGet(`/api/billing/invoices/${r.id}/print`) }),
         r.status === 'open' && can('billing.manage')
           ? (data.gateway?.redirects
-              ? el('button.btn.sm', { text: '💳 ادفع الآن', onclick: async (e) => {
+              ? el('button.btn.sm.gold', { icon: 'credit-card', iconSize: 16, text: 'ادفع الآن', onclick: async (e) => {
                   e.target.disabled = true;
                   try {
                     const out = await api.post(`/api/billing/invoices/${r.id}/pay`, {});
@@ -105,12 +105,12 @@ export async function render({ navigate }) {
                     else { toast(out.message || 'بدأت عملية الدفع', 'ok'); await refresh(); }
                   } catch (err) { toast(err.message, 'warn'); e.target.disabled = false; }
                 } })
-              : el('button.btn.sm', { text: '💳 إبلاغ بالسداد', onclick: () => payDialog(r, data, refresh) }))
+              : el('button.btn.sm', { icon: 'credit-card', iconSize: 16, text: 'إبلاغ بالسداد', onclick: () => payDialog(r, data, refresh) }))
           : null,
-        r.zatca_qr ? el('button.btn.sm.ghost', { text: '⬛ فاتورة إلكترونية',
+        r.zatca_qr ? el('button.btn.sm.ghost', { icon: 'qr-code', iconSize: 16, text: 'فاتورة إلكترونية',
           onclick: () => eInvoiceDialog(r) }) : null
       ]) }
-    ], invoicesData.items) : empty('🧾', 'لا توجد فواتير بعد', 'ستظهر هنا فواتير الاشتراك عند إصدارها.'),
+    ], invoicesData.items) : empty('receipt', 'لا توجد فواتير بعد', 'ستظهر هنا فواتير الاشتراك عند إصدارها.'),
     { sub: `الرصيد المستحق: ${money(invoicesData.balance.due)} ${data.currency}` });
 
     /* ── بيانات التحويل ── */
@@ -158,7 +158,8 @@ export async function render({ navigate }) {
     /* ── ما تشمله خطتك ── */
     const featuresCard = data.features ? card('ما تشمله خطتك', el('div.grid-2', {},
       data.features.map(f => el('div.row', { style: { gap: '6px' } }, [
-        el('span', { text: f.enabled ? '✓' : '✕', style: { color: `var(--${f.enabled ? 'ok' : 'text-3'})`, fontWeight: '700' } }),
+        el('span.ic', { icon: f.enabled ? 'check' : 'x', iconSize: 16,
+          style: { color: `var(--${f.enabled ? 'success' : 'text-light'})` } }),
         el('span', { text: f.label, style: f.enabled ? {} : { color: 'var(--text-3)' } })
       ])))) : null;
 
@@ -178,7 +179,7 @@ export async function render({ navigate }) {
       el('div.grid-2', {}, [field('الرقم الضريبي', beFields.vat), field('السجل التجاري', beFields.cr)]),
       field('رقم أمر الشراء (للجهات الحكومية)', beFields.po),
       el('div.grid-2', {}, [field('المدينة', beFields.city), field('الشارع', beFields.street)]),
-      el('button.btn.sm', { text: '💾 حفظ', onclick: async (e) => {
+      el('button.btn.sm', { icon: 'save', iconSize: 16, text: 'حفظ', onclick: async (e) => {
         e.target.disabled = true;
         try {
           await api.put('/api/billing/billing-entity', {
@@ -354,7 +355,7 @@ async function eInvoiceDialog(invoiceRow) {
       ])),
       card('رمز QR (TLV بترميز Base64)', el('div.stack', {}, [
         el('code', { text: d.qr, style: { direction: 'ltr', fontSize: '10.5px', wordBreak: 'break-all', lineHeight: '1.8' } }),
-        el('button.btn.sm.ghost', { text: '📋 نسخ', onclick: async () => {
+        el('button.btn.sm.ghost', { icon: 'copy', iconSize: 16, text: 'نسخ', onclick: async () => {
           try { await navigator.clipboard.writeText(d.qr); toast('نُسخ رمز QR', 'ok'); }
           catch { toast('تعذّر النسخ — حدّد النص يدوياً', 'warn'); }
         } })
@@ -365,7 +366,7 @@ async function eInvoiceDialog(invoiceRow) {
         el('span.k', { text: 'تجزئة الفاتورة' }),
         el('span.v', { text: d.hash, style: { direction: 'ltr', fontSize: '11px', wordBreak: 'break-all' } })
       ]),
-      d.xml_available ? el('button.btn.ghost', { text: '⬇ تنزيل مستند XML',
+      d.xml_available ? el('button.btn.ghost', { icon: 'download', iconSize: 16, text: 'تنزيل مستند XML',
         onclick: () => api.downloadGet(`/api/billing/invoices/${invoiceRow.id}/xml`, `${d.number}.xml`) }) : null,
       el('p.hint', { text: 'المستند بمعيار UBL 2.1 وسلسلة التجزئة مترابطة. الختم التشفيري يُضاف بعد استخراج شهادة CSID من هيئة الزكاة والضريبة والجمارك.' })
     ])

@@ -9,11 +9,11 @@ import { fmtDate, todayISO, dayName, addDaysISO } from '../hijri.js';
 export async function render({ sub, navigate }) {
   if (sub === 'checkin') return checkinScreen();
   const items = [];
-  if (can('hr.attendance.self')) items.push({ label: '📍 حضوري', build: () => checkinScreen() });
-  if (can('hr.attendance.view')) items.push({ label: '🗓 سجل الحضور', build: attendanceTab });
-  if (can('hr.employees.view')) items.push({ label: '👥 ملفات الموظفين', build: employeesTab });
-  items.push({ label: '🏖 الإجازات', build: leavesTab });
-  if (can('hr.payroll.view')) items.push({ label: '💵 مسير الرواتب', build: payrollTab });
+  if (can('hr.attendance.self')) items.push({ label: 'حضوري', icon: 'map-pin', build: () => checkinScreen() });
+  if (can('hr.attendance.view')) items.push({ label: 'سجل الحضور', icon: 'calendar-range', build: attendanceTab });
+  if (can('hr.employees.view')) items.push({ label: 'ملفات الموظفين', icon: 'users', build: employeesTab });
+  items.push({ label: 'الإجازات', icon: 'tree-palm', build: leavesTab });
+  if (can('hr.payroll.view')) items.push({ label: 'مسير الرواتب', icon: 'banknote', build: payrollTab });
   const t = tabs(items, (it) => { const n = el('div'); Promise.resolve(it.build()).then(x => n.replaceChildren(x)); return n; });
   return t.node;
 }
@@ -34,13 +34,13 @@ async function checkinScreen() {
 
     const mapBox = el('div.mini-map', {}, [
       el('div.fence', { style: { width: '132px', height: '132px' } }),
-      el('div.br', { text: '🕌' }),
+      el('div.br', { icon: 'landmark', iconSize: 20 }),
       el('div.lbl', { text: d.branch ? `${d.branch.name} · النطاق ${AR_NUM(d.geofence_radius)} م` : 'لم يُحدد فرع' })
     ]);
     const status = el('div', { style: { fontSize: '13px', color: 'var(--text-2)', minHeight: '22px' } });
 
     const btn = el('button.checkin-btn' + cls, { disabled: action === 'done' }, [
-      el('span', { text: action === 'done' ? '✅' : action === 'check_out' ? '🏁' : '📍' }),
+      el('span.ic', { icon: action === 'done' ? 'circle-check' : action === 'check_out' ? 'flag' : 'map-pin', iconSize: 24 }),
       el('span', { text: label }),
       el('small', { text: action === 'done' ? 'شكراً لجهودك' : 'اضغط للتسجيل' })
     ]);
@@ -48,7 +48,7 @@ async function checkinScreen() {
     btn.onclick = async () => {
       if (!navigator.geolocation) return toast('جهازك لا يدعم تحديد الموقع', 'err');
       btn.disabled = true;
-      status.textContent = '📡 جارٍ تحديد موقعك...';
+      status.textContent = 'جارٍ تحديد موقعك...';
       navigator.geolocation.getCurrentPosition(async (pos) => {
         const { latitude, longitude, accuracy } = pos.coords;
         if (d.branch?.lat) {
@@ -62,7 +62,7 @@ async function checkinScreen() {
         }
         try {
           const res = await api.post('/api/hr/attendance/check', { lat: latitude, lng: longitude, accuracy });
-          toast(res.message, 'ok', res.action === 'check_in' ? '✅ تم الحضور' : '🏁 تم الانصراف');
+          toast(res.message, 'ok', res.action === 'check_in' ? 'تم الحضور' : 'تم الانصراف');
           paint();
         } catch (err) {
           status.textContent = err.message;
@@ -71,8 +71,8 @@ async function checkinScreen() {
       }, (err) => {
         btn.disabled = false;
         status.textContent = err.code === 1
-          ? '⛔ رفضت إذن الموقع — فعّله من إعدادات المتصفح لتتمكن من التحضير'
-          : '⚠️ تعذّر تحديد موقعك، تأكد من تفعيل خدمة الموقع (GPS)';
+          ? 'رفضت إذن الموقع — فعّله من إعدادات المتصفح لتتمكن من التحضير'
+          : 'تعذّر تحديد موقعك، تأكد من تفعيل خدمة الموقع (GPS)';
         toast(status.textContent, 'err');
       }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
     };
@@ -85,10 +85,10 @@ async function checkinScreen() {
         ]),
         btn, status, mapBox,
         el('div.row', { style: { justifyContent: 'center' } }, [
-          r?.check_in_at ? chip('🟢 الحضور: ' + clockOf(r.check_in_at), 'ok') : chip('لم تسجّل الحضور بعد', 'warn'),
-          r?.check_out_at ? chip('🔴 الانصراف: ' + clockOf(r.check_out_at), 'danger') : null,
+          r?.check_in_at ? chip('الحضور: ' + clockOf(r.check_in_at), 'ok', 'log-out') : chip('لم تسجّل الحضور بعد', 'warn', 'hourglass'),
+          r?.check_out_at ? chip('الانصراف: ' + clockOf(r.check_out_at), 'danger', 'flag') : null,
           r?.status === 'late' ? chip('مسجّل كتأخير', 'warn') : null,
-          r?.minutes_worked ? chip(`⏱ ${AR_NUM(Math.floor(r.minutes_worked / 60))}س ${AR_NUM(r.minutes_worked % 60)}د`, 'info') : null
+          r?.minutes_worked ? chip(`${AR_NUM(Math.floor(r.minutes_worked / 60))}س ${AR_NUM(r.minutes_worked % 60)}د`, 'info', 'timer') : null
         ]),
         el('div.hint', { style: { maxWidth: '380px' },
           text: `يتحقق النظام من موقعك بمعادلة هافرساين، ويقبل التسجيل فقط داخل نطاق ${AR_NUM(d.geofence_radius)} متراً من إحداثيات الفرع. دوام اليوم: ${d.workday.start} — ${d.workday.end}` })
@@ -246,7 +246,7 @@ async function leavesTab() {
   return el('div.stack', {}, [
     card(null, [el('div.row.between', {}, [
       el('h3', { text: 'طلبات الإجازات' }),
-      can('hr.leaves.request') ? el('button.btn.sm', { text: '＋ طلب إجازة', onclick: () => openLeaveForm(load) }) : null
+      can('hr.leaves.request') ? el('button.btn.sm', { icon: 'plus', iconSize: 16, text: 'طلب إجازة', onclick: () => openLeaveForm(load) }) : null
     ])]),
     body
   ]);
@@ -299,7 +299,7 @@ async function payrollTab() {
     card(null, [el('div.row.between', {}, [
       el('div', {}, [el('h3', { text: 'مسير الرواتب' }),
         el('div.hint', { text: 'يجمع المحرك بيانات الحضور والإجازات المعتمدة والسلف ويخصمها آلياً.' })]),
-      can('hr.payroll.manage') ? el('button.btn.sm', { text: '⚙️ إنشاء مسير جديد', onclick: () => generatePayroll(load) }) : null
+      can('hr.payroll.manage') ? el('button.btn.sm', { icon: 'settings', iconSize: 16, text: 'إنشاء مسير جديد', onclick: () => generatePayroll(load) }) : null
     ])]),
     body
   ]);

@@ -2,7 +2,7 @@ import api from '../api.js';
 import { state, can, activeTerm, termIsArchived, currentTermObj } from '../state.js';
 import {
   el, clear, card, chip, empty, table, progressBar, toast, modal, drawer, confirmDialog,
-  field, input, textarea, select, T, avatar, AR_NUM, pct, debounce, timeAgo, qs
+  field, input, searchInput, textarea, select, T, avatar, AR_NUM, pct, debounce, timeAgo, qs
 } from '../util.js';
 import { fmtDate, todayISO, addDaysISO, daysBetween } from '../hijri.js';
 
@@ -19,7 +19,7 @@ export async function render({ route, navigate }) {
   const locked = termIsArchived();
   const wrap = el('div.stack');
 
-  if (locked) wrap.append(el('div.archived-bar', {}, [el('span', { text: '🔒' }),
+  if (locked) wrap.append(el('div.archived-bar', { icon: 'lock', iconSize: 16 }, [
     `الفصل «${currentTermObj()?.name}» مؤرشف — العرض للقراءة فقط.`]));
 
   const body = el('div');
@@ -33,17 +33,18 @@ export async function render({ route, navigate }) {
 
 async function buildToolbar(reload, navigate, locked) {
   const [us, cs] = await Promise.all([users(), committees()]);
-  const search = input({ placeholder: '🔍 بحث في المهام...', value: filters.q || '', style: { maxWidth: '210px' } });
-  search.addEventListener('input', debounce((e) => { filters.q = e.target.value; reload(); }, 340));
+  const search = searchInput({ placeholder: 'بحث في المهام...', value: filters.q || '', style: { maxWidth: '210px' } });
+  search.field.addEventListener('input', debounce((e) => { filters.q = e.target.value; reload(); }, 340));
 
   const viewBtns = el('div.btn-group', {}, [
-    ['kanban', '▦ كانبان'], ['table', '☰ جدول'], ['gantt', '📊 جانت']
-  ].map(([k, label]) => el('button', {
-    text: label, class: view === k ? 'active' : '',
+    ['kanban', 'كانبان', 'square-kanban'], ['table', 'جدول', 'table'], ['gantt', 'جانت', 'chart-gantt']
+  ].map(([k, label, ic]) => el('button', {
+    icon: ic, iconSize: 16, text: label, class: view === k ? 'active' : '',
+    /* `currentTarget` لا `target`: الضغط قد يقع على الأيقونة داخل الزر */
     onclick: (e) => {
       view = k; localStorage.setItem('raqeem_tasks_view', k);
-      [...e.target.parentNode.children].forEach(b => b.classList.remove('active'));
-      e.target.classList.add('active'); reload();
+      [...e.currentTarget.parentNode.children].forEach(b => b.classList.remove('active'));
+      e.currentTarget.classList.add('active'); reload();
     }
   })));
 
@@ -60,12 +61,16 @@ async function buildToolbar(reload, navigate, locked) {
       { value: filters.priority || '', style: { maxWidth: '130px' },
         onchange: (e) => { filters.priority = e.target.value; reload(); } }),
     el('button.btn.sm.ghost', {
-      text: filters.mine === '1' ? '✔ مهامي فقط' : 'مهامي فقط',
-      onclick: (e) => { filters.mine = filters.mine === '1' ? '' : '1'; e.target.textContent = filters.mine ? '✔ مهامي فقط' : 'مهامي فقط'; reload(); }
+      class: filters.mine === '1' ? 'active' : '', icon: 'check', iconSize: 16, text: 'مهامي فقط',
+      onclick: (e) => {
+        filters.mine = filters.mine === '1' ? '' : '1';
+        e.currentTarget.classList.toggle('active', filters.mine === '1');
+        reload();
+      }
     }),
     el('div', { style: { flex: '1' } }),
-    can('templates.view') ? el('button.btn.sm.ghost', { text: '📚 مكتبة القوالب', onclick: () => openTemplates(reload) }) : null,
-    can('tasks.create') && !locked ? el('button.btn.sm', { text: '＋ مهمة جديدة', onclick: () => openTaskForm(null, reload) }) : null
+    can('templates.view') ? el('button.btn.sm.ghost', { icon: 'book-copy', iconSize: 16, text: 'مكتبة القوالب', onclick: () => openTemplates(reload) }) : null,
+    can('tasks.create') && !locked ? el('button.btn.sm', { icon: 'plus', iconSize: 16, text: 'مهمة جديدة', onclick: () => openTaskForm(null, reload) }) : null
   ])]);
 }
 
@@ -93,7 +98,7 @@ function kanban(tasks, reload) {
     const bodyEl = el('div.kcol-body', { dataset: { status: st } });
     const col = el('div.kcol', {}, [
       el('div.kcol-head', {}, [
-        el('span', { text: { todo: '⚪', in_progress: '🔵', review: '🟡', done: '🟢', blocked: '🔴' }[st] }),
+        el('span.ic.prio', { icon: 'circle', iconSize: 12, class: 'kstate-' + st }),
         T.taskStatus[st], el('span.n', { text: AR_NUM(items.length) })
       ]),
       bodyEl
@@ -118,7 +123,7 @@ function kanban(tasks, reload) {
     }
     board.append(col);
   }
-  return tasks.length ? board : empty('📋', 'لا توجد مهام مطابقة', 'جرّب تغيير عوامل التصفية أو أنشئ مهمة جديدة.');
+  return tasks.length ? board : empty('clipboard-list', 'لا توجد مهام مطابقة', 'جرّب تغيير عوامل التصفية أو أنشئ مهمة جديدة.');
 }
 
 function taskCard(t, reload, locked) {
@@ -134,8 +139,9 @@ function taskCard(t, reload, locked) {
     ]),
     el('div.meta', { style: { marginTop: '7px' } }, [
       chip(T.priority[t.priority], T.priorityChip[t.priority]),
-      t.due_date ? chip((t.is_overdue ? '⏰ ' : '📅 ') + fmtDate(t.due_date, state.calendar, 'short'), t.is_overdue ? 'danger' : '') : null,
-      t.comments_count ? chip(`💬 ${AR_NUM(t.comments_count)}`) : null,
+      t.due_date ? chip(fmtDate(t.due_date, state.calendar, 'short'), t.is_overdue ? 'danger' : '',
+        t.is_overdue ? 'alarm-clock' : 'calendar-days') : null,
+      t.comments_count ? chip(AR_NUM(t.comments_count), '', 'message-circle') : null,
       t.committee_name ? chip(t.committee_name, 'brand') : null
     ]),
     t.progress > 0 && t.progress < 100 ? el('div', { style: { marginTop: '8px' } }, [progressBar(t.progress)]) : null
@@ -188,7 +194,7 @@ async function gantt(reload) {
   const q = { ...filters };
   if (activeTerm()) q.term_id = activeTerm();
   const { items } = await api.get('/api/tasks/view/gantt' + api.qs(q));
-  if (!items.length) return empty('📊', 'لا توجد مهام لها تواريخ', 'أضف تواريخ بداية ونهاية للمهام لعرضها على المخطط.');
+  if (!items.length) return empty('chart-gantt', 'لا توجد مهام لها تواريخ', 'أضف تواريخ بداية ونهاية للمهام لعرضها على المخطط.');
 
   const starts = items.map(i => new Date(i.start).getTime());
   const ends = items.map(i => new Date(i.end).getTime());
@@ -232,7 +238,8 @@ async function gantt(reload) {
   });
 
   const legend = el('div.row', { style: { marginTop: '10px', fontSize: '11.5px', color: 'var(--text-3)' } }, [
-    el('span', { text: '💡 اسحب أفقياً لاستعراض المدة الزمنية · اضغط أي شريط لعرض تفاصيل المهمة' }),
+    el('span.ic', { icon: 'lightbulb', iconSize: 16 }),
+    el('span', { text: 'اسحب أفقياً لاستعراض المدة الزمنية · اضغط أي شريط لعرض تفاصيل المهمة' }),
     items.some(i => i.depends_on?.length) ? chip(`${AR_NUM(items.filter(i => i.depends_on?.length).length)} مهمة مرتبطة باعتماديات`, 'info') : null
   ]);
   return el('div', {}, [el('div.gantt', {}, [inner]), legend]);
@@ -250,8 +257,8 @@ export async function openTask(id, reload) {
     el('div.row', {}, [
       chip(T.taskStatus[t.status], T.taskStatusChip[t.status]),
       chip(T.priority[t.priority], T.priorityChip[t.priority]),
-      t.due_date ? chip('📅 ' + fmtDate(t.due_date, state.calendar), t.is_overdue ? 'danger' : '') : null,
-      locked ? chip('🔒 فصل مؤرشف', 'warn') : null
+      t.due_date ? chip(fmtDate(t.due_date, state.calendar), t.is_overdue ? 'danger' : '', 'calendar-days') : null,
+      locked ? chip('فصل مؤرشف', 'warn', 'lock') : null
     ]),
     t.description ? el('p', { text: t.description, style: { color: 'var(--text-2)', fontSize: '13px', marginTop: '10px', whiteSpace: 'pre-wrap' } }) : null
   ]));
@@ -277,12 +284,12 @@ export async function openTask(id, reload) {
     ]));
   }
 
-  if (can('chat.use')) body.append(card('💬 المحادثة السياقية', [await chatBox('task', t.id)], { sub: 'مقصورة على المرتبطين بهذه المهمة' }));
+  if (can('chat.use')) body.append(card('المحادثة السياقية', [await chatBox('task', t.id)], { icon: 'message-circle', sub: 'مقصورة على المرتبطين بهذه المهمة' }));
 
   const footer = [];
-  if (!locked && can('tasks.update')) footer.push(el('button.btn.ghost', { text: '✏️ تعديل كامل', onclick: () => { d.close(); openTaskForm(t, reload); } }));
+  if (!locked && can('tasks.update')) footer.push(el('button.btn.ghost', { icon: 'pencil', iconSize: 16, text: 'تعديل كامل', onclick: () => { d.close(); openTaskForm(t, reload); } }));
   if (!locked && can('tasks.delete')) footer.push(el('button.btn.danger', {
-    text: '🗑 حذف', onclick: async () => {
+    icon: 'trash-2', iconSize: 16, text: 'حذف', onclick: async () => {
       if (!await confirmDialog(`سيتم حذف المهمة «${t.title}» نهائياً.`, { danger: true, confirmText: 'حذف' })) return;
       await api.del(`/api/tasks/${t.id}`); toast('تم حذف المهمة', 'ok'); d.close(); reload?.();
     }
@@ -307,7 +314,7 @@ export async function chatBox(contextType, contextId) {
     finally { inp.disabled = false; inp.focus(); }
   };
   inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
-  box.append(el('div.chat-input', {}, [inp, el('button.btn.sm', { text: '➤', onclick: send })]));
+  box.append(el('div.chat-input', {}, [inp, el('button.btn.sm', { icon: 'send', iconSize: 16, 'aria-label': 'إرسال', onclick: send })]));
 
   const bubble = (m) => el('div.msg' + (m.mine ? '.mine' : ''), {}, [
     m.mine ? null : el('div.who', { text: m.user_name }),
@@ -318,7 +325,7 @@ export async function chatBox(contextType, contextId) {
   try {
     const data = await api.get(`/api/comms/conversations/${contextType}/${contextId}/messages`);
     if (!data.messages.length) list.append(el('div.empty', { style: { padding: '26px' } }, [
-      el('span.ic', { text: '💬' }), el('h4', { text: 'لا توجد رسائل بعد' }), el('p', { text: 'ابدأ المحادثة مع فريق العمل.' })]));
+      el('span.ic', { icon: 'message-circle', iconSize: 'card' }), el('h4', { text: 'لا توجد رسائل بعد' }), el('p', { text: 'ابدأ المحادثة مع فريق العمل.' })]));
     for (const m of data.messages) list.append(bubble(m));
     setTimeout(() => { list.scrollTop = list.scrollHeight; }, 30);
     const seen = new Set(data.messages.map(m => m.id));
@@ -401,7 +408,7 @@ async function openTemplates(reload) {
   const list = await api.get('/api/tasks/templates');
   const cs = await committees();
   const body = el('div.stack');
-  if (!list.length) body.append(empty('📚', 'لا توجد قوالب', 'أنشئ قوالب جاهزة لتسريع إعداد مهام كل فصل.'));
+  if (!list.length) body.append(empty('book-copy', 'لا توجد قوالب', 'أنشئ قوالب جاهزة لتسريع إعداد مهام كل فصل.'));
 
   for (const tpl of list) {
     body.append(el('div.card', {}, [el('div.card-body', {}, [
@@ -413,14 +420,14 @@ async function openTemplates(reload) {
         chip(tpl.category || 'عام', 'brand')
       ]),
       el('div.stack', { style: { gap: '4px', marginTop: '10px' } }, tpl.items.slice(0, 5).map(it =>
-        el('div', { style: { fontSize: '12px', color: 'var(--text-2)' }, text: `• ${it.title} (${it.duration_days || 3} أيام)` }))),
+        el('div', { style: { fontSize: '12px', color: 'var(--text-2)' }, text: `· ${it.title} (${it.duration_days || 3} أيام)` }))),
       tpl.items.length > 5 ? el('div.hint', { text: `+ ${AR_NUM(tpl.items.length - 5)} مهمة أخرى` }) : null,
       can('tasks.create') && !termIsArchived() ? el('div.row.end', { style: { marginTop: '11px' } }, [
         el('button.btn.sm', { text: `اعتماد القالب (${AR_NUM(tpl.items.length)} مهمة)`, onclick: () => applyTemplate(tpl, cs, m, reload) })
       ]) : null
     ])]));
   }
-  const m = modal({ title: '📚 مكتبة قوالب المهام', body, size: 'wide' });
+  const m = modal({ title: 'مكتبة قوالب المهام', icon: 'book-copy', body, size: 'wide' });
 }
 
 async function applyTemplate(tpl, cs, parent, reload) {

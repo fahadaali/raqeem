@@ -5,14 +5,14 @@
    • استقبال إشعارات الدفع (Web Push) على المتصفح والأندرويد والآيفون
    • مزامنة خلفية لإعادة إرسال العمليات التي تمت أثناء انقطاع الشبكة
    ═══════════════════════════════════════════════════════════════════════ */
-const VERSION = 'raqeem-v1.2.0';
+const VERSION = 'raqeem-v1.3.0';
 const SHELL_CACHE = `${VERSION}-shell`;
 const DATA_CACHE = `${VERSION}-data`;
 
 const SHELL = [
   '/', '/index.html', '/offline.html', '/manifest.webmanifest',
   '/css/app.css',
-  '/js/app.js', '/js/api.js', '/js/state.js', '/js/util.js',
+  '/js/app.js', '/js/api.js', '/js/state.js', '/js/util.js', '/js/icons.js',
   '/js/push.js', '/js/realtime.js', '/js/hijri.js',
   '/js/views/login.js', '/js/views/dashboard.js', '/js/views/tasks.js',
   '/js/views/committees.js', '/js/views/terms.js', '/js/views/hr.js',
@@ -23,7 +23,11 @@ const SHELL = [
   '/js/views/billing.js', '/js/views/pricing.js', '/js/views/signup.js',
   '/js/views/landing.js',
   '/js/admin-shell.js', '/js/admin-api.js', '/js/admin-state.js', '/js/views/admin/sections.js',
-  '/assets/icons/icon-192.png', '/assets/icons/icon-512.png', '/assets/icons/favicon.png'
+  '/assets/icons/icon-192.png', '/assets/icons/icon-512.png', '/assets/icons/favicon.png',
+  /* ملفات الهوية — النمط الزخرفي والمونوغرام يظهران في كل شاشة */
+  '/assets/brand/monogram-primary.svg', '/assets/brand/monogram-white.svg',
+  '/assets/brand/pattern-overlay-cream.svg', '/assets/brand/pattern-overlay-green.svg',
+  '/assets/brand/pattern-tile-light.svg', '/assets/brand/pattern-tile-dark.svg'
 ];
 
 // استعلامات تُحفظ نسخة منها للعرض دون اتصال

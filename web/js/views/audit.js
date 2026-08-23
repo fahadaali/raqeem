@@ -1,6 +1,6 @@
 import api from '../api.js';
 import { state } from '../state.js';
-import { el, clear, mount, card, chip, empty, table, modal, field, input, select, T, AR_NUM, avatar, skeleton, debounce } from '../util.js';
+import { el, clear, mount, card, chip, empty, table, modal, field, input, searchInput, select, T, AR_NUM, avatar, skeleton, debounce } from '../util.js';
 import { fmtDateTime, todayISO, addDaysISO } from '../hijri.js';
 
 export async function render() {
@@ -8,8 +8,8 @@ export async function render() {
   const body = el('div');
   const filters = { limit: 100, offset: 0 };
 
-  const q = input({ placeholder: '🔍 بحث في السجل...' });
-  q.addEventListener('input', debounce((e) => { filters.q = e.target.value; filters.offset = 0; load(); }, 340));
+  const q = searchInput({ placeholder: 'بحث في السجل...' });
+  q.field.addEventListener('input', debounce((e) => { filters.q = e.target.value; filters.offset = 0; load(); }, 340));
   const from = input({ type: 'date', value: addDaysISO(todayISO(), -30), onchange: (e) => { filters.from = e.target.value; load(); } });
   const to = input({ type: 'date', value: todayISO(), onchange: (e) => { filters.to = e.target.value; load(); } });
   const userSel = select([{ value: '', label: 'كل المستخدمين' }, ...users.map(u => ({ value: u.id, label: u.name }))],
@@ -24,7 +24,7 @@ export async function render() {
     mount(clear(body),
       el('div.row', { style: { marginBottom: '12px' } }, [
         chip(`${AR_NUM(d.total)} عملية مسجّلة`, 'brand'),
-        chip('🔒 سجل غير قابل للتعديل أو الحذف (Append-only)', 'warn')
+        chip('سجل غير قابل للتعديل أو الحذف (Append-only)', 'warn', 'lock')
       ]),
       card(null, table([
         { header: 'التاريخ والوقت', key: 'created_at', render: r => fmtDateTime(r.created_at, state.calendar) },
@@ -41,10 +41,11 @@ export async function render() {
             ? el('button.btn.sm.ghost', { text: 'التغييرات', onclick: (e) => { e.stopPropagation(); showDiff(r); } }) : '—' }
       ], d.items, { emptyText: 'لا توجد عمليات مطابقة' }), { p0: true }),
       d.total > filters.limit ? el('div.row', { style: { justifyContent: 'center', marginTop: '12px' } }, [
-        el('button.btn.sm.ghost', { text: '← السابق', disabled: filters.offset === 0,
+        /* في RTL: «السابق» يشير يميناً و«التالي» يساراً (دليل الهوية · البند ٨) */
+        el('button.btn.sm.ghost', { icon: 'arrow-right', iconSize: 16, text: 'السابق', disabled: filters.offset === 0,
           onclick: () => { filters.offset = Math.max(0, filters.offset - filters.limit); load(); } }),
         chip(`${AR_NUM(filters.offset + 1)} — ${AR_NUM(Math.min(filters.offset + filters.limit, d.total))} من ${AR_NUM(d.total)}`),
-        el('button.btn.sm.ghost', { text: 'التالي →', disabled: filters.offset + filters.limit >= d.total,
+        el('button.btn.sm.ghost', { icon: 'arrow-left', iconSize: 16, text: 'التالي', disabled: filters.offset + filters.limit >= d.total,
           onclick: () => { filters.offset += filters.limit; load(); } })
       ]) : null
     );

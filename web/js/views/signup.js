@@ -16,7 +16,7 @@ export async function render({ navigate }) {
     return el('div.public-wrap', {}, [
       el('div.login-card', {}, [
         el('div.empty', {}, [
-          el('span.ic', { text: '🔒' }),
+          el('span.ic', { icon: 'lock', iconSize: 'card' }),
           el('h4', { text: 'التسجيل الذاتي مغلق حالياً' }),
           el('p', { text: 'تواصل مع إدارة المنصة لفتح حساب جهتك التعليمية.' }),
           platform.support_email ? el('a.btn.ghost', { href: `mailto:${platform.support_email}`, text: platform.support_email, dir: 'ltr' }) : null,
@@ -54,13 +54,14 @@ export async function render({ navigate }) {
       const info = r[kind];
       if (kind === 'code') {
         node.value = info.code;
-        hint.textContent = info.available ? '✔ الرمز متاح'
-          : (info.reserved ? '✘ الرمز محجوز للمنصة' : '✘ الرمز مستخدم مسبقاً');
+        hint.textContent = info.available ? 'الرمز متاح'
+          : (info.reserved ? 'الرمز محجوز للمنصة' : 'الرمز مستخدم مسبقاً');
       } else {
-        hint.textContent = info.invalid ? '✘ صيغة البريد غير صحيحة'
-          : (info.available ? '✔ البريد متاح' : '✘ البريد مسجّل مسبقاً');
+        hint.textContent = info.invalid ? 'صيغة البريد غير صحيحة'
+          : (info.available ? 'البريد متاح' : 'البريد مسجّل مسبقاً');
       }
-      hint.style.color = hint.textContent.startsWith('✔') ? 'var(--ok)' : 'var(--danger)';
+      /* التوفّر يُعرَف من الاستجابة نفسها لا من نصّ الرسالة */
+      hint.style.color = info.available ? 'var(--success)' : 'var(--error)';
     } catch { hint.textContent = ''; }
   };
   code.addEventListener('blur', () => probe('code', code, codeHint));
@@ -108,16 +109,16 @@ export async function render({ navigate }) {
   return el('div.public-wrap', {}, [
     el('div.login-card.wide', {}, [
       el('div.login-brand', {}, [
-        el('img', { src: '/assets/icons/icon-192.png', alt: '' }),
+        el('img', { src: '/assets/brand/monogram-primary.svg', alt: '' }),
         el('h1', { text: 'إنشاء جهة تعليمية جديدة' }),
         el('p', { text: `ابدأ خلال دقيقة${chosen?.trial_days ? ` — تجربة مجانية ${AR_NUM(chosen.trial_days)} يوماً بلا بطاقة` : ''}` })
       ]),
       el('form', { onsubmit: submit, novalidate: true }, [
-        el('h4.form-sec', { text: '① بيانات الجهة' }),
+        el('h4.form-sec', {}, [el('span.n', { text: '١' }), 'بيانات الجهة']),
         field('اسم الجهة التعليمية', tenantName, { required: true }),
         field('رمز الجهة (إنجليزي — يظهر في الروابط)', el('div', {}, [code, codeHint]), { required: true }),
 
-        el('h4.form-sec', { text: '② حساب مدير الجهة' }),
+        el('h4.form-sec', {}, [el('span.n', { text: '٢' }), 'حساب مدير الجهة']),
         field('اسم المدير', adminName, { required: true }),
         field('البريد الإلكتروني', el('div', {}, [email, mailHint]), { required: true }),
         field('رقم الجوال', phone),
@@ -126,7 +127,7 @@ export async function render({ navigate }) {
           field('تأكيد كلمة المرور', password2, { required: true })
         ]),
 
-        el('h4.form-sec', { text: '③ الخطة' }),
+        el('h4.form-sec', {}, [el('span.n', { text: '٣' }), 'الخطة']),
         el('div.grid-2', {}, [field('الخطة', planSel), field('دورة الاشتراك', cycleSel)]),
         el('p.hint', { text: 'يمكنك تغيير الخطة في أي وقت من شاشة الاشتراك، والأسعار لا تشمل ضريبة القيمة المضافة.' }),
 

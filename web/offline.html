@@ -2,18 +2,28 @@
 <html lang="ar" dir="rtl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>لا يوجد اتصال — منصة رقيم</title>
+<meta name="theme-color" content="#1C5E4C">
+<!--
+  صفحة انقطاع الاتصال: قائمة بذاتها لأنها تُخدَم من الذاكرة المؤقتة،
+  فألوان الهوية مكتوبة فيها مباشرةً ولا تعتمد على app.css.
+  أخضر سنا الغامق #1C5E4C · قشدي #FBF7EF · مشمشي #E8A25C
+-->
 <style>
- body{margin:0;min-height:100dvh;display:grid;place-items:center;background:#0B3A26;color:#fff;
-      font-family:"Segoe UI",Tahoma,system-ui,sans-serif;text-align:center;padding:24px}
+ body{margin:0;min-height:100dvh;display:grid;place-items:center;
+      background-color:#1C5E4C;background-image:url("/assets/brand/pattern-overlay-cream.svg");
+      background-repeat:repeat;color:#FBF7EF;
+      font-family:"IBM Plex Sans Arabic","Segoe UI",Tahoma,system-ui,sans-serif;text-align:center;padding:24px}
  .box{max-width:420px}
- img{width:96px;height:96px;border-radius:24px;margin-bottom:20px}
- h1{font-size:22px;margin:0 0 10px}
- p{opacity:.75;line-height:1.9;margin:0 0 22px}
- button{background:#C9A227;color:#0B3A26;border:0;border-radius:12px;padding:13px 30px;
-        font-size:15px;font-weight:700;font-family:inherit;cursor:pointer}
+ img{width:96px;height:96px;border-radius:26%;margin-bottom:20px}
+ h1{font-family:"Zain","IBM Plex Sans Arabic","Segoe UI",Tahoma,sans-serif;
+    font-size:30px;font-weight:900;margin:0 0 10px}
+ p{opacity:.78;line-height:1.9;margin:0 0 24px;font-size:14px}
+ button{background:#E8A25C;color:#fff;border:0;border-radius:999px;padding:13px 32px;
+        font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;transition:.2s}
+ button:hover{background:#D98F45;box-shadow:0 5px 24px rgba(232,162,92,.35)}
 </style></head><body>
 <div class="box">
-  <img src="/assets/icons/icon-192.png" alt="رقيم">
+  <img src="/assets/brand/monogram-primary.svg" alt="رقيم">
   <h1>لا يوجد اتصال بالإنترنت</h1>
   <p>تعذّر الوصول إلى خوادم المنصة. البيانات التي تصفحتها سابقاً متاحة، وستتم مزامنة تغييراتك تلقائياً فور عودة الاتصال.</p>
   <button onclick="location.reload()">إعادة المحاولة</button>

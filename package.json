@@ -32,7 +32,8 @@
     "cf:build:headers": "node scripts/build-headers.js",
     "cf:build": "npm run cf:build:migrations && npm run cf:build:headers",
     "verify:realtime": "node scripts/verify-realtime.js",
-    "verify:all": "npm run verify:wiring && npm run verify && npm run verify:realtime"
+    "verify:identity": "node scripts/verify-identity.js",
+    "verify:all": "npm run verify:wiring && npm run verify && npm run verify:realtime && npm run verify:identity"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.0",

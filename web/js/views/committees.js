@@ -1,6 +1,6 @@
 import api from '../api.js';
 import { can, termIsArchived } from '../state.js';
-import { el, card, chip, empty, toast, modal, field, input, textarea, select, progressBar, AR_NUM, avatar, confirmDialog } from '../util.js';
+import { el, card, chip, empty, toast, modal, field, input, textarea, select, progressBar, AR_NUM, avatar, confirmDialog, token, PALETTE } from '../util.js';
 import { chatBox } from './tasks.js';
 
 export async function render({ navigate }) {
@@ -10,14 +10,14 @@ export async function render({ navigate }) {
     const list = await api.get('/api/tasks/committees');
     const users = await api.get('/api/org/users').catch(() => []);
     body.replaceChildren(list.length ? grid(list, users, reload, navigate)
-      : empty('🧑‍🤝‍🧑', 'لا توجد لجان في هذا الفصل', 'أنشئ لجاناً ووزّع عليها المهام لمتابعة الإنجاز.'));
+      : empty('users-round', 'لا توجد لجان في هذا الفصل', 'أنشئ لجاناً ووزّع عليها المهام لمتابعة الإنجاز.'));
   };
 
   wrap.append(card(null, [el('div.row.between', {}, [
     el('div', {}, [el('h3', { text: 'اللجان العاملة' }),
       el('div.hint', { text: 'كل لجنة ترتبط بفرع وفصل دراسي، وتُقاس بنسبة إنجاز مهامها.' })]),
     can('committees.manage') && !termIsArchived()
-      ? el('button.btn.sm', { text: '＋ لجنة جديدة', onclick: () => openForm(null, reload) }) : null
+      ? el('button.btn.sm', { icon: 'plus', iconSize: 16, text: 'لجنة جديدة', onclick: () => openForm(null, reload) }) : null
   ])]), body);
   await reload();
   return wrap;
@@ -44,9 +44,9 @@ function grid(list, users, reload, navigate) {
       ]),
       el('div', { style: { margin: '6px 0 12px' } }, [progressBar(pct, pct >= 70 ? 'ok' : pct >= 40 ? 'gold' : 'danger')]),
       el('div.row', {}, [
-        el('button.btn.sm.ghost', { text: '📋 المهام', onclick: () => navigate(`/tasks?committee_id=${c.id}`) }),
-        can('chat.use') ? el('button.btn.sm.ghost', { text: '💬 محادثة', onclick: () => openChat(c) }) : null,
-        can('committees.manage') ? el('button.btn.sm.ghost', { text: '✏️', onclick: () => openForm(c, reload, users) }) : null
+        el('button.btn.sm.ghost', { icon: 'clipboard-list', iconSize: 16, text: 'المهام', onclick: () => navigate(`/tasks?committee_id=${c.id}`) }),
+        can('chat.use') ? el('button.btn.sm.ghost', { icon: 'message-circle', iconSize: 16, text: 'محادثة', onclick: () => openChat(c) }) : null,
+        can('committees.manage') ? el('button.btn.sm.ghost', { icon: 'pencil', iconSize: 16, title: 'تعديل', 'aria-label': 'تعديل', onclick: () => openForm(c, reload, users) }) : null
       ])
     ])]);
   }));
@@ -63,7 +63,15 @@ async function openForm(c, reload, cachedUsers) {
   const desc = textarea({ value: c?.description || '' });
   const branch = select([{ value: '', label: '— على مستوى المجمّع —' }, ...branches.map(b => ({ value: b.id, label: b.name }))], { value: c?.branch_id || '' });
   const lead = select([{ value: '', label: '— بدون رئيس —' }, ...users.map(u => ({ value: u.id, label: u.name }))], { value: c?.lead_user_id || '' });
-  const color = input({ type: 'color', value: c?.color || '#0F5132', style: { height: '42px', padding: '4px' } });
+  /* اللون يبدأ من توكن الهوية، والمقترحات من لوحتها — فلا يدخل لونٌ غريب من
+     منتقي النظام إلا باختيارٍ صريح من المستخدم. */
+  const color = input({ type: 'color', value: c?.color || token('--primary'),
+    style: { height: '42px', padding: '4px' } });
+  const swatches = el('div.swatches', {}, PALETTE().map(p => el('button.swatch', {
+    type: 'button', title: p.label, 'aria-label': p.label,
+    style: { background: p.value },
+    onclick: () => { color.value = p.value; }
+  })));
 
   const memberIds = new Set((c?.members || []).map(m => m.user_id));
   const memberBox = el('div', { style: { maxHeight: '210px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '10px', padding: '7px' } },
@@ -77,7 +85,8 @@ async function openForm(c, reload, cachedUsers) {
     body: el('div', {}, [
       field('اسم اللجنة', name, { required: true }), field('الوصف', desc),
       el('div.grid.g2', {}, [field('الفرع', branch), field('رئيس اللجنة', lead)]),
-      field('لون اللجنة', color),
+      field('لون اللجنة', el('div.row', { style: { gap: '10px' } }, [color, swatches]),
+        { hint: 'اختر من ألوان الهوية، أو حدّد لوناً من المنتقي' }),
       field('الأعضاء', memberBox)
     ]),
     footer: [

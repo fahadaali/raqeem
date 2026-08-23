@@ -98,7 +98,7 @@ export async function runRollover(app, { rolloverId, tenantId, userId }) {
     summary: `اكتمل ترحيل الفصل (${from.name}) إلى (${to.name}): ${summary.tasks} مهمة، ${summary.committees} لجنة، ${summary.custody} عهدة، ${summary.budgets} بند ميزانية`
   });
   await notifyUsers(app, tenantId, [userId], {
-    type: 'term.rollover.done', category: 'system', title: '✅ اكتمل ترحيل الفصل الدراسي',
+    type: 'term.rollover.done', category: 'system', title: 'اكتمل ترحيل الفصل الدراسي',
     body: `${to.name}: ${summary.tasks} مهمة و${summary.committees} لجنة. الفصل السابق أصبح مؤرشفاً للقراءة فقط.`,
     url: '/terms', urgency: 'high'
   });

@@ -18,7 +18,7 @@ export async function render({ navigate }) {
   wrap.append(card(null, [el('div.row.between', {}, [
     el('div', {}, [el('h3', { text: 'الفصول الدراسية والفترات' }),
       el('div.hint', { text: 'كل سجل في المنصة مرتبط بفصل دراسي — وعند إغلاقه يصبح مؤرشفاً للقراءة فقط.' })]),
-    can('terms.manage') ? el('button.btn.sm.ghost', { text: '＋ فصل جديد', onclick: () => openNewTerm(reload) }) : null
+    can('terms.manage') ? el('button.btn.sm.ghost', { icon: 'plus', iconSize: 16, text: 'فصل جديد', onclick: () => openNewTerm(reload) }) : null
   ])]), body);
   await reload();
   return wrap;
@@ -39,10 +39,10 @@ function list(terms, reload) {
         ]),
         el('div.row', {}, [
           isOpen && can('terms.close')
-            ? el('button.btn.sm.gold', { text: '🔄 إغلاق وترحيل', onclick: () => rolloverWizard(t, reload) })
+            ? el('button.btn.sm.gold', { icon: 'refresh-cw', iconSize: 16, text: 'إغلاق وترحيل', onclick: () => rolloverWizard(t, reload) })
             : null,
           !isOpen && can('terms.manage')
-            ? el('button.btn.sm.ghost', { text: '🔓 إعادة فتح', onclick: async () => {
+            ? el('button.btn.sm.ghost', { icon: 'lock-open', iconSize: 16, text: 'إعادة فتح', onclick: async () => {
                 if (!await confirmDialog(`ستُلغى حماية التجميد عن الفصل «${t.name}» ويصبح قابلاً للتعديل مجدداً.`,
                   { title: 'إعادة فتح فصل مؤرشف', confirmText: 'إعادة الفتح' })) return;
                 await api.post(`/api/terms/${t.id}/reopen`, {}); toast('تمت إعادة فتح الفصل', 'ok'); reload();
@@ -124,7 +124,7 @@ async function rolloverWizard(term, reload) {
   function pickList(items, set, fmt, question) {
     const box = el('div');
     box.append(el('p', { style: { marginTop: 0, fontSize: '13.5px', fontWeight: '600' }, text: question }));
-    if (!items.length) return box.append(empty('📭', 'لا توجد عناصر', '')) || box;
+    if (!items.length) return box.append(empty('inbox', 'لا توجد عناصر', '')) || box;
     box.append(el('div.row', { style: { marginBottom: '10px' } }, [
       el('button.btn.sm.ghost', { text: 'تحديد الكل', onclick: () => { items.forEach(i => set.add(i.id)); refresh(); } }),
       el('button.btn.sm.ghost', { text: 'إلغاء التحديد', onclick: () => { set.clear(); refresh(); } }),
@@ -174,7 +174,7 @@ async function rolloverWizard(term, reload) {
     const s = input({ type: 'date', value: newTerm.start_date, onchange: (e) => { newTerm.start_date = e.target.value; } });
     const en = input({ type: 'date', value: newTerm.end_date, onchange: (e) => { newTerm.end_date = e.target.value; } });
     return el('div', {}, [
-      el('div.archived-bar', {}, [el('span', { text: '⚠️' }),
+      el('div.archived-bar', { icon: 'triangle-alert', iconSize: 16 }, [
         `بعد التنفيذ سيُغلق الفصل «${term.name}» ويصبح مؤرشفاً للقراءة فقط — لا يمكن تعديل أي سجل يحمل رقمه.`]),
       field('رمز الفصل الجديد', code, { required: true }), field('اسم الفصل الجديد', name, { required: true }),
       el('div.grid.g2', {}, [field('تاريخ البداية', s), field('تاريخ النهاية', en)]),
@@ -182,7 +182,7 @@ async function rolloverWizard(term, reload) {
         miniStat('موظفون مستمرون', AR_NUM(picked.staff.size)),
         miniStat('مهام مُرحّلة', AR_NUM(picked.tasks.size)),
         miniStat('لجان', AR_NUM(picked.committees.size)),
-        miniStat('عهد وميزانيات', `${picked.custody ? '✔' : '✘'} / ${picked.budgets ? '✔' : '✘'}`)
+        miniStat('عهد وميزانيات', `${picked.custody ? 'نعم' : 'لا'} / ${picked.budgets ? 'نعم' : 'لا'}`)
       ]))
     ]);
   }
@@ -193,7 +193,7 @@ async function rolloverWizard(term, reload) {
       el('div.step' + (k === step ? '.active' : k < step ? '.done' : ''), { text: s.title })));
     clear(content).append(STEPS[step].build());
     backBtn.disabled = step === 0;
-    nextBtn.textContent = step === STEPS.length - 1 ? '🚀 تنفيذ الإغلاق والترحيل' : 'التالي';
+    nextBtn.textContent = step === STEPS.length - 1 ? 'تنفيذ الإغلاق والترحيل' : 'التالي';
     nextBtn.className = step === STEPS.length - 1 ? 'btn gold' : 'btn';
     nextBtn.onclick = step === STEPS.length - 1 ? execute : () => go(step + 1);
   }
@@ -210,7 +210,7 @@ async function rolloverWizard(term, reload) {
         staff_ids: [...picked.staff], task_ids: [...picked.tasks], committee_ids: [...picked.committees],
         carry_custody: picked.custody, carry_budgets: picked.budgets, close_source: true
       });
-      toast(res.message, 'ok', '🔄 جارٍ الترحيل');
+      toast(res.message, 'ok', 'جارٍ الترحيل');
       m.close();
       setTimeout(() => location.reload(), 2600);
     } finally { e.target.disabled = false; }

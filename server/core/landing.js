@@ -41,11 +41,12 @@ export const DEFAULT_LANDING = {
     secondary_href: '/login',
     image_url: ''
   },
+  /* الأيقونات بأسماء لوسايد كما في `web/js/icons.js` — لا رموز تعبيرية */
   features: [
-    { icon: '📋', title: 'المهام واللجان', body: 'توزيع المهام ومتابعتها ولجان العمل بخطة زمنية واضحة.' },
-    { icon: '📍', title: 'الحضور والتحضير', body: 'تحضير الحلقات من الجوال، وتقارير غياب فورية لكل فرع.' },
-    { icon: '💰', title: 'المالية', body: 'إيرادات ومصروفات وميزانيات وتقارير مالية جاهزة للاعتماد.' },
-    { icon: '📊', title: 'المؤشرات', body: 'مؤشرات أداء تُحتسب من بيانات المنصّة لا من جداول يدوية.' }
+    { icon: 'clipboard-list', title: 'المهام واللجان', body: 'توزيع المهام ومتابعتها ولجان العمل بخطة زمنية واضحة.' },
+    { icon: 'map-pin', title: 'الحضور والتحضير', body: 'تحضير الحلقات من الجوال، وتقارير غياب فورية لكل فرع.' },
+    { icon: 'banknote', title: 'المالية', body: 'إيرادات ومصروفات وميزانيات وتقارير مالية جاهزة للاعتماد.' },
+    { icon: 'chart-line', title: 'المؤشرات', body: 'مؤشرات أداء تُحتسب من بيانات المنصّة لا من جداول يدوية.' }
   ],
   stats: [],
   sections: [],
@@ -74,7 +75,8 @@ export function normalizeLanding(raw) {
       image_url: safeHref(h.image_url ?? '')
     },
     features: arr(b.features).slice(0, LIMITS.features).map(x => ({
-      icon: text(x?.icon, 8), title: text(x?.title), body: text(x?.body, MAX.long)
+      /* ٤٠ حرفاً تكفي أطول اسم في لوسايد؛ والواجهة تتحقّق من الاسم قبل عرضه */
+      icon: text(x?.icon, 40), title: text(x?.title), body: text(x?.body, MAX.long)
     })).filter(x => x.title || x.body),
     stats: arr(b.stats).slice(0, LIMITS.stats).map(x => ({
       label: text(x?.label), value: text(x?.value, 40)

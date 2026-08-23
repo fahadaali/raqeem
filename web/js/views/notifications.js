@@ -10,7 +10,7 @@ export async function render({ navigate }) {
   const st = await pushStatus();
 
   // حالة الإشعارات على الجهاز
-  const statusCard = card('🔔 إشعارات هذا الجهاز', el('div', {}, [
+  const statusCard = card('إشعارات هذا الجهاز', el('div', {}, [
     el('div.row', { style: { marginBottom: '11px' } }, [
       chip(st.subscribed ? 'مفعّلة على هذا الجهاز' : 'غير مفعّلة', st.subscribed ? 'ok' : 'warn'),
       chip(platform() === 'ios' ? 'iOS' : platform() === 'android' ? 'Android' : 'سطح المكتب'),
@@ -26,18 +26,18 @@ export async function render({ navigate }) {
     el('div.row', {}, [
       st.subscribed
         ? el('button.btn.ghost', { text: 'إيقاف الإشعارات', onclick: async (e) => { e.target.disabled = true; await unsubscribePush(); navigate('/notifications'); } })
-        : el('button.btn', { text: '🔔 تفعيل الإشعارات', onclick: async (e) => {
+        : el('button.btn', { icon: 'bell', iconSize: 16, text: 'تفعيل الإشعارات', onclick: async (e) => {
             e.target.disabled = true;
             if (platform() === 'ios' && !isStandalone()) { showIosInstallGuide(true); e.target.disabled = false; return; }
             const r = await subscribePush(); if (r.ok) navigate('/notifications'); else e.target.disabled = false;
           } }),
-      st.subscribed ? el('button.btn.ghost', { text: '📨 إرسال إشعار تجريبي', onclick: async (e) => {
+      st.subscribed ? el('button.btn.ghost', { icon: 'send', iconSize: 16, text: 'إرسال إشعار تجريبي', onclick: async (e) => {
         e.target.disabled = true;
         const r = await api.post('/api/notifications/test', {});
         toast(r.pushed ? 'أُرسل إشعار تجريبي إلى جهازك' : 'أُنشئ الإشعار داخل المنصة', 'ok');
         setTimeout(() => { e.target.disabled = false; loadNotifications(); }, 900);
       } }) : null,
-      el('button.btn.ghost', { text: '⚙️ تفضيلات الإشعارات', onclick: () => navigate('/settings') })
+      el('button.btn.ghost', { icon: 'settings', iconSize: 16, text: 'تفضيلات الإشعارات', onclick: () => navigate('/settings') })
     ])
   ]));
   wrap.append(statusCard);
@@ -54,7 +54,7 @@ export async function render({ navigate }) {
     clear(list).append(skeleton(5));
     const d = await api.get('/api/notifications?limit=100');
     clear(list);
-    if (!d.items.length) return list.append(empty('🔕', 'لا توجد إشعارات', 'ستظهر هنا تنبيهات المهام والاعتمادات والرسائل.'));
+    if (!d.items.length) return list.append(empty('bell-off', 'لا توجد إشعارات', 'ستظهر هنا تنبيهات المهام والاعتمادات والرسائل.'));
     for (const n of d.items) {
       list.append(el('div.notif' + (n.is_read ? '' : '.unread'), {
         onclick: async () => {
@@ -63,7 +63,7 @@ export async function render({ navigate }) {
           if (n.url) navigate(n.url); else paint();
         }
       }, [
-        el('span.ic', { text: T.notifIcon[n.category] || '🔔' }),
+        el('span.ic', { icon: T.notifIcon[n.category] || 'bell' }),
         el('div.tx', {}, [
           el('b', { text: n.title }),
           n.body ? el('p', { text: n.body }) : null,

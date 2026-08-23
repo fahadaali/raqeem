@@ -22,7 +22,7 @@ export async function checkSLA(app) {
       summary: `تصعيد آلي للتذكرة ${t.number} — تجاوز مدة الاستجابة (${t.sla_hours} ساعة) دون رد من الدعم`
     });
     await notifyByPermission(app, t.tenant_id, 'settings.manage', {
-      type: 'ticket.escalated', category: 'tickets', title: `⚠️ تصعيد تذكرة — ${t.number}`,
+      type: 'ticket.escalated', category: 'tickets', title: `تصعيد تذكرة — ${t.number}`,
       body: `لم يرد فريق الدعم خلال ${t.sla_hours} ساعة على: ${t.subject}`,
       url: `/tickets?id=${t.id}`, data: { id: t.id }, urgency: 'high'
     });
@@ -51,7 +51,7 @@ export async function checkTaskDeadlines(app) {
     if (already) continue;
     await notifyUsers(app, t.tenant_id, [t.assignee_id], {
       type: 'task.due', category: 'tasks',
-      title: t.due_date === today ? '⏰ مهمة تستحق اليوم' : 'مهمة تستحق غداً',
+      title: t.due_date === today ? 'مهمة تستحق اليوم' : 'مهمة تستحق غداً',
       body: t.title, url: `/tasks?id=${t.id}`, data: { id: t.id }, urgency: 'high'
     });
   }
@@ -67,7 +67,7 @@ export async function checkTaskDeadlines(app) {
        AND json_extract(data,'$.id')=? AND created_at > datetime('now','-3 days')`, t.tenant_id, t.assignee_id, t.id);
     if (already) continue;
     await notifyUsers(app, t.tenant_id, [t.assignee_id], {
-      type: 'task.overdue', category: 'tasks', title: '🔴 مهمة متأخرة',
+      type: 'task.overdue', category: 'tasks', title: 'مهمة متأخرة',
       body: `${t.title} — تجاوزت تاريخ الاستحقاق ${t.due_date}`,
       url: `/tasks?id=${t.id}`, data: { id: t.id }, urgency: 'high'
     });

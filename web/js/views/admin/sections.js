@@ -35,18 +35,18 @@ export async function overviewTab() {
       : null,
     ...alerts.map(x => el('div.alert.' + x.kind, { text: x.text })),
     el('div.stat-grid', {}, [
-      stat('الجهات المشتركة', AR_NUM(d.tenants_total), { icon: '🏛', hint: `${AR_NUM(d.tenants.active || 0)} نشطة · ${AR_NUM(d.tenants.suspended || 0)} موقوفة` }),
-      stat('الإيراد الشهري المتكرر', `${money(d.mrr)} ${cur}`, { icon: '📈', kind: 'ok', hint: `سنوياً: ${money(d.arr)} ${cur}` }),
-      stat('المحصّل', `${money(d.revenue_collected)} ${cur}`, { icon: '💰', kind: 'ok' }),
-      stat('المستحق', `${money(d.outstanding.due)} ${cur}`, { icon: '⏳', kind: d.outstanding.due > 0 ? 'warn' : '', hint: `${AR_NUM(d.outstanding.invoices)} فاتورة` }),
-      stat('المستخدمون', AR_NUM(d.users_total), { icon: '👥' }),
-      stat('الفروع', AR_NUM(d.branches_total), { icon: '🏢' }),
-      stat('التخزين', gb(d.storage_mb), { icon: '🗄' }),
+      stat('الجهات المشتركة', AR_NUM(d.tenants_total), { icon: 'landmark', hint: `${AR_NUM(d.tenants.active || 0)} نشطة · ${AR_NUM(d.tenants.suspended || 0)} موقوفة` }),
+      stat('الإيراد الشهري المتكرر', `${money(d.mrr)} ${cur}`, { icon: 'trending-up', kind: 'ok', hint: `سنوياً: ${money(d.arr)} ${cur}` }),
+      stat('المحصّل', `${money(d.revenue_collected)} ${cur}`, { icon: 'hand-coins', kind: 'ok' }),
+      stat('المستحق', `${money(d.outstanding.due)} ${cur}`, { icon: 'hourglass', kind: d.outstanding.due > 0 ? 'warn' : '', hint: `${AR_NUM(d.outstanding.invoices)} فاتورة` }),
+      stat('المستخدمون', AR_NUM(d.users_total), { icon: 'users' }),
+      stat('الفروع', AR_NUM(d.branches_total), { icon: 'building-2' }),
+      stat('التخزين', gb(d.storage_mb), { icon: 'database' }),
       stat('بانتظار الإجراء', AR_NUM(d.pending_signups + d.pending_payments), {
-        icon: '🔔', kind: (d.pending_signups + d.pending_payments) ? 'warn' : '',
+        icon: 'bell', kind: (d.pending_signups + d.pending_payments) ? 'warn' : '',
         hint: `${AR_NUM(d.pending_signups)} طلب تسجيل · ${AR_NUM(d.pending_payments)} إشعار سداد` }),
       stat('متوسط صحة الجهات', a.average_health === null ? '—' : `${AR_NUM(a.average_health)}٪`, {
-        icon: '❤️', kind: a.average_health >= 70 ? 'ok' : a.average_health >= 50 ? 'warn' : 'danger',
+        icon: 'heart-pulse', kind: a.average_health >= 70 ? 'ok' : a.average_health >= 50 ? 'warn' : 'danger',
         hint: `${AR_NUM(a.at_risk || 0)} معرّضة للتسرّب` })
     ]),
     card('حالات الاشتراك', el('div.row.wrap', { style: { gap: '8px' } },
@@ -90,7 +90,7 @@ export async function tenantsTab() {
       { header: 'التخزين', key: 'storage_mb', num: true, render: r => gb(r.storage_mb) },
       { header: 'المستحق', key: 'due', num: true, render: r => (r.due ? el('b', { text: money(r.due), style: { color: 'var(--warn)' } }) : '—') },
       { header: '', key: 'a', render: r => el('button.btn.sm.ghost', { text: 'إدارة', onclick: () => tenantDialog(r.id, load) }) }
-    ], d.items) : empty('🏛', 'لا توجد جهات مطابقة', 'جرّب بحثاً آخر أو أنشئ جهة جديدة.'));
+    ], d.items) : empty('landmark', 'لا توجد جهات مطابقة', 'جرّب بحثاً آخر أو أنشئ جهة جديدة.'));
   };
 
   search.addEventListener('input', (() => { let t; return () => { clearTimeout(t); t = setTimeout(load, 320); }; })());
@@ -99,7 +99,7 @@ export async function tenantsTab() {
   return el('div', {}, [
     el('div.row', { style: { justifyContent: 'space-between', alignItems: 'center', gap: '10px', marginBottom: '12px' } }, [
       el('div', { style: { flex: '1', minWidth: '180px' } }, [search]),
-      el('button.btn.gold', { text: '＋ جهة جديدة', onclick: () => newTenantDialog(load) })
+      el('button.btn.gold', { icon: 'plus', iconSize: 16, text: 'جهة جديدة', onclick: () => newTenantDialog(load) })
     ]),
     body
   ]);
@@ -147,7 +147,7 @@ async function tenantDialog(id, reload) {
       field('اسم الجهة', name),
       field('النطاق المخصّص', domain, { hint: 'وجّه النطاق إلى المنصة ثم أدخله هنا ليظهر بهوية الجهة' }),
       el('div.grid-2', {}, [field('اللون الأساسي', primary), field('اللون المساعد', accent)]),
-      el('button.btn', { text: '💾 حفظ', onclick: async (e) => {
+      el('button.btn', { icon: 'save', iconSize: 16, text: 'حفظ', onclick: async (e) => {
         e.target.disabled = true;
         try {
           await api.patch(`/api/admin/tenants/${id}`, {
@@ -159,8 +159,8 @@ async function tenantDialog(id, reload) {
       } })
     ])),
     card('الاشتراك', el('div.stack', {}, [
-      el('button.btn.ghost', { text: '⭑ تغيير الخطة', onclick: () => changePlanDialog(id, d, async () => { m.close(); await reload(); }) }),
-      el('button.btn.ghost', { text: '🧾 إصدار فاتورة', onclick: async () => {
+      el('button.btn.ghost', { icon: 'arrow-left-right', iconSize: 16, text: 'تغيير الخطة', onclick: () => changePlanDialog(id, d, async () => { m.close(); await reload(); }) }),
+      el('button.btn.ghost', { icon: 'receipt', iconSize: 16, text: 'إصدار فاتورة', onclick: async () => {
         try { const inv = await api.post('/api/admin/invoices', { tenant_id: id });
           toast(`صدرت الفاتورة ${inv.number}`, 'ok'); m.close(); await reload();
         } catch (err) { toast(err.message, 'warn'); }
@@ -171,7 +171,7 @@ async function tenantDialog(id, reload) {
       { header: 'الإجمالي', key: 'total', num: true, render: r => money(r.total) },
       { header: 'الحالة', key: 'status', render: r => chip(r.status_label, INV_KIND[r.status]) },
       { header: 'التاريخ', key: 'issued_at', render: r => fmtDate(r.issued_at, 'gregorian') }
-    ], d.invoices) : empty('🧾', 'لا فواتير', '')),
+    ], d.invoices) : empty('receipt', 'لا فواتير', '')),
     /* صحة الجهة */
     d.health ? card('مؤشّر الصحة', el('div.stack', {}, [
       el('div.row', { style: { gap: '10px', alignItems: 'center' } }, [
@@ -194,7 +194,7 @@ async function tenantDialog(id, reload) {
     /* حدود ومزايا خاصة */
     card('حدود ومزايا خاصة بالجهة', el('div.stack', {}, [
       el('p.hint', { text: 'تجاوزات تعلو على الخطة — للصفقات المخصّصة. اتركها فارغة لاعتماد حدود الخطة.' }),
-      el('button.btn.ghost', { text: '⚙ ضبط التجاوزات', onclick: () => overridesDialog(d, async () => { m.close(); await reload(); }) })
+      el('button.btn.ghost', { icon: 'settings-2', iconSize: 16, text: 'ضبط التجاوزات', onclick: () => overridesDialog(d, async () => { m.close(); await reload(); }) })
     ])),
 
     /* المتابعة التجارية */
@@ -220,7 +220,7 @@ async function tenantDialog(id, reload) {
       return el('div.stack', {}, [
         el('div.grid-2', {}, [field('جهة الاتصال', cName), field('الجوال', cPhone)]),
         el('div.grid-2', {}, [field('مرحلة العميل', stage), field('المصدر', source)]),
-        el('button.btn.sm', { text: '💾 حفظ المتابعة', onclick: async (e) => {
+        el('button.btn.sm', { icon: 'save', iconSize: 16, text: 'حفظ المتابعة', onclick: async (e) => {
           e.target.disabled = true;
           try {
             await api.put(`/api/admin/tenants/${id}/crm`, {
@@ -234,7 +234,7 @@ async function tenantDialog(id, reload) {
         notes,
         el('div.row', { style: { gap: '8px' } }, [
           el('div', { style: { flex: 1 } }, [noteInput]),
-          el('button.btn.sm', { text: '＋ إضافة', onclick: async () => {
+          el('button.btn.sm', { icon: 'plus', iconSize: 16, text: 'إضافة', onclick: async () => {
             if (!noteInput.value.trim()) return;
             await api.post(`/api/admin/tenants/${id}/notes`, { body: noteInput.value.trim() });
             noteInput.value = '';
@@ -260,7 +260,7 @@ async function tenantDialog(id, reload) {
       : el('p.hint', { text: 'لا فصول' })),
 
     card('إجراءات إدارية', el('div.row.wrap', { style: { gap: '8px' } }, [
-      el('button.btn.ghost', { text: '🔑 دخول إداري للمساندة', onclick: async () => {
+      el('button.btn.ghost', { icon: 'key', iconSize: 16, text: 'دخول إداري للمساندة', onclick: async () => {
         if (!await confirmDialog('ستدخل بحساب مدير هذه الجهة للمساندة الفنية، وسيُسجَّل ذلك في سجلّي المنصة والجهة.',
           { confirmText: 'دخول إداري' })) return;
         try {
@@ -276,22 +276,22 @@ async function tenantDialog(id, reload) {
         } catch (err) { toast(err.message, 'warn'); }
       } }),
       t.status === 'active'
-        ? el('button.btn.ghost', { text: '⏸ إيقاف الجهة', onclick: async () => {
+        ? el('button.btn.ghost', { icon: 'pause', iconSize: 16, text: 'إيقاف الجهة', onclick: async () => {
             const reason = prompt('سبب الإيقاف:', 'عدم سداد الاشتراك');
             if (reason === null) return;
             try { await api.patch(`/api/admin/tenants/${id}`, { status: 'suspended', suspend_reason: reason });
               toast('أُوقفت الجهة', 'ok'); m.close(); await reload();
             } catch (err) { toast(err.message, 'warn'); }
           } })
-        : el('button.btn', { text: '▶ إعادة التفعيل', onclick: async () => {
+        : el('button.btn', { icon: 'play', iconSize: 16, text: 'إعادة التفعيل', onclick: async () => {
             await api.patch(`/api/admin/tenants/${id}`, { status: 'active' });
             toast('أُعيد تفعيل الجهة', 'ok'); m.close(); await reload();
           } }),
-      el('button.btn.ghost', { text: '⬇ تصدير بيانات الجهة', onclick: async () => {
+      el('button.btn.ghost', { icon: 'download', iconSize: 16, text: 'تصدير بيانات الجهة', onclick: async () => {
         try { await api.downloadGet(`/api/admin/tenants/${id}/export`, `${t.code}-export.sql.gz`);
           toast('نُزّل التصدير الكامل', 'ok'); } catch (e) { toast(e.message, 'warn'); }
       } }),
-      el('button.btn.danger', { text: '🗑 محو الجهة نهائياً', onclick: async () => {
+      el('button.btn.danger', { icon: 'trash-2', iconSize: 16, text: 'محو الجهة نهائياً', onclick: async () => {
         if (!await confirmDialog(
           `سيُمحى كل ما يخص «${t.name}»: المستخدمون والفروع والمهام والفواتير والملفات وسجل التدقيق. لا يمكن التراجع.`,
           { confirmText: 'فهمت، تابع', danger: true })) return;
@@ -407,7 +407,7 @@ export async function plansTab() {
         r.highlight ? chip('مميّزة', 'info') : null]) },
       { header: '', key: 'a', render: r => el('div.row', { style: { gap: '4px' } }, [
         el('button.btn.sm.ghost', { text: 'تحرير', onclick: () => planDialog(r, load) }),
-        !r.subscribers ? el('button.btn.sm.ghost', { text: '🗑', onclick: async () => {
+        !r.subscribers ? el('button.btn.sm.ghost', { icon: 'trash-2', iconSize: 16, title: 'حذف', 'aria-label': 'حذف', onclick: async () => {
           if (!await confirmDialog(`حذف خطة «${r.name}»؟`, { danger: true, confirmText: 'حذف' })) return;
           try { await api.del(`/api/admin/plans/${r.id}`); toast('حُذفت الخطة', 'ok'); await load(); }
           catch (e) { toast(e.message, 'warn'); }
@@ -419,7 +419,7 @@ export async function plansTab() {
   return el('div', {}, [
     el('div.row', { style: { justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' } }, [
       el('h3', { text: 'خطط الأسعار', style: { margin: 0 } }),
-      el('button.btn.gold', { text: '＋ خطة جديدة', onclick: () => planDialog(null, load) })
+      el('button.btn.gold', { icon: 'plus', iconSize: 16, text: 'خطة جديدة', onclick: () => planDialog(null, load) })
     ]),
     body
   ]);
@@ -496,10 +496,10 @@ export async function couponsTab() {
 
     clear(body).append(
       el('div.stat-grid', {}, [
-        stat('كوبونات مفعّلة', AR_NUM(live), { icon: '🎟' }),
-        stat('مرات الاستخدام', AR_NUM(rows.reduce((s, c) => s + Number(c.uses || 0), 0)), { icon: '🔁' }),
-        stat('إجمالي الخصم الممنوح', money(granted), { icon: '💸', kind: granted ? 'warn' : '' }),
-        stat('جهات مستفيدة', AR_NUM(rows.reduce((s, c) => s + Number(c.tenants || 0), 0)), { icon: '🏛' })
+        stat('كوبونات مفعّلة', AR_NUM(live), { icon: 'ticket-percent' }),
+        stat('مرات الاستخدام', AR_NUM(rows.reduce((s, c) => s + Number(c.uses || 0), 0)), { icon: 'repeat' }),
+        stat('إجمالي الخصم الممنوح', money(granted), { icon: 'hand-coins', kind: granted ? 'warn' : '' }),
+        stat('جهات مستفيدة', AR_NUM(rows.reduce((s, c) => s + Number(c.tenants || 0), 0)), { icon: 'landmark' })
       ]),
       table([
         { header: 'الرمز', key: 'code', render: r => el('div', {}, [
@@ -526,7 +526,7 @@ export async function couponsTab() {
             } catch (e) { toast(e.message, 'warn'); }
           } }),
           el('button.btn.sm.ghost', { text: 'تحرير', onclick: () => couponDialog(r, plans, load) }),
-          !r.uses ? el('button.btn.sm.ghost', { text: '🗑', onclick: async () => {
+          !r.uses ? el('button.btn.sm.ghost', { icon: 'trash-2', iconSize: 16, title: 'حذف', 'aria-label': 'حذف', onclick: async () => {
             if (!await confirmDialog(`حذف كوبون «${r.code}»؟`, { danger: true, confirmText: 'حذف' })) return;
             try { await api.del(`/api/admin/coupons/${r.id}`); toast('حُذف الكوبون', 'ok'); await load(); }
             catch (e) { toast(e.message, 'warn'); }
@@ -539,7 +539,7 @@ export async function couponsTab() {
   return el('div', {}, [
     el('div.row', { style: { justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' } }, [
       el('h3', { text: 'الكوبونات والخصومات', style: { margin: 0 } }),
-      el('button.btn.gold', { text: '＋ كوبون جديد', onclick: async () =>
+      el('button.btn.gold', { icon: 'plus', iconSize: 16, text: 'كوبون جديد', onclick: async () =>
         couponDialog(null, await api.get('/api/admin/plans').catch(() => []), load) })
     ]),
     el('div.hint', { style: { marginBottom: '10px' },
@@ -629,7 +629,7 @@ export async function announceTab() {
       { header: 'شريط', key: 'banner', render: r => (r.banner ? chip('نعم', 'info') : '—') },
       { header: 'ينتهي', key: 'ends_at', render: r => (r.ends_at ? fmtDate(r.ends_at, 'gregorian') : 'بلا انتهاء') },
       { header: 'أُرسل', key: 'sent_at', render: r => (r.sent_at ? timeAgo(r.sent_at) : chip('لم يُرسل', 'warn')) },
-      { header: '', key: 'a', render: r => el('button.btn.sm.ghost', { text: '🗑', onclick: async () => {
+      { header: '', key: 'a', render: r => el('button.btn.sm.ghost', { icon: 'trash-2', iconSize: 16, title: 'حذف', 'aria-label': 'حذف', onclick: async () => {
         if (!await confirmDialog(`حذف إعلان «${r.title}»؟`, { danger: true, confirmText: 'حذف' })) return;
         try { await api.del(`/api/admin/announcements/${r.id}`); toast('حُذف الإعلان', 'ok'); await load(); }
         catch (e) { toast(e.message, 'warn'); }
@@ -640,7 +640,7 @@ export async function announceTab() {
   return el('div', {}, [
     el('div.row', { style: { justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' } }, [
       el('h3', { text: 'الإعلانات والبثّ', style: { margin: 0 } }),
-      el('button.btn.gold', { text: '＋ إعلان جديد', onclick: () => announceDialog(load) })
+      el('button.btn.gold', { icon: 'plus', iconSize: 16, text: 'إعلان جديد', onclick: () => announceDialog(load) })
     ]),
     el('div.hint', { style: { marginBottom: '10px' },
       text: 'الإعلان يصل كإشعار داخل المنصة وكإشعار دفع للجوال، ويظهر شريطاً أعلى شاشة الجهات المستهدفة.' }),
@@ -725,10 +725,10 @@ export async function invoicesTab() {
         { header: 'المرجع', key: 'reference', render: r => r.reference || '—' },
         { header: 'أبلغ به', key: 'declared_by_name', render: r => `${r.declared_by_name || '—'} · ${timeAgo(r.created_at)}` },
         { header: '', key: 'a', render: r => el('div.row', { style: { gap: '4px' } }, [
-          el('button.btn.sm', { text: '✔ اعتماد', onclick: async () => {
+          el('button.btn.sm', { icon: 'check', iconSize: 16, text: 'اعتماد', onclick: async () => {
             try { await api.post(`/api/admin/payments/${r.id}/confirm`, {}); toast('اعتُمد السداد', 'ok'); await load(); }
             catch (e) { toast(e.message, 'warn'); } } }),
-          el('button.btn.sm.ghost', { text: '✕ رفض', onclick: async () => {
+          el('button.btn.sm.ghost', { icon: 'x', iconSize: 16, text: 'رفض', onclick: async () => {
             const reason = prompt('سبب الرفض:'); if (reason === null) return;
             await api.post(`/api/admin/payments/${r.id}/reject`, { reason }); toast('رُفض الإشعار', 'ok'); await load(); } })
         ]) }
@@ -750,11 +750,11 @@ export async function invoicesTab() {
             await api.post(`/api/admin/invoices/${r.id}/void`, { reason }); toast('أُلغيت الفاتورة', 'ok'); await load(); } }) : null,
           /* الإشعار الدائن يصلح على المسدَّدة والمفتوحة، لا على الملغاة ولا على إشعار دائن */
           r.doc_type !== 'credit_note' && ['open', 'paid'].includes(r.status)
-            ? el('button.btn.sm.ghost', { text: '↩ إشعار دائن', onclick: () => creditNoteDialog(r, load) }) : null,
-          r.zatca_qr ? el('button.btn.sm.ghost', { text: '🧾', title: 'الفاتورة الإلكترونية',
+            ? el('button.btn.sm.ghost', { icon: 'undo-2', iconSize: 16, text: 'إشعار دائن', onclick: () => creditNoteDialog(r, load) }) : null,
+          r.zatca_qr ? el('button.btn.sm.ghost', { icon: 'qr-code', iconSize: 16, title: 'الفاتورة الإلكترونية', 'aria-label': 'الفاتورة الإلكترونية',
             onclick: () => eInvoiceDialog(r) }) : null
         ]) }
-      ], d.items) : empty('🧾', 'لا توجد فواتير', ''),
+      ], d.items) : empty('receipt', 'لا توجد فواتير', ''),
       { sub: `المحصّل ${money(d.totals.paid)} · المستحق ${money(d.totals.due)}` })
     );
   };
@@ -841,14 +841,14 @@ export async function signupsTab() {
         ({ provisioned: 'ok', rejected: 'danger', pending: 'warn', verified: 'info' })[r.status] || '') },
       { header: 'التاريخ', key: 'created_at', render: r => timeAgo(r.created_at) },
       { header: '', key: 'a', render: r => (['pending', 'verified'].includes(r.status) ? el('div.row', { style: { gap: '4px' } }, [
-        el('button.btn.sm', { text: '✔ تفعيل', onclick: async () => {
+        el('button.btn.sm', { icon: 'check', iconSize: 16, text: 'تفعيل', onclick: async () => {
           try { await api.post(`/api/admin/signups/${r.id}/approve`, {}); toast('فُعّلت الجهة', 'ok'); await load(); }
           catch (e) { toast(e.message, 'warn'); } } }),
-        el('button.btn.sm.ghost', { text: '✕ رفض', onclick: async () => {
+        el('button.btn.sm.ghost', { icon: 'x', iconSize: 16, text: 'رفض', onclick: async () => {
           const reason = prompt('سبب الرفض:'); if (reason === null) return;
           await api.post(`/api/admin/signups/${r.id}/reject`, { reason }); toast('رُفض الطلب', 'ok'); await load(); } })
       ]) : '—') }
-    ], rows) : empty('📝', 'لا توجد طلبات تسجيل', 'ستظهر هنا طلبات الجهات الجديدة عند فتح التسجيل الذاتي.'));
+    ], rows) : empty('user-plus', 'لا توجد طلبات تسجيل', 'ستظهر هنا طلبات الجهات الجديدة عند فتح التسجيل الذاتي.'));
   };
   load();
   return body;
@@ -939,7 +939,7 @@ export async function settingsTab() {
       el('h4.form-sec', { text: 'بوابة الدفع' }),
       field('البوابة المفعّلة', gateway),
       el('div.row', {}, [
-        chip(gw.configured ? '✅ البوابة مهيّأة بمفتاحها السرّي' : '⚠️ لم يُدخَل المفتاح السرّي بعد',
+        chip(gw.configured ? 'البوابة مهيّأة بمفتاحها السرّي' : 'لم يُدخَل المفتاح السرّي بعد',
           gw.configured ? 'ok' : 'warn'),
         (gw.options.find(o => o.key === gateway.value)?.redirects)
           ? chip('السداد يتم على صفحة البوابة') : null
@@ -966,7 +966,7 @@ export async function settingsTab() {
         field('فرصة الترقية عند بلوغ (٪ من الحدّ)', f.upsell)
       ])
     ])),
-    el('button.btn.gold.block', { text: '💾 حفظ إعدادات المنصة', onclick: async (e) => {
+    el('button.btn.gold.block', { icon: 'save', iconSize: 18, text: 'حفظ إعدادات المنصة', onclick: async (e) => {
       e.target.disabled = true;
       try {
         await api.put('/api/admin/settings', {
@@ -997,7 +997,7 @@ export async function settingsTab() {
       admins,
       el('div.row', { style: { gap: '8px' } }, [
         el('div', { style: { flex: 1 } }, [newAdminEmail]),
-        el('button.btn', { text: '＋ منح الصلاحية', onclick: async () => {
+        el('button.btn', { icon: 'plus', iconSize: 16, text: 'منح الصلاحية', onclick: async () => {
           if (!newAdminEmail.value.trim()) return;
           try { await api.post('/api/admin/admins', { email: newAdminEmail.value.trim() });
             toast('مُنحت الصلاحية', 'ok'); newAdminEmail.value = ''; await loadAdmins();
@@ -1026,7 +1026,7 @@ export async function logsTab() {
            approve: 'اعتماد', reject: 'رفض', impersonate: 'دخول إداري' })[r.action] || r.action,
         ({ delete: 'danger', suspend: 'warn', impersonate: 'warn', approve: 'ok' })[r.action] || '') },
       { header: 'الوصف', key: 'summary' }
-    ], d.items) : empty('🛡️', 'السجل فارغ', 'تظهر هنا كل عمليات مالك المنصة.'));
+    ], d.items) : empty('scroll-text', 'السجل فارغ', 'تظهر هنا كل عمليات مالك المنصة.'));
   };
   search.addEventListener('input', (() => { let t; return () => { clearTimeout(t); t = setTimeout(load, 320); }; })());
   load();
@@ -1075,7 +1075,7 @@ function sparkline(points, { height = 90, color = 'var(--brand)', fill = true } 
 const trend = (v, suffix = '') => {
   const n = Number(v || 0);
   const kind = n > 0 ? 'ok' : n < 0 ? 'danger' : '';
-  return chip(`${n > 0 ? '▲' : n < 0 ? '▼' : '—'} ${AR_NUM(Math.abs(n))}${suffix}`, kind);
+  return chip(`${AR_NUM(Math.abs(n))}${suffix}`, kind, n > 0 ? 'arrow-up' : n < 0 ? 'arrow-down' : 'minus');
 };
 
 export async function growthTab() {
@@ -1097,19 +1097,19 @@ export async function growthTab() {
         : null,
       el('div.stat-grid', {}, [
         stat('الإيراد الشهري المتكرر', `${money(d.current.mrr)}`, {
-          icon: '📈', kind: c.mrr >= 0 ? 'ok' : 'danger',
+          icon: 'trending-up', kind: c.mrr >= 0 ? 'ok' : 'danger',
           hint: `${c.mrr >= 0 ? '+' : ''}${money(c.mrr)} خلال الفترة (${AR_NUM(c.mrr_growth)}٪)` }),
         stat('الجهات', AR_NUM(d.current.tenants_total), {
-          icon: '🏛', hint: `+${AR_NUM(c.new_tenants)} جديدة · −${AR_NUM(c.churned_tenants)} متسرّبة` }),
+          icon: 'landmark', hint: `+${AR_NUM(c.new_tenants)} جديدة · −${AR_NUM(c.churned_tenants)} متسرّبة` }),
         stat('معدّل التسرّب', `${AR_NUM(c.churn_rate)}٪`, {
-          icon: '📉', kind: c.churn_rate > 5 ? 'danger' : c.churn_rate > 0 ? 'warn' : 'ok',
+          icon: 'trending-down', kind: c.churn_rate > 5 ? 'danger' : c.churn_rate > 0 ? 'warn' : 'ok',
           hint: 'خلال الفترة المختارة' }),
         stat('تحوّل التجارب', `${AR_NUM(d.trial_conversion.rate)}٪`, {
-          icon: '🎯', kind: d.trial_conversion.rate >= 25 ? 'ok' : 'warn',
+          icon: 'target', kind: d.trial_conversion.rate >= 25 ? 'ok' : 'warn',
           hint: `${AR_NUM(d.trial_conversion.converted)} من ${AR_NUM(d.trial_conversion.started)} تجربة` }),
-        stat('متوسط الإيراد لكل جهة', money(d.current.arpu), { icon: '💵' }),
+        stat('متوسط الإيراد لكل جهة', money(d.current.arpu), { icon: 'banknote' }),
         stat('تجديدات الشهر القادم', `${money(d.forecast.expected)}`, {
-          icon: '🔮', hint: `${AR_NUM(d.forecast.renewals)} تجديد · معرّض للفقد ${money(d.forecast.at_risk)}` })
+          icon: 'telescope', hint: `${AR_NUM(d.forecast.renewals)} تجديد · معرّض للفقد ${money(d.forecast.at_risk)}` })
       ]),
       card('اتجاه الإيراد الشهري المتكرر', el('div', {}, [
         sparkline(pts.map(p => p.mrr)),
@@ -1168,13 +1168,13 @@ export async function healthTab() {
 
   return el('div.stack', {}, [
     el('div.stat-grid', {}, [
-      stat('متوسط الصحة', `${AR_NUM(s.average_score)}٪`, { icon: '❤️', kind: HEALTH_KIND(s.average_score) }),
-      stat('سليمة', AR_NUM(s.by_risk.healthy), { icon: '✅', kind: 'ok' }),
-      stat('تحت المراقبة', AR_NUM(s.by_risk.watch), { icon: '👀', kind: s.by_risk.watch ? 'warn' : '' }),
+      stat('متوسط الصحة', `${AR_NUM(s.average_score)}٪`, { icon: 'heart-pulse', kind: HEALTH_KIND(s.average_score) }),
+      stat('سليمة', AR_NUM(s.by_risk.healthy), { icon: 'circle-check', kind: 'ok' }),
+      stat('تحت المراقبة', AR_NUM(s.by_risk.watch), { icon: 'eye', kind: s.by_risk.watch ? 'warn' : '' }),
       stat('معرّضة للتسرّب', AR_NUM(s.by_risk.at_risk + s.by_risk.critical), {
-        icon: '⚠️', kind: (s.by_risk.at_risk + s.by_risk.critical) ? 'danger' : 'ok' }),
+        icon: 'triangle-alert', kind: (s.by_risk.at_risk + s.by_risk.critical) ? 'danger' : 'ok' }),
       stat('فرص الترقية', AR_NUM(s.upsell_opportunities), {
-        icon: '⬆️', kind: s.upsell_opportunities ? 'ok' : '',
+        icon: 'arrow-up-right', kind: s.upsell_opportunities ? 'ok' : '',
         hint: s.upsell_value ? `قيمة شهرية ${money(s.upsell_value)}` : 'جهات بلغت حدود خطتها' })
     ]),
 
@@ -1185,7 +1185,7 @@ export async function healthTab() {
       { header: 'المستخدمون النشطون', key: 'ua', render: t => `${AR_NUM(t.users_active_30d)} / ${AR_NUM(t.users)}` },
       { header: 'الخطة', key: 'plan_name', render: t => t.plan_name || '—' },
       { header: '', key: 'a', render: t => el('button.btn.sm.ghost', { text: 'إدارة', onclick: () => tenantDialog(t.id, () => {}) }) }
-    ], d.at_risk)) : el('div.alert.ok', { text: '✔ لا توجد جهات معرّضة للتسرّب حالياً' }),
+    ], d.at_risk)) : el('div.alert.ok', { icon: 'circle-check', iconSize: 16, text: 'لا توجد جهات معرّضة للتسرّب حالياً' }),
 
     d.upsells.length ? card(`فرص ترقية (${AR_NUM(d.upsells.length)})`, table([
       { header: 'الجهة', key: 'name', render: t => el('div', {}, [
@@ -1236,9 +1236,10 @@ export async function supportTab() {
           ({ open: 'warn', answered: 'info', closed: 'ok' })[r.vendor_status] || '') },
         { header: 'صُعّدت', key: 'vendor_escalated_at', render: r => timeAgo(r.vendor_escalated_at) },
         { header: '', key: 'a', render: r => el('button.btn.sm', {
-          text: r.vendor_status === 'open' ? '✍ الرد' : 'عرض',
+          icon: r.vendor_status === 'open' ? 'pen-line' : 'eye', iconSize: 16,
+          text: r.vendor_status === 'open' ? 'الرد' : 'عرض',
           onclick: () => supportDialog(r, load) }) }
-      ], d.items) : empty('🎧', 'لا توجد تذاكر مُصعَّدة', 'تظهر هنا التذاكر التي يصعّدها مدراء الجهات إلى دعم المنصة.'));
+      ], d.items) : empty('headset', 'لا توجد تذاكر مُصعَّدة', 'تظهر هنا التذاكر التي يصعّدها مدراء الجهات إلى دعم المنصة.'));
   };
   load();
   return el('div', {}, [
@@ -1269,7 +1270,7 @@ function supportDialog(t, reload) {
       field('الرد', reply, { required: true }),
       el('label.row', { style: { gap: '6px' } }, [close, el('span', { text: 'إغلاق التذكرة بعد الرد' })])
     ]),
-    footer: el('button.btn.gold', { text: '📨 إرسال الرد', onclick: async (e) => {
+    footer: el('button.btn.gold', { icon: 'send', iconSize: 16, text: 'إرسال الرد', onclick: async (e) => {
       if (!reply.value.trim()) return void toast('نص الرد إلزامي', 'warn');
       e.target.disabled = true;
       try {
@@ -1298,19 +1299,19 @@ export async function securityTab() {
 
     clear(body).append(
       el('div.stat-grid', {}, [
-        stat('محاولات الدخول', AR_NUM(d.total), { icon: '🔑' }),
+        stat('محاولات الدخول', AR_NUM(d.total), { icon: 'key' }),
         stat('محاولات فاشلة', AR_NUM(d.failed), {
-          icon: '🚫', kind: failRate > 30 ? 'danger' : failRate > 10 ? 'warn' : 'ok',
+          icon: 'ban', kind: failRate > 30 ? 'danger' : failRate > 10 ? 'warn' : 'ok',
           hint: `${AR_NUM(failRate)}٪ من الإجمالي` }),
-        stat('دخول ناجح', AR_NUM(d.succeeded), { icon: '✅', kind: 'ok' }),
-        stat('عناوين مختلفة', AR_NUM(d.distinct_ips), { icon: '🌐' }),
-        stat('حسابات موقوفة', AR_NUM(d.suspended_accounts), { icon: '⏸', kind: d.suspended_accounts ? 'warn' : '' })
+        stat('دخول ناجح', AR_NUM(d.succeeded), { icon: 'circle-check', kind: 'ok' }),
+        stat('عناوين مختلفة', AR_NUM(d.distinct_ips), { icon: 'globe' }),
+        stat('حسابات موقوفة', AR_NUM(d.suspended_accounts), { icon: 'pause', kind: d.suspended_accounts ? 'warn' : '' })
       ]),
 
       chain ? el('div.alert.' + (chain.intact ? 'ok' : 'danger'), {
         text: chain.intact
-          ? `✔ سلسلة تجزئة الفواتير الإلكترونية سليمة (${AR_NUM(chain.checked)} فاتورة)`
-          : `✘ انقطاع في سلسلة التجزئة عند ${chain.breaks.length} فاتورة — راجع فوراً` }) : null,
+          ? `سلسلة تجزئة الفواتير الإلكترونية سليمة (${AR_NUM(chain.checked)} فاتورة)`
+          : `انقطاع في سلسلة التجزئة عند ${chain.breaks.length} فاتورة — راجع فوراً` }) : null,
 
       d.top_failed_accounts.length ? card('حسابات بأكثر محاولات فاشلة', table([
         { header: 'البريد', key: 'email', render: r => el('code', { text: r.email, style: { direction: 'ltr', fontSize: '11px' } }) },
@@ -1335,7 +1336,7 @@ export async function securityTab() {
         { header: 'النتيجة', key: 'success', render: r => chip(r.success ? 'نجح' : 'فشل', r.success ? 'ok' : 'danger') },
         { header: 'السبب', key: 'reason', render: r => r.reason || '—' },
         { header: 'العنوان', key: 'ip', render: r => el('code', { text: r.ip || '—', style: { direction: 'ltr', fontSize: '11px' } }) }
-      ], d.recent) : empty('🔒', 'لا توجد محاولات مسجّلة', ''))
+      ], d.recent) : empty('lock', 'لا توجد محاولات مسجّلة', ''))
     );
   };
   range.addEventListener('change', load);
@@ -1387,7 +1388,7 @@ export async function opsTab() {
           ? el('b', { text: AR_NUM(r.failures_24h), style: { color: 'var(--danger)' } }) : '—') },
         { header: 'الخطأ', key: 'error', render: r => (r.error ? el('span.hint', {
           text: String(r.error).slice(0, 70), style: { color: 'var(--danger)' } }) : '—') },
-        { header: '', key: 'a', render: r => el('button.btn.sm.ghost', { text: '▶ تشغيل', onclick: async (e) => {
+        { header: '', key: 'a', render: r => el('button.btn.sm.ghost', { icon: 'play', iconSize: 16, text: 'تشغيل', onclick: async (e) => {
           e.target.disabled = true;
           try {
             const out = await api.post(`/api/admin/jobs/${r.job}/run`, {});
@@ -1411,7 +1412,7 @@ export async function opsTab() {
         { header: 'النتيجة', key: 'result', render: r => el('span.hint', {
           text: r.error || (typeof r.result === 'object' ? JSON.stringify(r.result) : String(r.result || '—')).slice(0, 80),
           style: r.error ? { color: 'var(--danger)' } : {} }) }
-      ], runs) : empty('⚡', 'لا سجلّ تشغيل بعد', 'شغّل وظيفة يدوياً أو انتظر مؤقّتها.'))
+      ], runs) : empty('zap', 'لا سجلّ تشغيل بعد', 'شغّل وظيفة يدوياً أو انتظر مؤقّتها.'))
     );
   };
   load();
@@ -1419,7 +1420,7 @@ export async function opsTab() {
   return el('div', {}, [
     el('div.row', { style: { justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' } }, [
       el('h3', { text: 'التشغيل والصيانة', style: { margin: 0 } }),
-      el('button.btn.ghost', { text: '📸 التقاط لقطة مؤشرات', onclick: async (e) => {
+      el('button.btn.ghost', { icon: 'camera', iconSize: 16, text: 'التقاط لقطة مؤشرات', onclick: async (e) => {
         e.target.disabled = true;
         try { const m = await api.post('/api/admin/metrics/snapshot', {});
           toast(`التُقطت لقطة ${m.date}`, 'ok'); } catch (err) { toast(err.message, 'warn'); }
@@ -1473,7 +1474,7 @@ function overridesDialog(d, done) {
       el('h4.form-sec', { text: 'المزايا' }),
       el('div.grid-2', {}, featureBoxes.map(f => f.node))
     ]),
-    footer: el('button.btn.gold', { text: '💾 حفظ التجاوزات', onclick: async (e) => {
+    footer: el('button.btn.gold', { icon: 'save', iconSize: 16, text: 'حفظ التجاوزات', onclick: async (e) => {
       e.target.disabled = true;
       const limits = {};
       for (const key of ['branches', 'users', 'storage_mb']) {
@@ -1514,7 +1515,7 @@ export async function adminsTab() {
       { header: '', key: 'a', render: r => el('div.row', { style: { gap: '4px' } }, [
         el('button.btn.sm.ghost', { text: 'تحرير', onclick: () => adminDialog(r, load) }),
         r.id === admin.session?.admin?.id ? null
-          : el('button.btn.sm.ghost', { text: '🗑', onclick: async () => {
+          : el('button.btn.sm.ghost', { icon: 'trash-2', iconSize: 16, title: 'حذف', 'aria-label': 'حذف', onclick: async () => {
               if (!await confirmDialog(`حذف حساب الادمن «${r.name}»؟`, { danger: true, confirmText: 'حذف' })) return;
               try { await api.del(`/api/admin/admins/${r.id}`); toast('حُذف الحساب', 'ok'); await load(); }
               catch (e) { toast(e.message, 'warn'); }
@@ -1526,7 +1527,7 @@ export async function adminsTab() {
   return el('div', {}, [
     el('div.row', { style: { justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' } }, [
       el('h3', { text: 'حسابات إدارة المنصة', style: { margin: 0 } }),
-      el('button.btn.gold', { text: '＋ حساب جديد', onclick: () => adminDialog(null, load) })
+      el('button.btn.gold', { icon: 'plus', iconSize: 16, text: 'حساب جديد', onclick: () => adminDialog(null, load) })
     ]),
     el('div.hint', { style: { marginBottom: '10px' },
       text: 'حسابات مستقلة لا تنتمي لأي مجمّع، ولا تظهر في قوائم مستخدميه، ولا تفتح إلا هذه اللوحة.' }),
@@ -1635,11 +1636,11 @@ function landingEditor(L, defaults, redraw) {
       clear(rows).append(...L[key].map((item, i) => el('div.land-row', {}, [
         ...fields(item, i),
         el('div.row', { style: { gap: '4px' } }, [
-          el('button.btn.sm.ghost', { text: '↑', title: 'أعلى', disabled: i === 0,
+          el('button.btn.sm.ghost', { icon: 'arrow-up', iconSize: 16, title: 'أعلى', 'aria-label': 'أعلى', disabled: i === 0,
             onclick: () => { [L[key][i - 1], L[key][i]] = [L[key][i], L[key][i - 1]]; paint(); } }),
-          el('button.btn.sm.ghost', { text: '↓', title: 'أسفل', disabled: i === L[key].length - 1,
+          el('button.btn.sm.ghost', { icon: 'arrow-down', iconSize: 16, title: 'أسفل', 'aria-label': 'أسفل', disabled: i === L[key].length - 1,
             onclick: () => { [L[key][i + 1], L[key][i]] = [L[key][i], L[key][i + 1]]; paint(); } }),
-          el('button.btn.sm.ghost', { text: '🗑', title: 'حذف',
+          el('button.btn.sm.ghost', { icon: 'trash-2', iconSize: 16, title: 'حذف', 'aria-label': 'حذف',
             onclick: () => { L[key].splice(i, 1); paint(); } })
         ])
       ])), L[key].length ? null : empty('—', 'لا عناصر', 'أضف عنصراً بالزر أدناه'));
@@ -1648,7 +1649,7 @@ function landingEditor(L, defaults, redraw) {
     return card(title, [
       hint ? el('div.hint', { style: { marginBottom: '8px' }, text: hint }) : null,
       rows,
-      el('button.btn.sm', { text: '＋ إضافة', style: { marginTop: '10px' }, onclick: () => {
+      el('button.btn.sm', { icon: 'plus', iconSize: 16, text: 'إضافة', style: { marginTop: '10px' }, onclick: () => {
         if (L[key].length >= max) return void toast(`الحد الأعلى ${AR_NUM(max)} عناصر`, 'warn');
         L[key].push(structuredClone(blank)); paint();
       } })
@@ -1656,7 +1657,7 @@ function landingEditor(L, defaults, redraw) {
   };
 
   const features = listCard('المزايا', 'features', LAND_LIMITS.features,
-    { icon: '✨', title: '', body: '' }, (f) => [
+    { icon: 'sparkles', title: '', body: '' }, (f) => [
       el('div.land-row-main', {}, [
         bind(f, 'icon', input({ value: f.icon, style: { maxWidth: '68px', textAlign: 'center' }, 'aria-label': 'الرمز' })),
         bind(f, 'title', input({ value: f.title, placeholder: 'العنوان' })),
@@ -1695,13 +1696,13 @@ function landingEditor(L, defaults, redraw) {
         bind(l, 'label', input({ value: l.label, placeholder: 'النص' })),
         bind(l, 'href', input({ value: l.href, placeholder: 'الرابط', dir: 'ltr' }))
       ]),
-      el('button.btn.sm.ghost', { text: '🗑', onclick: () => { L.footer.links.splice(i, 1); paintFoot(); } })
+      el('button.btn.sm.ghost', { icon: 'trash-2', iconSize: 16, title: 'حذف', 'aria-label': 'حذف', onclick: () => { L.footer.links.splice(i, 1); paintFoot(); } })
     ])), L.footer.links.length ? null : empty('—', 'لا روابط', ''));
   };
   paintFoot();
   const footer = card('التذييل', [
     footRows,
-    el('button.btn.sm', { text: '＋ رابط', style: { margin: '10px 0' }, onclick: () => {
+    el('button.btn.sm', { icon: 'plus', iconSize: 16, text: 'رابط', style: { margin: '10px 0' }, onclick: () => {
       if (L.footer.links.length >= LAND_LIMITS.links) return void toast('بلغتَ الحد الأعلى', 'warn');
       L.footer.links.push({ label: '', href: '' }); paintFoot();
     } }),
@@ -1722,7 +1723,7 @@ function landingEditor(L, defaults, redraw) {
         text: L.enabled
           ? 'الزائر على «/» يرى هذه الصفحة، والدخول على «/login».'
           : 'الزائر على «/» يرى شاشة الدخول — انشرها حين يجهز المحتوى.' }),
-      el('a.btn.sm.ghost', { href: '/', target: '_blank', rel: 'noopener', text: '↗ معاينة' }),
+      el('a.btn.sm.ghost', { href: '/', target: '_blank', rel: 'noopener', icon: 'external-link', iconSize: 16, text: 'معاينة' }),
       el('button.btn.gold', { text: 'حفظ', onclick: save })
     ])]),
     hero, features, stats, sections, footer, seo,
@@ -1766,9 +1767,9 @@ export async function termsTab() {
           render: r => chip(r.is_active ? 'نشط' : 'معطّل', r.is_active ? 'ok' : '') },
         { header: '', key: 'a', render: r => el('div.row', { style: { gap: '4px' } }, [
           el('button.btn.sm.ghost', { text: 'تحرير', onclick: () => termDialog(r, load) }),
-          el('button.btn.sm.ghost', { text: '⇪ فرض', title: 'إضافته للمجمّعات القائمة',
+          el('button.btn.sm.ghost', { icon: 'upload', iconSize: 16, text: 'فرض', title: 'إضافته للمجمّعات القائمة',
             onclick: () => applyTermDialog(r, d.tenants) }),
-          el('button.btn.sm.ghost', { text: '🗑', onclick: async () => {
+          el('button.btn.sm.ghost', { icon: 'trash-2', iconSize: 16, title: 'حذف', 'aria-label': 'حذف', onclick: async () => {
             if (!await confirmDialog(`حذف قالب «${r.name}»؟ لا يمسّ فصول المجمّعات القائمة.`,
               { danger: true, confirmText: 'حذف' })) return;
             try { await api.del(`/api/admin/terms/${r.id}`); toast('حُذف القالب', 'ok'); await load(); }
@@ -1776,7 +1777,7 @@ export async function termsTab() {
           } })
         ]) }
       ], d.items)
-        : empty('🗓', 'لا قوالب فصول',
+        : empty('calendar-range', 'لا قوالب فصول',
           'المجمّعات الجديدة تُنشأ بفصل واحد افتراضي. أضف قوالب لتُنشأ بفصولك أنت.'));
   };
   load();
@@ -1784,7 +1785,7 @@ export async function termsTab() {
   return el('div', {}, [
     el('div.row', { style: { justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' } }, [
       el('h3', { text: 'قوالب الفصول الدراسية', style: { margin: 0 } }),
-      el('button.btn.gold', { text: '＋ قالب جديد', onclick: () => termDialog(null, load) })
+      el('button.btn.gold', { icon: 'plus', iconSize: 16, text: 'قالب جديد', onclick: () => termDialog(null, load) })
     ]),
     el('div.hint', { style: { marginBottom: '10px' },
       text: 'تُنسخ إلى كل مجمّع جديد. والتواريخ نسبية (شهر ويوم البداية + المدّة) فيصلح القالب لكل سنة دون تحرير.' }),
