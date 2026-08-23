@@ -1933,8 +1933,13 @@ section('٢٣. الشاشة الرئيسية العامة ومحرّرها', asy
       readFileSync(`web/js/views/${v}.js`, 'utf8').includes('publicTop')));
   ok('شاشة الدخول تحمل اسم المنصة لا اسم مجمّع',
     readFileSync('web/js/views/login.js', 'utf8').includes("name: brand?.platform?.name"));
-  ok('التخصيص بجهةٍ واحدة لا بإطفاء الـ SaaS',
-    readFileSync('server/core/routes/public.js', 'utf8').includes('if (c === 1) tenant ='));
+  /* لا تراجعَ إلى جهةٍ بعينها: التخصيص من النطاق وحده */
+  ok('لا تراجع إلى جهةٍ على شاشة الدخول المشتركة',
+    !/tenant = await app\.db\.get\('SELECT \* FROM tenants(?! WHERE)/.test(
+      readFileSync('server/core/routes/public.js', 'utf8')));
+  /* شيفرة التطبيق من الشبكة أولاً: الذاكرة أولاً تُبقي المستخدم وراء نسخة */
+  ok('شيفرة التطبيق تُجلَب من الشبكة أولاً',
+    /isCode/.test(readFileSync('web/sw.js', 'utf8')));
   ok('مسارات الدخول تُستبدل بعد الدخول', appJs.includes("['/login', '/signup']"));
   ok('الصفحة تبني نصاً لا وسماً', !/\.innerHTML\s*=|insertAdjacentHTML/.test(land));
   ok('الصفحة العامة تُخزَّن في عامل الخدمة',

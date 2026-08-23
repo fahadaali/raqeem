@@ -5,7 +5,7 @@
    • استقبال إشعارات الدفع (Web Push) على المتصفح والأندرويد والآيفون
    • مزامنة خلفية لإعادة إرسال العمليات التي تمت أثناء انقطاع الشبكة
    ═══════════════════════════════════════════════════════════════════════ */
-const VERSION = 'raqeem-v1.4.0';
+const VERSION = 'raqeem-v1.5.0';
 const SHELL_CACHE = `${VERSION}-shell`;
 const DATA_CACHE = `${VERSION}-data`;
 
@@ -143,7 +143,38 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // الأصول الثابتة → الذاكرة المؤقتة أولاً
+  /*
+   * شيفرة التطبيق (js/css) → الشبكة أولاً، والذاكرة عند انقطاعها.
+   *
+   * كانت الذاكرةُ أولاً مع تحديثٍ في الخلفية: تُعرَض النسخة القديمة الآن وتُخزَّن
+   * الجديدة للزيارة القادمة. فيبقى المستخدم دائماً وراء نسخةٍ كاملة، والأسوأ أن
+   * الملفّات لا تتأخّر معاً — فيجتمع عنده جافاسكربت جديد مع تنسيقٍ قديم: عناصرُ
+   * الشاشة الجديدة موجودةٌ في الصفحة بلا تنسيقٍ يعرفها، وألوانٌ من لوحةٍ سابقة.
+   * ولا يُصلحه إلا تحديثٌ أو تحديثان — وهو ما كان يبدو أنّ التعديل لم يُنشر.
+   *
+   * والمهلة تحمي من الشبكة البطيئة: ثانيتان ثم تُخدَم الذاكرة، فلا يقف الإقلاع.
+   */
+  const isCode = /\.(?:js|css|webmanifest)$/.test(url.pathname);
+  if (isCode) {
+    event.respondWith((async () => {
+      const fresh = fetch(request).then(async (res) => {
+        if (res.ok) (await caches.open(SHELL_CACHE)).put(request, await cleanCopy(res.clone()));
+        return res;
+      });
+      try {
+        const res = await Promise.race([
+          fresh,
+          new Promise((_, rej) => setTimeout(() => rej(new Error('slow')), 2000))
+        ]);
+        if (res && res.ok) return res;
+      } catch { /* بطيئة أو منقطعة — تُخدَم الذاكرة أدناه، والجلب يكمل للتخزين */ }
+      return (await caches.match(request, { ignoreVary: true }))
+        || fresh.catch(() => new Response('', { status: 504 }));
+    })());
+    return;
+  }
+
+  // بقية الأصول (صور وأيقونات وخطوط) → الذاكرة أولاً: ثابتةٌ وثقيلة
   event.respondWith((async () => {
     const cached = await caches.match(request, { ignoreVary: true });
     if (cached) {
