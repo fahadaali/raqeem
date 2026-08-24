@@ -14,6 +14,12 @@ export const subscriptionInactive = (m = 'اشتراك الجهة غير نشط'
 export const notFound = (m = 'العنصر غير موجود') => new AppError(m, 404, 'NOT_FOUND');
 export const conflict = (m = 'تعارض في البيانات') => new AppError(m, 409, 'CONFLICT');
 export const locked = (m = 'هذا الفصل مؤرشف ومغلق للقراءة فقط') => new AppError(m, 423, 'TERM_CLOSED');
+/*
+ * حالتا التحضير: رمزاهما يعنيان شيئاً للواجهة، فلا يُلبسان `BAD_REQUEST` أو
+ * `CONFLICT` العامَّين. و٤٢٢ لأن الطلب سليمٌ بنيةً ومرفوضٌ بموقعه لا بصياغته.
+ */
+export const outOfRange = (m, d) => new AppError(m, 422, 'OUT_OF_RANGE', d);
+export const alreadyDone = (m) => new AppError(m, 409, 'ALREADY_DONE');
 export const tooMany = (m = 'تجاوزت الحد المسموح من الطلبات، حاول لاحقاً') => new AppError(m, 429, 'RATE_LIMITED');
 
 /** تغليف معالجات async */

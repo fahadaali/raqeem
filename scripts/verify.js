@@ -14,6 +14,25 @@ let pass = 0, fail = 0;
 const lines = [];
 const S = {};
 
+/*
+ * كل ردٍّ رافض يمرّ من هنا يُفحَص غلافُه.
+ *
+ * الواجهة تقرأ رسالة الخطأ من `error.message` وحدها (`web/js/api.js`)، فمسارٌ
+ * يكتب رسالته في جذر الجسم تضيع رسالتُه ويرى المستخدم «حدث خطأ غير متوقع» —
+ * وهو ما وقع في رفض التحضير خارج النطاق: رسالةٌ تقول كم متراً بالضبط، ولا تصل.
+ *
+ * والفحص القديم كان يسأل الخادمَ عن جسمه ولا يسأل هل تقرؤه الواجهة، فمرّ العطب
+ * وهو أخضر. فصار كلُّ ردٍّ غير ناجحٍ يُدقَّق آلياً: لا استثناء يُنسى ولا مسارٌ
+ * جديد يفلت.
+ */
+const envelopeBreaks = [];
+const checkEnvelope = (method, url, status, data) => {
+  if (status < 400 || status === 429) return;          /* حدُّ الطلبات يوقف التدقيق أصلاً */
+  if (data === null) return;                            /* جسمٌ فارغ أو غير JSON — لا غلاف يُفحَص */
+  if (typeof data?.error?.message === 'string' && data.error.message) return;
+  envelopeBreaks.push(`${method} ${url} → ${status}`);
+};
+
 async function call(method, url, { token, body, raw, headers = {}, expect429 = false } = {}) {
   const isForm = body instanceof FormData;
   const res = await fetch(BASE + url, {
@@ -37,6 +56,7 @@ async function call(method, url, { token, body, raw, headers = {}, expect429 = f
     console.log(`${'═'.repeat(60)}\n`);
     process.exit(2);
   }
+  checkEnvelope(method, url, res.status, data);
   return { status: res.status, data, res };
 }
 const login = (email, password) => call('POST', '/api/auth/login', { body: { email, password } });
@@ -237,8 +257,11 @@ section('٥. الحضور الجغرافي والرواتب', async () => {
   ok('حالة التحضير تُرجع دوام اليوم', !!today.workday?.start);
 
   const far = await call('POST', '/api/hr/attendance/check', { token: S.employee, body: { lat: 25.5, lng: 47.5 } });
-  ok('رفض التحضير خارج النطاق', far.status === 422 && far.data.code === 'OUT_OF_RANGE');
-  ok('الرد يوضح المسافة والنطاق', far.data.distance > far.data.radius);
+  ok('رفض التحضير خارج النطاق', far.status === 422 && far.data.error?.code === 'OUT_OF_RANGE');
+  ok('الرد يوضح المسافة والنطاق', far.data.error?.details?.distance > far.data.error?.details?.radius);
+  /* والرسالة تصل الشاشة فعلاً — لا تُكتَب في جذر الجسم حيث لا تقرؤها الواجهة */
+  ok('رسالة الرفض تبلغ المستخدم لا «خطأ غير متوقع»',
+    /خارج نطاق الفرع/.test(far.data.error?.message || ''), far.data.error?.message || '(لا رسالة)');
 
   const near1 = await call('POST', '/api/hr/attendance/check', {
     token: S.employee, body: { lat: today.branch.lat + 0.0003, lng: today.branch.lng } });
@@ -2295,6 +2318,12 @@ section('٢٤. قوالب الفصول الافتراضية وفرضها', async
     try { await s.fn(); }
     catch (e) { fail++; lines.push(`  ✘ انهيار القسم — ${e.message}`); }
   }
+  /* حصيلةُ الراصد: كلُّ ردٍّ رافضٍ مرّ بالمدقّق يجب أن تصل رسالتُه الشاشة */
+  lines.push('\n▸ غلاف الأخطاء — رسالةٌ تصل المستخدم في كل ردٍّ رافض');
+  const uniq = [...new Set(envelopeBreaks)];
+  ok('كل ردٍّ رافضٍ يحمل error.message تقرؤه الواجهة',
+    uniq.length === 0, uniq.slice(0, 8).join(' · ') + (uniq.length > 8 ? ` … و${uniq.length - 8} غيرها` : ''));
+
   console.log(lines.join('\n'));
   console.log(`\n${'═'.repeat(60)}`);
   console.log(`  النتيجة: ${pass} ناجح · ${fail} فاشل · ${((Date.now() - started) / 1000).toFixed(1)} ثانية`);

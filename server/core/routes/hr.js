@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { nowUTC, j } from '../sql.js';
-import { h, created, status } from '../http.js';
-import { badRequest, notFound, forbidden, locked } from '../errors.js';
+import { h, created } from '../http.js';
+import { badRequest, notFound, forbidden, locked, outOfRange, alreadyDone } from '../errors.js';
 import { can, has } from '../middleware/rbac.js';
 import { audit } from '../middleware/audit.js';
 import { scoped, assertBranch, findScoped, currentTerm, termIsClosed } from '../scope.js';
@@ -68,10 +68,13 @@ router.post('/attendance/check', can('hr.attendance.self'), h(async (req) => {
   const distance = haversine(Number(lat), Number(lng), branch.lat, branch.lng);
   const radius = branch.geofence_radius || app.cfg.geofenceDefault;
   if (distance > radius) {
+    /* أرقامٌ عربية كما في بقية رسائل المنصة — والشارة فوق الخريطة بجانبها */
+    const m = (n) => Number(n).toLocaleString('ar-SA');
     await audit(req, { action: 'reject', entity: 'attendance', branchId,
-      summary: `محاولة تحضير مرفوضة — المسافة ${distance}م تتجاوز نطاق الفرع (${radius}م)` });
-    return status(422, { ok: false, code: 'OUT_OF_RANGE', distance, radius,
-      message: `أنت خارج نطاق الفرع (${distance} متراً من ${branch.name}). النطاق المسموح ${radius} متراً.` });
+      summary: `محاولة تحضير مرفوضة — المسافة ${m(distance)}م تتجاوز نطاق الفرع (${m(radius)}م)` });
+    throw outOfRange(
+      `أنت خارج نطاق الفرع (${m(distance)} متراً من ${branch.name}). النطاق المسموح ${m(radius)} متراً.`,
+      { distance, radius });
   }
 
   const term = await currentTerm(app, req.ctx.tenantId);
@@ -97,8 +100,7 @@ router.post('/attendance/check', can('hr.attendance.self'), h(async (req) => {
       record: await app.db.get('SELECT * FROM attendance WHERE id=?', r.lastId) };
   }
 
-  if (existing.check_out_at)
-    return status(409, { ok: false, code: 'ALREADY_DONE', message: 'تم تسجيل حضورك وانصرافك لهذا اليوم مسبقاً' });
+  if (existing.check_out_at) throw alreadyDone('تم تسجيل حضورك وانصرافك لهذا اليوم مسبقاً');
 
   const minutes = Math.max(0, Math.round((Date.now() - new Date(existing.check_in_at).getTime()) / 60000));
   await app.db.run('UPDATE attendance SET check_out_at=?,out_lat=?,out_lng=?,out_distance=?,minutes_worked=? WHERE id=?',
