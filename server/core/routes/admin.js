@@ -580,7 +580,7 @@ router.put('/settings', h(async (req) => {
       support_phone=?, saas_enabled=?, signup_enabled=?, signup_needs_review=?, default_plan_code=?,
       trial_days=?, grace_days=?, vat_rate=?, currency=?, vat_number=?, cr_number=?, bank_details=?,
       invoice_prefix=?, seller_address=?, zatca_enabled=?, payment_gateway=?, gateway_config=?,
-      maps_google_key=?, require_2fa_admins=?, health_idle_days=?, upsell_threshold=?, updated_at=? WHERE id=1`,
+      maps_google_key=?, maps_geoapify_key=?, require_2fa_admins=?, health_idle_days=?, upsell_threshold=?, updated_at=? WHERE id=1`,
     b.platform_name?.trim() || cur.platform_name,
     b.platform_name_en ?? cur.platform_name_en,
     b.tagline ?? cur.tagline,
@@ -601,12 +601,13 @@ router.put('/settings', h(async (req) => {
     JSON.stringify(b.gateway_config ?? j(cur.gateway_config, {}) ?? {}),
     /* المفتاح يُمحى بإرسال نصٍّ فارغ، ويبقى كما هو إن لم يُرسَل أصلاً */
     b.maps_google_key === undefined ? cur.maps_google_key : (String(b.maps_google_key).trim() || null),
+    b.maps_geoapify_key === undefined ? cur.maps_geoapify_key : (String(b.maps_geoapify_key).trim() || null),
     bool(b.require_2fa_admins, cur.require_2fa_admins),
     num(b.health_idle_days, cur.health_idle_days),
     num(b.upsell_threshold, cur.upsell_threshold),
     nowUTC());
 
-  /* المفتاح مخزَّنٌ في ذاكرة مسار الخرائط دقيقةً — يُسقَط فوراً فيعمل التبديل
+  /* المفاتيح مخزَّنة في ذاكرة مسار الخرائط دقيقةً — تُسقَط فوراً فيعمل التبديل
      من أول تحديثٍ للشاشة لا بعد دقيقة يظنّها المشغّل عطلاً. */
   forgetMapsKey();
 

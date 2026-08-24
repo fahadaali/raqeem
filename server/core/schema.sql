@@ -889,6 +889,7 @@ CREATE TABLE IF NOT EXISTS platform_settings (
   payment_gateway    TEXT NOT NULL DEFAULT 'manual',
   gateway_config     TEXT NOT NULL DEFAULT '{}',
   maps_google_key    TEXT,                         -- مفتاح Map Tiles API — بدونه تعمل الخريطة على الطبقة المفتوحة
+  maps_geoapify_key  TEXT,                         -- مفتاح Geoapify — بديلٌ مجاني بلا بطاقة، يسبق الطبقة المفتوحة
   require_2fa_admins INTEGER NOT NULL DEFAULT 0,   -- إلزام مالكي المنصة بالتحقق بخطوتين
   health_idle_days   INTEGER NOT NULL DEFAULT 14,  -- عتبة «جهة خاملة»
   upsell_threshold   INTEGER NOT NULL DEFAULT 80,  -- نسبة الاستهلاك التي تفتح فرصة ترقية

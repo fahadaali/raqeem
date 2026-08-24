@@ -103,10 +103,14 @@ function tileUrl(layer, z, x, y) {
  */
 export function geoMap({ lat, lng, radius = 50, me = null, editable = false, onMove, onLocate,
   height = 260, fallback = { lat: 24.7136, lng: 46.6753 } }) {
-  const box = el('div.geomap', { style: { height: `${height}px` }, tabindex: '0',
+  /* `--gm-h` يبلّغ الأنماطَ ارتفاعَ الخريطة: لوحةُ الطبقات محبوسةٌ داخلها
+     (`overflow:hidden`)، وسقفُها بالنِّسَب يُحسَب من زرّها لا منها. */
+  const box = el('div.geomap', { style: { height: `${height}px`, '--gm-h': `${height}px` }, tabindex: '0',
     role: 'application', 'aria-label': 'خريطة موقع الفرع ونطاق التحضير' });
   const tilesEl = el('div.gm-tiles');
   const marks = el('div.gm-marks');
+  /* نسبةُ المصدر شرطُ رخصة: رابطٌ متبوع (بلا `nofollow`) تشترطه خطّة Geoapify
+     المجانية، ورخصةُ ODbL تشترط النسبة لبيانات OpenStreetMap. فلا يُخفى ولا يُقيَّد. */
   const credit = el('a.gm-credit', { target: '_blank', rel: 'noopener',
     href: OPEN_LAYER.attribution_url, text: OPEN_LAYER.attribution });
 

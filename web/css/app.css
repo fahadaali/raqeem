@@ -899,7 +899,7 @@ table.tbl.sheet td:first-child::after,table.tbl.sheet th:first-child::after{
  * (`overflow:hidden`)، وزرُّ الطبقات في أعلى العمود — فما فُتح صعوداً ضاع.
  */
 .gm-panel{position:absolute;inset-block-start:0;inset-inline-start:calc(100% + 6px);
-  min-width:158px;max-height:calc(100% + 160px);overflow-y:auto;
+  min-width:158px;max-height:calc(var(--gm-h,260px) - 20px);overflow-y:auto;
   background:var(--surface);border:1px solid var(--border);
   border-radius:var(--r);box-shadow:var(--shadow-lg);padding:5px;display:flex;
   flex-direction:column;gap:2px;z-index:8}

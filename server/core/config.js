@@ -40,12 +40,16 @@ export function buildConfig(env = {}) {
     },
 
     /*
-     * الخريطة: مفتاح خرائط قوقل سرٌّ يبقى على الخادم — الوسيط في
-     * routes/map.js يجلب المربّعات به. وبلا مفتاحٍ تعمل الخريطة على
-     * الطبقة المفتوحة، فلا تتعطّل شاشة التحضير لغياب اشتراك.
+     * الخريطة: مفاتيح المزوّدين أسرارٌ تبقى على الخادم — الوسيط في
+     * routes/map.js يجلب المربّعات بها. وترتيب الأفضلية: قوقل، ثم Geoapify،
+     * ثم الطبقة المفتوحة — فلا تتعطّل شاشة التحضير لغياب اشتراك.
+     *
+     * ومفتاح Geoapify يُستخرج بلا بطاقة ولا فوترة، وخطّته المجانية تسمح
+     * باستعمالٍ تجاريّ محدود مقابل نسبة «Powered by Geoapify».
      */
     maps: {
-      googleKey: env.GOOGLE_MAPS_API_KEY || ''
+      googleKey: env.GOOGLE_MAPS_API_KEY || '',
+      geoapifyKey: env.GEOAPIFY_API_KEY || ''
     },
 
     geofenceDefault: num(env.GEOFENCE_DEFAULT_RADIUS, 50),

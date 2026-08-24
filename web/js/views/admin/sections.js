@@ -884,7 +884,8 @@ export async function settingsTab() {
     idleDays: input({ type: 'number', value: s.health_idle_days, dir: 'ltr' }),
     upsell: input({ type: 'number', value: s.upsell_threshold, dir: 'ltr' }),
     gwSecret: input({ type: 'password', placeholder: '••••••••', dir: 'ltr' }),
-    mapsKey: input({ value: s.maps_google_key || '', dir: 'ltr', placeholder: 'AIza…' })
+    mapsKey: input({ value: s.maps_google_key || '', dir: 'ltr', placeholder: 'AIza…' }),
+    geoKey: input({ value: s.maps_geoapify_key || '', dir: 'ltr', placeholder: 'مفتاح Geoapify' })
   };
   const zatca = input({ type: 'checkbox', checked: !!s.zatca_enabled });
   const require2fa = input({ type: 'checkbox', checked: !!s.require_2fa_admins });
@@ -958,12 +959,17 @@ export async function settingsTab() {
     ])),
     card('الخرائط', el('div.stack', {}, [
       el('div.row', {}, [
-        chip(s.maps_google_key ? 'خرائط قوقل مفعّلة' : 'الطبقة المفتوحة (OpenStreetMap)',
-          s.maps_google_key ? 'ok' : 'warn', 'map-pin')
+        chip(s.maps_google_key ? 'خرائط قوقل مفعّلة'
+          : s.maps_geoapify_key ? 'Geoapify مفعّلة'
+            : 'الطبقة المفتوحة (OpenStreetMap)',
+        s.maps_google_key || s.maps_geoapify_key ? 'ok' : 'warn', 'map-pin')
       ]),
+      el('p.hint', { text: 'المفتاح يبقى على الخادم — المتصفّح يطلب المربّعات من المنصة لا من المزوّد، فلا يُقرأ المفتاح من الصفحة ولا يرى المزوّدُ جهازَ المُحضِّر. والمربّعات تُخزَّن على الخادم مرّةً للجميع، فنطاقُ فرعٍ واحد بضعُ عشرات منها مهما فتح الشاشةَ من فتح.' }),
       field('مفتاح خرائط قوقل (Map Tiles API)', f.mapsKey, {
-        hint: 'من Google Cloud بعد تفعيل «Map Tiles API». المفتاح يبقى على الخادم — المتصفّح يطلب المربّعات من المنصة لا من قوقل. واتركه فارغاً لتعمل الخريطة على الطبقة المفتوحة بلا مبدّل طبقات.' }),
-      el('p.hint', { text: 'يسري فور الحفظ. أعد تحميل شاشة تسجيل الحضور أو ضبط الفرع ليظهر مبدّل الطبقات: خريطة وقمر صناعي وهجين وتضاريس.' })
+        hint: 'من Google Cloud بعد تفعيل «Map Tiles API». يفتح طبقاتِ القمر الصناعي والتضاريس. الحصّة المجانية عشرة آلاف طلبٍ شهرياً ثم يُحاسَب، ويشترط تفعيل الفوترة في المشروع.' }),
+      field('مفتاح Geoapify', f.geoKey, {
+        hint: 'بديلٌ مجاني بلا بطاقة: يُستخرَج من geoapify.com. الحصّة ثلاثة آلاف رصيدٍ يومياً والمربّع رُبع رصيد — أي اثنا عشر ألف مربّعٍ في اليوم، ويُسمح بالاستعمال التجاري ضمنها شرط بقاء «Powered by Geoapify» في حاشية الخريطة. يفتح ثلاثة أنماطٍ أوضح من الطبقة المفتوحة — بلا صور أقمار.' }),
+      el('p.hint', { text: 'الأفضلية للأعلى: قوقل إن كان مفتاحه، وإلا Geoapify، وإلا الطبقة المفتوحة — وهذه تعمل دائماً بلا مفتاحٍ ولا حساب. يسري فور الحفظ: أعد تحميل شاشة تسجيل الحضور أو ضبط الفرع ليظهر مبدّل الطبقات.' })
     ])),
     card('الأمن', el('div.stack', {}, [
       el('label.row', { style: { gap: '8px' } }, [require2fa,
@@ -993,6 +999,7 @@ export async function settingsTab() {
           seller_address: { street: f.street.value.trim(), district: f.district.value.trim(),
             city: f.city.value.trim(), postal_code: f.postal.value.trim() },
           maps_google_key: f.mapsKey.value.trim(),
+          maps_geoapify_key: f.geoKey.value.trim(),
           zatca_enabled: zatca.checked,
           require_2fa_admins: require2fa.checked,
           payment_gateway: gateway.value,

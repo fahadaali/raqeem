@@ -961,10 +961,11 @@ section('١٩. طبقة الـ SaaS (المرحلة الثانية)', async () =
     token: S.admin, body: { saas_enabled: true, signup_enabled: true } });
   ok('تفعيل طبقة الـ SaaS من لوحة المالك', settings.status === 200 && settings.data.saas_enabled === 1);
 
-  /* ── مفتاح خرائط قوقل يُضبط من اللوحة بلا إعادة نشر ── */
-  ok('الإعدادات تحمل حقل مفتاح الخرائط',
-    'maps_google_key' in (await call('GET', '/api/admin/settings', { token: S.admin })).data);
-  ok('حفظ المفتاح من اللوحة',
+  /* ── مفاتيح الخرائط تُضبط من اللوحة بلا إعادة نشر ── */
+  const cfg0 = (await call('GET', '/api/admin/settings', { token: S.admin })).data;
+  ok('الإعدادات تحمل حقلَي مفتاحَي الخرائط',
+    'maps_google_key' in cfg0 && 'maps_geoapify_key' in cfg0);
+  ok('حفظ مفتاح قوقل من اللوحة',
     (await call('PUT', '/api/admin/settings', { token: S.admin, body: { maps_google_key: 'AIzaVerifyKey' } }))
       .data.maps_google_key === 'AIzaVerifyKey');
   const gcat = (await call('GET', '/api/map/layers')).data;
@@ -977,8 +978,29 @@ section('١٩. طبقة الـ SaaS (المرحلة الثانية)', async () =
     (await call('PUT', '/api/admin/settings', { token: S.admin, body: { maps_google_key: '' } }))
       .data.maps_google_key === null
     && (await call('GET', '/api/map/layers')).data.provider === 'osm');
-  ok('المفتاح لا يتسرّب إلى الواجهة العامة',
-    !JSON.stringify((await call('GET', '/api/public/platform')).data).includes('maps_google_key'));
+
+  /* ── Geoapify: البديل المجاني حين لا مفتاح لقوقل ──
+     المفتاح مجاني بلا بطاقة، فهو ما يرقّي الخريطة لمن لا يريد فوترة أصلاً. */
+  ok('حفظ مفتاح Geoapify من اللوحة',
+    (await call('PUT', '/api/admin/settings', { token: S.admin, body: { maps_geoapify_key: 'geoVerifyKey' } }))
+      .data.maps_geoapify_key === 'geoVerifyKey');
+  const acat = (await call('GET', '/api/map/layers')).data;
+  ok('الكتالوج يتحوّل إلى Geoapify بلا مفتاح قوقل',
+    acat.provider === 'geoapify' && ['bright', 'quiet', 'night'].every(id => acat.layers.some(l => l.id === id)),
+    acat.provider);
+  ok('نسبة Geoapify مكتوبة في كل طبقة من طبقاتها — شرطُ خطّتها المجانية',
+    acat.layers.filter(l => l.id !== 'osm').every(l => /Geoapify/.test(l.attribution || '')));
+  ok('والطبقة المفتوحة تبقى مرجعاً في آخر الكتالوج',
+    acat.layers[acat.layers.length - 1].id === 'osm');
+  ok('مفتاح Geoapify لا يظهر في عنوان المربّع — الوسيط وحده يعرفه',
+    acat.layers.every(l => !/apiKey|geoVerifyKey/.test(l.url || '')));
+  ok('محو مفتاح Geoapify يعيد الطبقة المفتوحة',
+    (await call('PUT', '/api/admin/settings', { token: S.admin, body: { maps_geoapify_key: '' } }))
+      .data.maps_geoapify_key === null
+    && (await call('GET', '/api/map/layers')).data.provider === 'osm');
+  ok('المفاتيح لا تتسرّب إلى الواجهة العامة',
+    !/maps_google_key|maps_geoapify_key/
+      .test(JSON.stringify((await call('GET', '/api/public/platform')).data)));
 
   /* ── صفحة الأسعار العامة ── */
   const pub = await call('GET', '/api/public/platform');
@@ -2059,6 +2081,27 @@ section('٢٣. الشاشة الرئيسية العامة ومحرّرها', asy
   ok('مربّعات الخريطة مسموحةٌ في سياسة الصور وحدها',
     /img-src[^;]*tile\.openstreetmap\.org/.test(readFileSync('web/_headers', 'utf8'))
     && !/connect-src[^;]*openstreetmap/.test(readFileSync('web/_headers', 'utf8')));
+  {
+    const mapSrc = readFileSync('server/core/routes/map.js', 'utf8');
+    /* طبقةٌ في الكتالوج يرفضها وسيطُ المربّعات خريطةٌ سوداء للمستخدم — والجدول
+       الواحد هو ما يمنع ذلك، فيُتحقَّق أنّ المُدقِّق يسأله لا يعدّ الأسماء بنفسه. */
+    ok('وسيط المربّعات يتحقّق من الطبقة بجداولها الثلاثة',
+      /layer !== OSM\.id && !GOOGLE_LAYERS\[layer\] && !GEOAPIFY_LAYERS\[layer\]/.test(mapSrc));
+    /* ومفتاح Geoapify لا يُبنى في عنوانٍ يصل المتصفّح */
+    ok('مفتاح Geoapify يبقى في الوسيط وحده',
+      /apiKey=\$\{encodeURIComponent\(k\.geoapify\)\}/.test(mapSrc)
+      && !/apiKey/.test(readFileSync('web/js/map.js', 'utf8')));
+    /* وذاكرةُ المربّعات هي ما يُبقي الحصص المجانية كافية — فقدُها عطلٌ صامت */
+    ok('المربّعات تُخزَّن على الخادم مرّةً للجميع',
+      /caches\.default/.test(mapSrc) && /memPut\(memKey/.test(mapSrc));
+    /* ومزوّدٌ ساقط يُعلَّق: بلا تعليقٍ يُطارَد المفتاح الميت عشرين مرّةً في كل شاشة */
+    ok('كلا المزوّدين يُعلَّق عند سقوطه لا يُطارَد',
+      /providerFailed\('google'/.test(mapSrc) && /providerFailed\('geoapify'/.test(mapSrc)
+      && /providerUp\(req\.app, 'geoapify'\)/.test(mapSrc));
+    /* ونسبةُ المصدر رابطٌ متبوع — `nofollow` يخرق شرط خطّة Geoapify المجانية */
+    ok('نسبة المصدر رابطٌ متبوع',
+      !/gm-credit[\s\S]{0,160}nofollow/.test(readFileSync('web/js/map.js', 'utf8')));
+  }
   ok('الخريطة تُخفي المربّع الذي لا يصل',
     /gm-blind/.test(readFileSync('web/js/map.js', 'utf8')));
 

@@ -9,6 +9,17 @@ import { icon as luIcon } from './icons.js';
  * وهي المدخل الوحيد للأيقونات في الواجهة — لا رموز تعبيرية ولا أي حزمة أخرى
  * (دليل الهوية · البند ٦). حجمها الافتراضي ٢٠px وهو مقاس الأسطر في الدليل.
  */
+/*
+ * التوكنز في `style` تحتاج `setProperty`: `Object.assign` على `CSSStyleDeclaration`
+ * يُسقط ما بدأ بشرطتين صامتاً — فيبقى المتغيّر غير مضبوط ولا يقول أحدٌ لماذا.
+ */
+function setStyle(node, v) {
+  for (const [k, val] of Object.entries(v)) {
+    if (k.startsWith('--')) node.style.setProperty(k, val);
+    else node.style[k] = val;
+  }
+}
+
 export function el(spec, props = {}, children = []) {
   let str = String(spec);
   let id = '';
@@ -31,7 +42,7 @@ export function el(spec, props = {}, children = []) {
     if (k === 'class') node.className = (node.className + ' ' + v).trim();
     else if (k === 'html') node.innerHTML = v;
     else if (k === 'text') node.textContent = v;
-    else if (k === 'style' && typeof v === 'object') Object.assign(node.style, v);
+    else if (k === 'style' && typeof v === 'object') setStyle(node, v);
     else if (k === 'dataset') Object.assign(node.dataset, v);
     else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2).toLowerCase(), v);
     else if (k === 'value') node.value = v;
