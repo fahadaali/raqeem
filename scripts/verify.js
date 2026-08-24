@@ -2149,14 +2149,15 @@ section('٢٣. الشاشة الرئيسية العامة ومحرّرها', asy
     enabled: true,
     hero: { title: 'ط', cta_label: 'اضغط', cta_href: 'javascript:alert(1)', image_url: 'data:text/html,x' },
     footer: { links: [{ label: 'سيء', href: 'javascript:x' }, { label: 'حسن', href: '/pricing' }] },
-    features: Array.from({ length: 40 }, (_, i) => ({ icon: '★', title: `م${i}`, body: 'ب' })),
+    features: Array.from({ length: 60 }, (_, i) => ({ icon: '★', title: `م${i}`, body: 'ب', group: 'ع' })),
     sections: Array.from({ length: 40 }, () => ({ type: 'text', title: 'ق', body: 'ن' })) } } });
   const L = evil.data.landing;
   ok('رابط javascript: يُجرَّد من زر الواجهة', L.hero.cta_href === '');
   ok('رابط data: يُجرَّد من الصورة', L.hero.image_url === '');
   ok('رابط javascript: يُسقط من التذييل ويبقى السليم',
     L.footer.links.length === 1 && L.footer.links[0].href === '/pricing');
-  ok('عدد المزايا محدود', L.features.length === 12);
+  ok('عدد المزايا محدود', L.features.length === 40);
+  ok('عائلة الميزة تُحفظ', L.features[0].group === 'ع');
   ok('عدد الأقسام محدود', L.sections.length === 8);
   ok('النص الطويل يُقصّ',
     (await call('PUT', '/api/admin/landing', { token: ADM, body: { landing: {

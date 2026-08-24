@@ -48,6 +48,18 @@
   --shadow-sm:0 1px 2px rgba(34,48,43,.04);
   --shadow:0 10px 45px rgba(34,48,43,.05);
   --shadow-lg:0 15px 34px rgba(34,48,43,.10);
+  /* ظلُّ الطفو: ثلاث طبقاتٍ لا واحدة — تماسٌّ قريب ثم ارتفاعٌ ثم هالةٌ بعيدة.
+     الظلُّ الواحد يُقرأ حدّاً رماديّاً، والثلاثة تُقرأ ارتفاعاً فوق الصفحة.
+     وهو ناعمٌ كما يشترط الدليل: لا حدَّ أسود ولا حافّة حادّة. */
+  --float-near:rgba(34,48,43,.05); --float-mid:rgba(34,48,43,.09); --float-far:rgba(34,48,43,.12);
+  --shadow-float:0 2px 6px var(--float-near),0 14px 30px var(--float-mid),0 40px 80px var(--float-far);
+  /* وفوق الغلاف الأخضر يعمق الظلّ: سطحٌ غامقٌ يبتلع ظلاًّ فاتحاً فلا يُرى الارتفاع */
+  --float-brand:rgba(11,38,30,.34); --float-brand-far:rgba(11,38,30,.46);
+  --shadow-float-brand:0 3px 8px var(--float-brand),0 18px 38px var(--float-brand),
+    0 48px 92px var(--float-brand-far);
+  /* بركةُ الظلّ تحت اللوحة — تُثبّتها على أرضٍ فلا تسبح في فراغ */
+  --float-pool:rgba(34,48,43,.20);
+  --float-pool-brand:rgba(11,38,30,.55);
 
   /* ── الخطوط: زين للعناوين، بلكس للنصوص — لا خط ثالث ── */
   --font-body:"IBM Plex Sans Arabic","Segoe UI",Tahoma,system-ui,-apple-system,sans-serif;
@@ -111,6 +123,9 @@
   --surface:#1A2521; --border-2:#31423A; --overlay:rgba(0,0,0,.65);
   --shadow-sm:0 1px 2px rgba(0,0,0,.4); --shadow:0 4px 16px rgba(0,0,0,.45);
   --shadow-lg:0 18px 44px rgba(0,0,0,.6);
+  /* على الداكن يعمّق الظلّ ويقصر مداه: الهالة الواسعة على أرضٍ غامقة ضبابٌ لا ارتفاع */
+  --float-near:rgba(0,0,0,.42); --float-mid:rgba(0,0,0,.48); --float-far:rgba(0,0,0,.55);
+  --float-pool:rgba(0,0,0,.6);
 }
 *,*::before,*::after{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%;overflow-x:clip}
@@ -1095,7 +1110,10 @@ table.tbl.sheet td:first-child::after,table.tbl.sheet th:first-child::after{
 .tab.active{color:var(--primary);border-bottom-color:var(--primary);font-weight:600}
 
 .bars{display:flex;align-items:flex-end;gap:9px;height:150px;padding-top:12px}
-.bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0}
+/* شبكةٌ لا عمودٌ مرن: نسبة العمود تُقاس على مساره، والمسار وحده هو المرتفع
+   الباقي بعد سطر التسمية — وبالعمود المرن كان ارتفاعه محتواه فتسطّح كل عمود */
+.bar-col{flex:1;display:grid;grid-template-rows:1fr auto;align-items:end;justify-items:center;
+  gap:6px;min-width:0;height:100%}
 .bar-col .bar{width:100%;max-width:46px;background:var(--primary);border-radius:8px 8px 0 0;min-height:4px;
   transition:height .5s;position:relative}
 .bar-col .bar span{position:absolute;inset-block-start:-19px;inset-inline:0;text-align:center;
@@ -1318,8 +1336,36 @@ table.tbl.sheet td:first-child::after,table.tbl.sheet th:first-child::after{
 .land-cta .btn.lg{padding:13px 26px;font-size:15px;min-height:48px}
 .land-cta .btn.ghost{background:transparent;color:var(--on-brand);border-color:var(--cream-a60)}
 .land-cta .btn.ghost:hover{background:var(--on-brand);color:var(--brand-surface);border-color:var(--on-brand);box-shadow:none}
-.land-hero-art .land-frame{border-color:var(--cream-a28)}
+.land-hero-art .land-frame{border-color:var(--cream-a28);box-shadow:var(--shadow-float-brand)}
+.land-hero-art .land-float::after{background:radial-gradient(closest-side,var(--float-pool-brand),transparent)}
 .land-hero-art img{width:100%;height:auto;display:block}
+
+/* ── اللوحة الطافية: منظورٌ وميلٌ وظلٌّ يُقرأ ارتفاعاً ─────────
+   اللقطة مسطّحةٌ على الصفحة تُقرأ صورةً في مقالة، والمائلةُ في منظورٍ تُقرأ
+   شاشةً قائمة. والميل خفيفٌ عمداً: ما زاد شوّه النصّ داخل اللقطة فصارت زينةً
+   لا دليلاً. وهو ثلاث طبقات: المنظور على الحاوية، والطفو وظلُّه على الوسطى،
+   والميل على الإطار — فلا يتنازع الميلُ والطفو على `transform` واحد. */
+.land-stage{--tilt:-7deg}
+[dir="ltr"] .land-stage{--tilt:7deg}   /* rtl-ok: الميل انعكاسٌ هندسي لا هامش */
+.land-float{position:relative;animation:land-bob 7s ease-in-out infinite alternate}
+/* بركةُ الظلّ: بيضاويٌّ مضبَّب تحت اللوحة يثبّتها على أرضٍ فلا تسبح في فراغ */
+.land-float::after{content:"";position:absolute;inset-inline:9%;inset-block-end:-26px;height:34px;
+  background:radial-gradient(closest-side,var(--float-pool),transparent);
+  filter:blur(9px);opacity:.7;z-index:-1;pointer-events:none}
+/* المنظور في دالّة `transform` لا خاصيةً على الحاوية: مركزه العنصر نفسه، فلا
+   يتبدّل الميل حين ينزاح الإطار في الشبكة ولا يحتاج سلسلةَ `preserve-3d`. */
+.land-stage .land-frame{box-shadow:var(--shadow-float);
+  transform:perspective(1700px) rotateY(var(--tilt)) rotateX(2.5deg) scale(.985);
+  transition:transform .55s cubic-bezier(.2,.7,.3,1),box-shadow .55s}
+/* التحويم يُسوّي اللوحة ويرفعها: من قصد القراءة يجد اللقطة مستويةً أمامه */
+.land-stage:hover .land-frame,.land-stage:focus-within .land-frame{
+  transform:perspective(1700px) rotateY(0) rotateX(0) scale(1)}
+@keyframes land-bob{from{transform:translateY(0)}to{transform:translateY(-13px)}}
+/* من طلب سكونَ الحركة يبقى له الميل والظلّ — هما عمقٌ ثابت لا حركة */
+@media (prefers-reduced-motion:reduce){
+  .land-float{animation:none}
+  .land-stage .land-frame{transition:none}
+}
 
 .land-stats{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
   padding:26px clamp(14px,4vw,42px);background:var(--surface);border-bottom:1px solid var(--border)}
@@ -1329,18 +1375,31 @@ table.tbl.sheet td:first-child::after,table.tbl.sheet th:first-child::after{
 
 .land-features{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));
   padding:clamp(28px,5vw,56px) clamp(14px,4vw,42px)}
-.land-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
-  padding:26px 22px;box-shadow:var(--shadow);transition:.2s}
-.land-card:hover{transform:translateY(-3px)}
+/* البطاقة أفقية: المزايا سبعٌ وثلاثون، والقرصُ فوق النصّ يطيل الجدار مرّتين */
+.land-card{display:flex;align-items:flex-start;gap:15px;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
+  padding:20px 18px;box-shadow:var(--shadow);transition:.2s}
+.land-card:hover{transform:translateY(-3px);border-color:var(--primary)}
 /* أيقونة البطاقة ٤٨ كما في الدليل، داخل قرصٍ نعناعي */
-.land-card .ic{display:inline-grid;place-items:center;width:64px;height:64px;border-radius:var(--r-lg);
-  background:var(--mint);color:var(--primary)}
-.land-card h3{font-size:19px;margin:14px 0 8px}
+.land-card .ic{flex:0 0 auto;display:inline-grid;place-items:center;width:64px;height:64px;
+  border-radius:var(--r-lg);background:var(--mint);color:var(--primary)}
+.land-card-t{min-width:0}
+.land-card h3,.land-card h4{font-size:17px;font-weight:700;margin:2px 0 6px}
 .land-card p{font-size:13.5px;line-height:1.8;color:var(--text-2);margin:0}
+
+/* ── عائلات المزايا: ترويسةٌ خفيفة تفصل، لا قسمٌ كامل يُعاد ──────
+   العائلة تصنيفٌ داخل قسمٍ واحد، فترويستها `h3` تحت `h2` القسم لا `h2` ثانية —
+   وإلا صار للصفحة سبعةُ أقسامٍ في مخطّط قارئ الشاشة بدل قسمٍ ذي سبع عائلات. */
+.land-fam+.land-fam{margin-top:clamp(22px,3.4vw,38px)}
+.land-fam-h{display:flex;align-items:center;gap:12px}
+.land-fam-h h3{flex:0 0 auto;font-size:clamp(16px,2vw,19px);color:var(--primary-dark)}
+.land-fam-h::after{content:"";flex:1;height:1px;background:var(--border)}
+.land-fam-n{flex:0 0 auto;font-size:11.5px;font-weight:600;color:var(--text-3);
+  background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-pill);padding:3px 11px}
+.land-fam .land-features{padding:14px 0 0}
 
 /* ── أقسام الصفحة الرئيسية: عنوانٌ متمركز ثم محتواه ─────── */
 .land-block{padding:clamp(30px,5vw,62px) clamp(14px,4vw,42px);max-width:1180px;margin-inline:auto;width:100%}
-.land-block>.land-features{padding:0}
 .land-h{text-align:center;max-width:64ch;margin-inline:auto;margin-bottom:clamp(20px,3vw,32px);
   scroll-margin-top:78px}
 .land-h:focus{outline:none}
@@ -1433,6 +1492,20 @@ table.tbl.sheet td:first-child::after,table.tbl.sheet th:first-child::after{
   .land-hero-art{order:-1}
   .land-cta .btn.lg{flex:1 1 100%;justify-content:center}
 }
+/*
+ * على الشاشة الضيّقة تُسطَّح اللوحة ويبقى ظلُّها.
+ *
+ * اللقطة على الجوال بعرض الشاشة كلِّها، وميلُها يبتلع من عرضها ويُميل سطورها —
+ * وهي أصلاً في حدّ القراءة. فيُترك الظلّ يعطي الارتفاع، وتُرفع نصفَ ما كان
+ * ارتفاعُ بركته حتى لا تزاحم ما تحتها.
+ */
+@media (max-width:640px){
+  .land-stage .land-frame,.land-stage:hover .land-frame{transform:none}
+  .land-float{animation-duration:9s}
+  .land-float::after{inset-block-end:-18px;height:24px}
+}
+/* ولا ميلَ حيث لا مؤشّر: اللمس لا يحوّم، فيبقى الميل بلا الحركة التي تُلغيه */
+@media (hover:none){ .land-stage .land-frame{transition:none} }
 @media (pointer:coarse){ .land-link{min-height:44px;display:flex;align-items:center} }
 
 /* محرّر الشاشة الرئيسية في لوحة المنصة */

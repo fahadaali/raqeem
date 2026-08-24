@@ -38,6 +38,23 @@ const jump = (label, id) => el('a.land-link', {
 });
 
 /**
+ * اللقطة المشحونة تُولَّد بثلاثة عروض — والأوسط بلا لاحقة في اسمه.
+ *
+ * فيُبنى `srcset` بالاصطلاح نفسه الذي يكتب به `scripts/gen-screens.js`: جوّالٌ
+ * ضيّق ينزّل ٩٦٠ وشاشةٌ كبيرة عالية الكثافة تنزّل ٢١٦٠، ولا ينزّل أحدٌ ما لا يرى.
+ * وصورةٌ من عند الادمن لا تطابق الاصطلاح تبقى صورةً واحدة بلا `srcset` — فالحقل
+ * مفتوحٌ لأي رابط، ولا يُخترع له عرضٌ لا وجود لملفّه.
+ */
+const SHOT = /^\/assets\/screens\/([a-z0-9-]+)-(light|dark)\.webp$/;
+const srcsetFor = (url) => {
+  const m = SHOT.exec(url || '');
+  if (!m) return null;
+  const [, key, theme] = m;
+  return `/assets/screens/${key}-${theme}-960.webp 960w, ${url} 1440w, `
+       + `/assets/screens/${key}-${theme}-2160.webp 2160w`;
+};
+
+/**
  * صورةٌ تتبع سمة الزائر.
  *
  * اللقطة راسترٌ لا يقلب ألوانه، فلقطةٌ فاتحة وسط صفحةٍ داكنة تُقرأ خطأً مطبعياً.
@@ -45,18 +62,32 @@ const jump = (label, id) => el('a.land-link', {
  * المعتمدة هي `data-theme` على الجذر — فتُراقَب ما دامت الصورة معروضة.
  */
 function themedImg(lightSrc, darkSrc, props = {}) {
-  const img = el('img', { src: lightSrc, ...props });
-  if (!darkSrc) return img;
-  const pick = () => {
-    const dark = document.documentElement.dataset.theme === 'dark';
-    const want = dark ? darkSrc : lightSrc;
-    if (img.getAttribute('src') !== want) img.setAttribute('src', want);
+  const img = el('img', props);
+  const set = (src) => {
+    const ss = srcsetFor(src);
+    if (img.getAttribute('src') !== src) img.setAttribute('src', src);
+    /* الوسمان يُضبطان معاً: `srcset` قديمٌ مع `src` جديد يعرض لقطة السمة السابقة */
+    if (ss) img.setAttribute('srcset', ss); else img.removeAttribute('srcset');
   };
+  set(lightSrc);
+  if (!darkSrc) return img;
+  const pick = () => set(document.documentElement.dataset.theme === 'dark' ? darkSrc : lightSrc);
   pick();
   new MutationObserver(pick).observe(document.documentElement,
     { attributes: true, attributeFilter: ['data-theme'] });
   return img;
 }
+
+/**
+ * لوحةٌ طافية تحمل اللقطة.
+ *
+ * ثلاث طبقات لأن لكلٍّ منها شغلاً: `land-stage` تفتح المنظور، و`land-float` تحمل
+ * الطفو وظلَّه الأرضيّ، و`land-frame` تميل داخل المنظور. ولو جُمعت في عنصرٍ واحد
+ * لتنازع الميلُ والطفو على `transform` نفسه — فيلغي أحدهما الآخر.
+ */
+const stage = (img) => el('div.land-stage', {}, [
+  el('div.land-float', {}, [el('div.land-frame', {}, [img])])
+]);
 
 /** عنوان قسمٍ متمركز — يسقط كلّه إن لم يُكتب له عنوان */
 const heading = (h, id) => (h?.title
@@ -141,12 +172,14 @@ export async function render({ navigate, signedIn = false }) {
         el('div.land-cta', {}, [primary, secondary])
       ]),
       h.image_url ? el('div.land-hero-art', {}, [
-        el('div.land-frame', {}, [
+        stage(
           /* المقاس معلَنٌ فلا تقفز الصفحة حين تصل الصورة (CLS) */
           themedImg(h.image_url, h.image_dark_url, {
-            alt: 'لوحة تحكّم المنصّة', width: 1600, height: 1000, fetchpriority: 'high', decoding: 'async'
+            alt: 'لوحة تحكّم المنصّة', width: 1440, height: 900,
+            sizes: '(max-width:820px) 92vw, 48vw',
+            fetchpriority: 'high', decoding: 'async'
           })
-        ])
+        )
       ]) : null
     ]),
 
@@ -157,12 +190,7 @@ export async function render({ navigate, signedIn = false }) {
 
     d.features?.length ? el('section.land-block', {}, [
       heading(H.features, 'features'),
-      el('div.land-features', {}, d.features.map(f => el('article.land-card', {}, [
-        /* الأيقونة اسمُ لوسايد يحرّره الادمن — واسمٌ مجهول يسقط إلى «سنا» لا يكسر البطاقة */
-        el('span.ic', { icon: hasIcon(f.icon) ? f.icon : 'sparkles', iconSize: 'card' }),
-        el('h3', { text: f.title }),
-        f.body ? el('p', { text: f.body }) : null
-      ])))
+      ...families(d.features)
     ]) : null,
 
     showcase(d.showcase, H.showcase),
@@ -215,6 +243,44 @@ export async function render({ navigate, signedIn = false }) {
   return page;
 }
 
+/** عدُّ المزايا بصيغته العربية — المثنّى ليس جمعاً، والعشرة ليست ما فوقها */
+const countAr = (n) => (n === 1 ? 'ميزة واحدة' : n === 2 ? 'ميزتان'
+  : n <= 10 ? `${AR_NUM(n)} مزايا` : `${AR_NUM(n)} ميزة`);
+
+/**
+ * المزايا مصنَّفةً في عائلات.
+ *
+ * سبعٌ وثلاثون بطاقةً في شبكةٍ واحدة جدارٌ لا يُقرأ. والتصنيف هنا ترتيبٌ لا بنية:
+ * تُمشى القائمة كما رتّبها الادمن وتُفتح عائلةٌ كلّما تغيّر اسم `group` — فنقلُ
+ * ميزةٍ بين عائلتين تحريرُ حقلٍ واحد، ولا تُخزَّن قائمتان يتباعدان.
+ * وميزةٌ بلا اسم عائلة تُعرَض في شبكتها بلا ترويسة — الحقل اختياريّ.
+ */
+function families(items) {
+  const bands = [];
+  for (const f of items) {
+    const group = f.group || '';
+    if (bands.at(-1)?.group !== group) bands.push({ group, items: [] });
+    bands.at(-1).items.push(f);
+  }
+
+  return bands.map(b => el('div.land-fam', {}, [
+    b.group ? el('div.land-fam-h', {}, [
+      el('h3', { text: b.group }),
+      el('span.land-fam-n', { text: countAr(b.items.length) })
+    ]) : null,
+    /* عنوان البطاقة ينزل درجةً تحت ترويسة عائلته، ويبقى `h3` حيث لا عائلة —
+       فمخطّط قارئ الشاشة يعكس التصنيف بدل أن يصفّ سبعاً وثلاثين عنواناً متساوية */
+    el('div.land-features', {}, b.items.map(f => el('article.land-card', {}, [
+      /* الأيقونة اسمُ لوسايد يحرّره الادمن — واسمٌ مجهول يسقط إلى «سنا» لا يكسر البطاقة */
+      el('span.ic', { icon: hasIcon(f.icon) ? f.icon : 'sparkles', iconSize: 'card' }),
+      el('div.land-card-t', {}, [
+        el(b.group ? 'h4' : 'h3', { text: f.title }),
+        f.body ? el('p', { text: f.body }) : null
+      ])
+    ])))
+  ]));
+}
+
 /**
  * معرض الشاشات — تبويباتٌ تُقلَّب على لقطاتٍ من المنصّة نفسها.
  *
@@ -254,12 +320,11 @@ function showcase(items, head) {
     panels.push(el('div.land-panel', {
       id, role: 'tabpanel', 'aria-labelledby': `${id}-t`, tabIndex: 0, hidden: i !== 0
     }, [
-      el('div.land-frame', {}, [
-        themedImg(s.image, s.image_dark, {
-          alt: s.label, width: 1600, height: 1000, decoding: 'async',
-          ...(i === 0 ? {} : { loading: 'lazy' })
-        })
-      ]),
+      stage(themedImg(s.image, s.image_dark, {
+        alt: s.label, width: 1440, height: 900, decoding: 'async',
+        sizes: '(max-width:1180px) 92vw, 1096px',
+        ...(i === 0 ? {} : { loading: 'lazy' })
+      })),
       s.caption ? el('p.land-cap', { text: s.caption }) : null
     ]));
   });
