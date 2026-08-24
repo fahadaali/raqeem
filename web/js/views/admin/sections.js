@@ -1597,8 +1597,8 @@ function adminDialog(row, reload) {
  * يحرّر نسخةً في الذاكرة ولا يحفظ إلا بضغطة صريحة، فلا ينشر تعديلاً نصفَ مكتوب.
  * ومفتاح النشر منفصل عن الحفظ: يُحرَّر المحتوى مطفأً ثم يُنشر حين يجهز.
  */
-const LAND_LIMITS = { features: 12, stats: 6, sections: 8, links: 10,
-  showcase: 8, steps: 6, testimonials: 6, faq: 12 };
+const LAND_LIMITS = { features: 40, stats: 6, sections: 8, links: 10,
+  showcase: 8, steps: 6, testimonials: 6, faq: 20 };
 
 export async function landingTab() {
   const d = await api.get('/api/admin/landing');
@@ -1679,14 +1679,35 @@ function landingEditor(L, defaults, redraw, screens) {
     ]);
   };
 
+  /*
+   * المزايا وعائلاتها.
+   *
+   * العائلة حقلٌ على الميزة لا قائمةٌ ثانية، والواجهة تفتح عائلةً كلّما تغيّر
+   * الاسم — فالترتيبُ هو التصنيف، ونقلُ ميزةٍ بين عائلتين تغييرُ نصٍّ ثم تحريكُها
+   * بسهمَي الأعلى والأسفل. والاسم يُقترح من عائلات ما فوقها فلا يُكتب مرّتين
+   * بحرفٍ مختلف فتنشقّ العائلة إلى اثنتين.
+   */
+  const famList = el('datalist', { id: 'land-fam-names' });
+  const paintFams = () => clear(famList).append(...[...new Set(
+    L.features.map(f => (f.group || '').trim()).filter(Boolean))].map(g => el('option', { value: g })));
+
   const features = listCard('المزايا', 'features', LAND_LIMITS.features,
-    { icon: 'sparkles', title: '', body: '' }, (f) => [
-      el('div.land-row-main', {}, [
-        bind(f, 'icon', input({ value: f.icon, style: { maxWidth: '68px', textAlign: 'center' }, 'aria-label': 'الرمز' })),
-        bind(f, 'title', input({ value: f.title, placeholder: 'العنوان' })),
+    { icon: 'sparkles', title: '', body: '', group: '' }, (f) => {
+      const g = bind(f, 'group', input({ value: f.group || '', placeholder: 'العائلة (تصنيف)', list: famList.id }));
+      g.addEventListener('input', paintFams);   /* الاقتراحات تتبع ما كُتب لا ما حُفظ */
+      return [el('div.stack', { style: { gap: '7px' } }, [
+        el('div.land-row-main', {}, [
+          /* أوسع من ٦٨ التي كانت: أسماء لوسايد طويلة، وحقلٌ يقصّها يُحرَّر بالتخمين */
+          bind(f, 'icon', input({ value: f.icon, style: { maxWidth: '124px' }, 'aria-label': 'الرمز' })),
+          g,
+          bind(f, 'title', input({ value: f.title, placeholder: 'العنوان' }))
+        ]),
         bind(f, 'body', input({ value: f.body, placeholder: 'الوصف' }))
-      ])
-    ], 'بطاقات تُعرض تحت الواجهة الأولى.');
+      ])];
+    }, 'بطاقاتٌ مصنَّفةٌ في عائلات — المتتاليات ذات العائلة نفسها تُعرض تحت ترويسةٍ واحدة، '
+     + 'وميزةٌ بلا عائلة تُعرض وحدها. رتّبها بالسهمين ليتجاور أهلُ كل عائلة.');
+  features.append(famList);
+  paintFams();
 
   const stats = listCard('الأرقام', 'stats', LAND_LIMITS.stats,
     { label: '', value: '' }, (s) => [

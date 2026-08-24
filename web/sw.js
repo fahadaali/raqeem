@@ -5,7 +5,7 @@
    • استقبال إشعارات الدفع (Web Push) على المتصفح والأندرويد والآيفون
    • مزامنة خلفية لإعادة إرسال العمليات التي تمت أثناء انقطاع الشبكة
    ═══════════════════════════════════════════════════════════════════════ */
-const VERSION = 'raqeem-v1.8.0';
+const VERSION = 'raqeem-v1.9.0';
 const SHELL_CACHE = `${VERSION}-shell`;
 const DATA_CACHE = `${VERSION}-data`;
 const TILE_CACHE = `${VERSION}-tiles`;
