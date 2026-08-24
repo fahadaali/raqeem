@@ -102,3 +102,9 @@ enabled = true
 [env.staging]
 name = "raqeem-erp-staging"
 vars = { NODE_ENV = "staging", VAPID_SUBJECT = "mailto:admin@riyadh-qu.sa" }
+
+# `triggers` مفتاحٌ موروث في wrangler: بيئة التجربة كانت تأخذ مُشغِّلات الإنتاج
+# نفسها، فتستهلك نصيباً من حدّ الحساب (خمسة على الخطة المجانية) وتزاحم الإنتاج
+# عليه. وبيئةُ تجربةٍ لا تحتاج وظائف دورية أصلاً — لا نسخَ احتياطي ولا فوترة.
+[env.staging.triggers]
+crons = []

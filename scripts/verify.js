@@ -1995,6 +1995,15 @@ section('٢٣. الشاشة الرئيسية العامة ومحرّرها', asy
   ok('الدرج لا يكتب null في أسفله',
     /mount\(panel,/.test(readFileSync('web/js/util.js', 'utf8')));
 
+  /* حدّ الكرون خمسةٌ للحساب كلِّه — وبيئة التجربة لا تزاحم الإنتاج عليه */
+  {
+    const wr = readFileSync('wrangler.toml', 'utf8');
+    const top = (wr.match(/\[triggers\][\s\S]*?crons = \[([\s\S]*?)\]/) || [, ''])[1];
+    ok('مُشغِّلات الإنتاج خمسةٌ فأقلّ',
+      (top.match(/"/g) || []).length / 2 <= 5, `${(top.match(/"/g) || []).length / 2}`);
+    ok('بيئة التجربة بلا مُشغِّلات', /\[env\.staging\.triggers\][\s\S]*?crons = \[\s*\]/.test(wr));
+  }
+
   /* لا يُعرَض تفعيلُ إشعاراتٍ لا يستطيع الخادم إرسالها */
   ok('لا يُعرَض تفعيل الإشعارات وخدمة الدفع معطّلة',
     /st\?\.enabled/.test(readFileSync('web/js/push.js', 'utf8')));
