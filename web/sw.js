@@ -5,7 +5,7 @@
    • استقبال إشعارات الدفع (Web Push) على المتصفح والأندرويد والآيفون
    • مزامنة خلفية لإعادة إرسال العمليات التي تمت أثناء انقطاع الشبكة
    ═══════════════════════════════════════════════════════════════════════ */
-const VERSION = 'raqeem-v1.7.0';
+const VERSION = 'raqeem-v1.8.0';
 const SHELL_CACHE = `${VERSION}-shell`;
 const DATA_CACHE = `${VERSION}-data`;
 const TILE_CACHE = `${VERSION}-tiles`;
@@ -31,6 +31,7 @@ const SHELL = [
   /* ملفات الهوية — النمط الزخرفي والمونوغرام يظهران في كل شاشة */
   '/assets/brand/monogram-primary.svg', '/assets/brand/monogram-white.svg',
   '/assets/brand/pattern-overlay-cream.svg', '/assets/brand/pattern-overlay-green.svg',
+  '/assets/brand/pattern-soft-cream.svg', '/assets/brand/pattern-soft-green.svg',
   '/assets/brand/pattern-tile-light.svg', '/assets/brand/pattern-tile-dark.svg'
 ];
 

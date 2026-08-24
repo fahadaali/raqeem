@@ -72,24 +72,27 @@
   --ink-a12:rgba(34,48,43,.12);             /* ظلٌّ داخليّ من الحبر الدافئ */
   --gradient:linear-gradient(184.78deg,#2f8a6f 7.64%,#1c5e4c 120.07%);
 
-  /* ── الغشاء الزجاجي فوق النمط الزخرفي ──────────────────────
-     النمط زخرفةٌ لا رسالة. كان يُطبع صريحاً على كل غلافٍ وشريط
-     فيزاحم النصّ ويشوّش العين، فصار يُقرأ من تحت غشاءٍ رقيق:
-     ظاهرٌ جزئياً، حاضرٌ في الإحساس لا في المزاحمة.
-     كلُّ غشاء بلون أرضيّته نفسها فلا تنزاح النِّسَب ولا يتبدّل اللون،
-     وتدرّجُه الخفيف هو ما يعطي إحساس الزجاج لا مجرّد التخفيف.
-     ولضبط قوّته في المنصة كلّها يكفي تعديل هذه القيم الستّ. */
-  --veil-brand-1:rgba(28,94,76,.62); --veil-brand-2:rgba(28,94,76,.34);
-  --veil-ink-1:rgba(34,48,43,.62); --veil-ink-2:rgba(34,48,43,.34);
-  --veil-light-1:rgba(251,247,239,.74); --veil-light-2:rgba(251,247,239,.46);
+  /* ── الزجاج فوق النمط الزخرفي ──────────────────────────────
+     النمط زخرفةٌ لا رسالة. وكان يُطبع حادَّ الحواف على كل غلافٍ
+     وشريط فيزاحم النصّ ويشوّش العين.
+     والضبابية مخبوزةٌ في ملف النمط نفسه لا مضافةٌ هنا (انظر
+     `scripts/gen-pattern.js`)، فهي تعمل حيث تعمل الخلفية: في
+     الحاويات التي تمرَّر، وعند الحواف، وفي الطباعة.
+     والغشاء فوقها رقيقٌ متدرّج يعطي لمعة الزجاج — ولا يُثقَّل،
+     فالمطلوب نمطٌ مضبَّبٌ يُرى لا نمطٌ يُمحى. */
+  --veil-brand-1:rgba(28,94,76,.50); --veil-brand-2:rgba(28,94,76,.28);
+  --veil-ink-1:rgba(34,48,43,.50); --veil-ink-2:rgba(34,48,43,.28);
+  --veil-light-1:rgba(251,247,239,.58); --veil-light-2:rgba(251,247,239,.34);
 
-  /* النمط ملفٌّ واحد، والغشاء طبقةٌ فوقه في مكدّس الخلفية نفسه —
-     فيبقى اللون توكناً والنمط ملفاً كما يقول الدليل. */
+  /* النمط ملفٌّ لكل لون: حادٌّ للطباعة والاستعمال المباشر، ومضبَّبٌ
+     للأسطح التي يجلس عليها نصّ — وهي كلُّ ما في المنصة. */
   --pattern-cream:url("/assets/brand/pattern-overlay-cream.svg");
   --pattern-green:url("/assets/brand/pattern-overlay-green.svg");
-  --glass-on-brand:linear-gradient(158deg,var(--veil-brand-1),var(--veil-brand-2)),var(--pattern-cream);
-  --glass-on-ink:linear-gradient(158deg,var(--veil-ink-1),var(--veil-ink-2)),var(--pattern-cream);
-  --glass-on-light:linear-gradient(158deg,var(--veil-light-1),var(--veil-light-2)),var(--pattern-green);
+  --pattern-soft-cream:url("/assets/brand/pattern-soft-cream.svg");
+  --pattern-soft-green:url("/assets/brand/pattern-soft-green.svg");
+  --glass-on-brand:linear-gradient(158deg,var(--veil-brand-1),var(--veil-brand-2)),var(--pattern-soft-cream);
+  --glass-on-ink:linear-gradient(158deg,var(--veil-ink-1),var(--veil-ink-2)),var(--pattern-soft-cream);
+  --glass-on-light:linear-gradient(158deg,var(--veil-light-1),var(--veil-light-2)),var(--pattern-soft-green);
 
   --r-sm:8px; --r:12px; --r-lg:16px; --r-xl:22px; --r-pill:999px;
   --side:262px; --top:60px;
@@ -144,15 +147,11 @@ img{max-width:100%}
   background-image:var(--glass-on-light);background-repeat:repeat}
 .bg-pattern-dark{background-color:var(--brand-surface);
   background-image:var(--glass-on-brand);background-repeat:repeat}
-/*
- * طبقةُ نمطٍ فوق عنصرٍ قائم: هنا وحدها يمكن أن يكون الزجاج زجاجاً حقيقياً —
- * الطبقة معزولة في `::before` فيُشوَّش النمط نفسه بضبابةٍ دون الوصول إلى النص.
- */
+/* طبقةُ نمطٍ فوق عنصرٍ قائم — بالنمط المضبَّب نفسه */
 .pattern-overlay{position:relative;isolation:isolate}
 .pattern-overlay::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;
-  background-image:var(--pattern-cream);background-repeat:repeat;
-  opacity:.32;filter:blur(.4px)}
-.pattern-overlay.on-light::before{background-image:var(--pattern-green);opacity:.28}
+  background-image:var(--pattern-soft-cream);background-repeat:repeat}
+.pattern-overlay.on-light::before{background-image:var(--pattern-soft-green)}
 
 /* ── أيقونات لوسايد ─────────────────────────────────────────
    حجمها من `width/height` في الـ SVG نفسه، ولونها `currentColor`

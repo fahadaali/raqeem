@@ -9,6 +9,7 @@
  *   ٣) خصائص اتجاه فيزيائية (يسار/يمين) في CSS
  *   ٤) أسماء أيقونات مستعملة وغير معرّفة في `web/js/icons.js`
  *   ٥) خطوط خارج خطَّي الهوية
+ *   ٦) نمطٌ زخرفيّ يُطبع عارياً أو حادّاً بلا ضبابيته
  *
  * الاستثناءات تُكتب هنا صراحةً لا في مواضع متفرّقة، فيبقى الفحص قابلاً للقراءة.
  */
@@ -114,6 +115,35 @@ const flag = (file, line, rule, detail) => findings.push({ file: rel(file), line
   });
 }
 
+/* ── ٦) النمط الزخرفي: لا يُطبع عارياً ولا حادّاً ─────────────
+   قاعدتان يسهل خرقهما بسطرٍ واحد وتظهران للمستخدم فوراً:
+     • كل سطح يحمل النمط يأخذه من `--glass-on-*` لا من `url()` مباشرة
+     • وتركيبات الزجاج تستعمل النمط المضبَّب لا الحادّ */
+{
+  const css = fs.readFileSync(CSS, 'utf8').split('\n');
+  const TOKENS = /^\s*--(pattern|glass)-/;
+  css.forEach((l, i) => {
+    if (/^\s*(\/\*|\*)/.test(l) || TOKENS.test(l)) return;
+    if (/url\(["']?[^"')]*pattern[^"')]*["']?\)/.test(l)) {
+      flag(CSS, i + 1, 'نمط عارٍ', l.trim().slice(0, 80));
+    }
+  });
+  const src = fs.readFileSync(CSS, 'utf8');
+  for (const name of ['--glass-on-brand', '--glass-on-ink', '--glass-on-light']) {
+    const m = src.match(new RegExp(`${name}\\s*:([^;]+);`));
+    if (!m) { flag(CSS, 1, 'تركيب زجاج ناقص', name); continue; }
+    if (!/--pattern-soft-/.test(m[1])) flag(CSS, 1, 'زجاج بنمط حادّ', name);
+    if (!/linear-gradient/.test(m[1])) flag(CSS, 1, 'زجاج بلا غشاء', name);
+  }
+  /* وملفّا النمط المضبَّب موجودان فعلاً — التوكن لا ينفع بلا ملفّه */
+  for (const f of ['pattern-soft-cream.svg', 'pattern-soft-green.svg']) {
+    const abs = path.join(ROOT, 'web/assets/brand', f);
+    if (!fs.existsSync(abs)) flag(CSS, 1, 'أصل ناقص', `web/assets/brand/${f} — ولّده بـ npm run gen:pattern`);
+    else if (!fs.readFileSync(abs, 'utf8').includes('feGaussianBlur'))
+      flag(abs, 1, 'نمط بلا ضبابية', f);
+  }
+}
+
 /* ── ٥) خطوط خارج خطَّي الهوية ──────────────────────────────── */
 {
   const ok = /Zain|IBM\+?\s?Plex\s?Sans\s?Arabic|inherit|var\(--font-|Segoe UI|Tahoma|system-ui|-apple-system|sans-serif|ui-monospace|SF Mono|Consolas|monospace|Noto Naskh Arabic/;
@@ -129,7 +159,8 @@ const flag = (file, line, rule, detail) => findings.push({ file: rel(file), line
 
 /* ── التقرير ─────────────────────────────────────────────────── */
 const byRule = findings.reduce((a, f) => ((a[f.rule] ||= []).push(f), a), {});
-const RULES = ['لون مباشر', 'رمز تعبيري', 'اتجاه فيزيائي', 'أيقونة غير معرّفة', 'خط خارج الهوية'];
+const RULES = ['لون مباشر', 'رمز تعبيري', 'اتجاه فيزيائي', 'أيقونة غير معرّفة', 'خط خارج الهوية',
+  'نمط عارٍ', 'زجاج بنمط حادّ', 'زجاج بلا غشاء', 'تركيب زجاج ناقص', 'أصل ناقص', 'نمط بلا ضبابية'];
 
 console.log('\n▸ فحص الانحراف عن دليل الهوية — منصة رقيم\n');
 for (const rule of RULES) {

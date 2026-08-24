@@ -883,7 +883,8 @@ export async function settingsTab() {
     postal: input({ value: s.seller_address?.postal_code || '', dir: 'ltr' }),
     idleDays: input({ type: 'number', value: s.health_idle_days, dir: 'ltr' }),
     upsell: input({ type: 'number', value: s.upsell_threshold, dir: 'ltr' }),
-    gwSecret: input({ type: 'password', placeholder: '••••••••', dir: 'ltr' })
+    gwSecret: input({ type: 'password', placeholder: '••••••••', dir: 'ltr' }),
+    mapsKey: input({ value: s.maps_google_key || '', dir: 'ltr', placeholder: 'AIza…' })
   };
   const zatca = input({ type: 'checkbox', checked: !!s.zatca_enabled });
   const require2fa = input({ type: 'checkbox', checked: !!s.require_2fa_admins });
@@ -955,6 +956,15 @@ export async function settingsTab() {
       el('div.grid-2', {}, [field('المدينة', f.city), field('الرمز البريدي', f.postal)]),
       el('p.hint', { text: 'يُولَّد رمز QR بالحقول الإلزامية الخمسة ومستند UBL 2.1 وسلسلة تجزئة مترابطة. الختم التشفيري يتطلّب شهادة CSID من الهيئة بعد تسجيل المنشأة.' })
     ])),
+    card('الخرائط', el('div.stack', {}, [
+      el('div.row', {}, [
+        chip(s.maps_google_key ? 'خرائط قوقل مفعّلة' : 'الطبقة المفتوحة (OpenStreetMap)',
+          s.maps_google_key ? 'ok' : 'warn', 'map-pin')
+      ]),
+      field('مفتاح خرائط قوقل (Map Tiles API)', f.mapsKey, {
+        hint: 'من Google Cloud بعد تفعيل «Map Tiles API». المفتاح يبقى على الخادم — المتصفّح يطلب المربّعات من المنصة لا من قوقل. واتركه فارغاً لتعمل الخريطة على الطبقة المفتوحة بلا مبدّل طبقات.' }),
+      el('p.hint', { text: 'يسري فور الحفظ. أعد تحميل شاشة تسجيل الحضور أو ضبط الفرع ليظهر مبدّل الطبقات: خريطة وقمر صناعي وهجين وتضاريس.' })
+    ])),
     card('الأمن', el('div.stack', {}, [
       el('label.row', { style: { gap: '8px' } }, [require2fa,
         el('span', { text: 'إلزام مالكي المنصة بالتحقّق بخطوتين' })]),
@@ -982,6 +992,7 @@ export async function settingsTab() {
             iban: f.iban.value.trim(), note: f.bankNote.value.trim() },
           seller_address: { street: f.street.value.trim(), district: f.district.value.trim(),
             city: f.city.value.trim(), postal_code: f.postal.value.trim() },
+          maps_google_key: f.mapsKey.value.trim(),
           zatca_enabled: zatca.checked,
           require_2fa_admins: require2fa.checked,
           payment_gateway: gateway.value,

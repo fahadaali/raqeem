@@ -16,6 +16,7 @@
     "reset": "node server/node/reset.js",
     "gen:vapid": "node scripts/gen-vapid.js",
     "gen:icons": "node scripts/gen-icons.js",
+    "gen:pattern": "node scripts/gen-pattern.js",
     "backup": "node scripts/backup.js",
     "setup": "npm run migrate && npm run seed && npm run gen:icons",
     "verify": "node scripts/verify.js",

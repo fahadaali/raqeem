@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { h } from '../http.js';
 import { badRequest } from '../errors.js';
 import { rateLimit } from '../middleware/rateLimit.js';
+import { platformSettings } from '../billing.js';
 
 /**
  * مربّعات الخريطة وكتالوج طبقاتها.
@@ -38,7 +39,37 @@ const OSM = {
   attribution_url: 'https://www.openstreetmap.org/copyright'
 };
 
-const googleKey = (app) => app.cfg.maps?.googleKey || '';
+/*
+ * رمز الجلسة الذي تشترطه Map Tiles API — يُطلب مرة لكل طبقة ويُعاد استعماله.
+ * والذاكرة هنا لكل عزلة تشغيل، فأسوأ ما يحدث عند تعدّدها طلبُ رمزٍ زائد لا خطأ.
+ */
+const sessions = new Map();
+let googleDownUntil = 0;
+
+/**
+ * مفتاح خرائط قوقل — من لوحة المنصة أولاً ثم من بيئة التشغيل.
+ *
+ * وضعُه في اللوحة يجعل تفعيل قوقل قراراً يُتَّخذ من الشاشة لا نشرةً تُعاد،
+ * ومتغيّرُ البيئة يبقى لمن ينشر بلا لوحة أو يُفضّل الأسرار خارج القاعدة.
+ *
+ * ويُحفَظ دقيقةً في الذاكرة: المربّعات تأتي عشرينَ في الشاشة الواحدة، فقراءةُ
+ * الإعدادات مع كل مربّع استعلامٌ بلا داعٍ. ومن بدّل المفتاح يراه عاملاً بعد
+ * دقيقة على أبعد تقدير.
+ */
+const KEY_TTL_MS = 60_000;
+let keyCache = { value: null, at: 0 };
+
+/** تُسقط ذاكرة المفتاح — تُنادى من لوحة المنصة فور حفظ الإعدادات */
+export function forgetMapsKey() { keyCache = { value: null, at: 0 }; googleDownUntil = 0; sessions.clear(); }
+
+async function googleKey(app) {
+  if (keyCache.value !== null && Date.now() - keyCache.at < KEY_TTL_MS) return keyCache.value;
+  let stored = '';
+  try { stored = (await platformSettings(app))?.maps_google_key || ''; }
+  catch { /* الجدول لم يُنشأ بعد — تبقى البيئة */ }
+  keyCache = { value: stored || app.cfg.maps?.googleKey || '', at: Date.now() };
+  return keyCache.value;
+}
 
 /*
  * قوقل يسقط أحياناً: مفتاحٌ خاطئ، أو Map Tiles API غير مفعّلة، أو حصّةٌ نفدت.
@@ -47,12 +78,12 @@ const googleKey = (app) => app.cfg.maps?.googleKey || '';
  * ليصلح المشغّل المفتاح — والخريطة تبقى تعمل طوال ذلك.
  */
 const GOOGLE_COOLDOWN_MS = 60_000;
-let googleDownUntil = 0;
-const googleUp = (app) => Boolean(googleKey(app)) && Date.now() >= googleDownUntil;
+const googleUp = async (app) => Boolean(await googleKey(app)) && Date.now() >= googleDownUntil;
 function googleFailed(reason) {
   if (Date.now() < googleDownUntil) return;
   googleDownUntil = Date.now() + GOOGLE_COOLDOWN_MS;
   sessions.clear();
+  keyCache = { value: null, at: 0 };   /* لعلّ المفتاح بُدّل من اللوحة إصلاحاً للعطل */
   console.warn(`[map] تعذّرت خرائط قوقل (${reason}) — الخريطة على الطبقة المفتوحة لدقيقة`);
 }
 
@@ -63,7 +94,7 @@ function googleFailed(reason) {
  * وبذلك تبقى نسبةُ المصدر في حاشية الخريطة صادقةً على ما يُعرَض فعلاً.
  */
 router.get('/layers', h(async (req) => {
-  if (!googleUp(req.app)) return { provider: 'osm', default: OSM.id, layers: [OSM] };
+  if (!await googleUp(req.app)) return { provider: 'osm', default: OSM.id, layers: [OSM] };
   return {
     provider: 'google',
     default: 'roadmap',
@@ -81,21 +112,15 @@ router.get('/layers', h(async (req) => {
   };
 }));
 
-/*
- * رمز الجلسة الذي تشترطه Map Tiles API قبل أول مربّع — يُطلب مرة لكل طبقة
- * ويُعاد استعماله حتى انتهاء صلاحيته. والذاكرة هنا لكل عزلة تشغيل، فأسوأ ما
- * يحدث عند تعدّدها طلبُ رمزٍ زائد لا خطأ.
- */
-const sessions = new Map();
-
 async function googleSession(app, layerId) {
   const cached = sessions.get(layerId);
   if (cached && cached.expiry > Date.now() + 60_000) return cached.token;
   if (cached?.pending) return cached.pending;
 
   const spec = GOOGLE_LAYERS[layerId];
+  const key = await googleKey(app);
   const pending = (async () => {
-    const res = await fetch(`https://tile.googleapis.com/v1/createSession?key=${encodeURIComponent(googleKey(app))}`, {
+    const res = await fetch(`https://tile.googleapis.com/v1/createSession?key=${encodeURIComponent(key)}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -144,12 +169,13 @@ router.get('/tile/:layer/:z/:x/:y', h(async (req) => {
   }
   if (layer !== OSM.id && !GOOGLE_LAYERS[layer]) throw badRequest('طبقة غير معروفة');
 
+  const key = await googleKey(req.app);
   const googleTile = async (token) => fetch(
     `https://tile.googleapis.com/v1/2dtiles/${z}/${x}/${y}`
-    + `?session=${encodeURIComponent(token)}&key=${encodeURIComponent(googleKey(req.app))}`);
+    + `?session=${encodeURIComponent(token)}&key=${encodeURIComponent(key)}`);
 
   let res = null;
-  if (layer !== OSM.id && googleUp(req.app)) {
+  if (layer !== OSM.id && await googleUp(req.app)) {
     try {
       res = await googleTile(await googleSession(req.app, layer));
       /* رمزٌ انتهت صلاحيته: يُسقَط ويُطلب غيره مرة واحدة لا أكثر */

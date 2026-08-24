@@ -81,7 +81,9 @@ const ADDITIONS = [
   ['platform_settings', 'require_2fa_admins', 'INTEGER NOT NULL DEFAULT 0'],
   ['platform_settings', 'health_idle_days',   'INTEGER NOT NULL DEFAULT 14'],
   ['platform_settings', 'upsell_threshold',   'INTEGER NOT NULL DEFAULT 80'],
-  ['platform_settings', 'landing',            "TEXT NOT NULL DEFAULT '{}'"]
+  ['platform_settings', 'landing',            "TEXT NOT NULL DEFAULT '{}'"],
+  /* ── مفتاح خرائط قوقل يُضبط من لوحة المنصة بلا إعادة نشر ── */
+  ['platform_settings', 'maps_google_key',    'TEXT']
 ];
 
 export async function reconcileColumns(app) {

@@ -877,6 +877,7 @@ CREATE TABLE IF NOT EXISTS platform_settings (
   zatca_enabled      INTEGER NOT NULL DEFAULT 0,   
   payment_gateway    TEXT NOT NULL DEFAULT 'manual',
   gateway_config     TEXT NOT NULL DEFAULT '{}',
+  maps_google_key    TEXT,                         
   require_2fa_admins INTEGER NOT NULL DEFAULT 0,   
   health_idle_days   INTEGER NOT NULL DEFAULT 14,  
   upsell_threshold   INTEGER NOT NULL DEFAULT 80,  

@@ -261,6 +261,8 @@ section('٥. الحضور الجغرافي والرواتب', async () => {
   const layers = await call('GET', '/api/map/layers');
   ok('كتالوج طبقات الخريطة متاح بلا جلسة',
     layers.status === 200 && Array.isArray(layers.data?.layers) && layers.data.layers.length >= 1);
+  ok('بلا مفتاح قوقل: الطبقة المفتوحة وحدها ولا مبدّل',
+    layers.data.provider === 'osm' && layers.data.layers.length === 1);
   ok('كل طبقة تحمل قالب عنوان ومصدراً',
     (layers.data?.layers || []).every(l => l.id && l.label && /\{z\}/.test(l.url || '') && l.attribution));
   ok('وسيط المربّعات يرفض طبقةً مجهولة',
@@ -958,6 +960,25 @@ section('١٩. طبقة الـ SaaS (المرحلة الثانية)', async () =
   const settings = await call('PUT', '/api/admin/settings', {
     token: S.admin, body: { saas_enabled: true, signup_enabled: true } });
   ok('تفعيل طبقة الـ SaaS من لوحة المالك', settings.status === 200 && settings.data.saas_enabled === 1);
+
+  /* ── مفتاح خرائط قوقل يُضبط من اللوحة بلا إعادة نشر ── */
+  ok('الإعدادات تحمل حقل مفتاح الخرائط',
+    'maps_google_key' in (await call('GET', '/api/admin/settings', { token: S.admin })).data);
+  ok('حفظ المفتاح من اللوحة',
+    (await call('PUT', '/api/admin/settings', { token: S.admin, body: { maps_google_key: 'AIzaVerifyKey' } }))
+      .data.maps_google_key === 'AIzaVerifyKey');
+  const gcat = (await call('GET', '/api/map/layers')).data;
+  ok('الكتالوج يتحوّل إلى قوقل فور الحفظ بلا انتظار',
+    gcat.provider === 'google' && ['roadmap', 'satellite', 'hybrid', 'terrain']
+      .every(id => gcat.layers.some(l => l.id === id)), gcat.provider);
+  ok('وطبقات قوقل تمرّ بوسيط المنصة لا بقوقل مباشرة',
+    gcat.layers.filter(l => l.id !== 'osm').every(l => l.url.startsWith('/api/map/tile/')));
+  ok('محو المفتاح يعيد الطبقة المفتوحة فوراً',
+    (await call('PUT', '/api/admin/settings', { token: S.admin, body: { maps_google_key: '' } }))
+      .data.maps_google_key === null
+    && (await call('GET', '/api/map/layers')).data.provider === 'osm');
+  ok('المفتاح لا يتسرّب إلى الواجهة العامة',
+    !JSON.stringify((await call('GET', '/api/public/platform')).data).includes('maps_google_key'));
 
   /* ── صفحة الأسعار العامة ── */
   const pub = await call('GET', '/api/public/platform');

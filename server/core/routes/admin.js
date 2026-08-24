@@ -22,6 +22,7 @@ import { couponsReport, normalizeCode as normalizeCouponCode, validateCoupon } f
 import { issueCreditNote, creditedAmount, effectiveLimits } from '../billing.js';
 import { GATEWAYS, handleWebhook } from '../payments.js';
 import { FEATURES, effectiveFeatures } from '../features.js';
+import { forgetMapsKey } from './map.js';
 import { verifyChain, decodeQR } from '../zatca.js';
 import { dumpSQL } from '../jobs/backup.js';
 import { gzip } from '../zip.js';
@@ -579,7 +580,7 @@ router.put('/settings', h(async (req) => {
       support_phone=?, saas_enabled=?, signup_enabled=?, signup_needs_review=?, default_plan_code=?,
       trial_days=?, grace_days=?, vat_rate=?, currency=?, vat_number=?, cr_number=?, bank_details=?,
       invoice_prefix=?, seller_address=?, zatca_enabled=?, payment_gateway=?, gateway_config=?,
-      require_2fa_admins=?, health_idle_days=?, upsell_threshold=?, updated_at=? WHERE id=1`,
+      maps_google_key=?, require_2fa_admins=?, health_idle_days=?, upsell_threshold=?, updated_at=? WHERE id=1`,
     b.platform_name?.trim() || cur.platform_name,
     b.platform_name_en ?? cur.platform_name_en,
     b.tagline ?? cur.tagline,
@@ -598,10 +599,16 @@ router.put('/settings', h(async (req) => {
     bool(b.zatca_enabled, cur.zatca_enabled),
     b.payment_gateway && GATEWAYS[b.payment_gateway] ? b.payment_gateway : cur.payment_gateway,
     JSON.stringify(b.gateway_config ?? j(cur.gateway_config, {}) ?? {}),
+    /* المفتاح يُمحى بإرسال نصٍّ فارغ، ويبقى كما هو إن لم يُرسَل أصلاً */
+    b.maps_google_key === undefined ? cur.maps_google_key : (String(b.maps_google_key).trim() || null),
     bool(b.require_2fa_admins, cur.require_2fa_admins),
     num(b.health_idle_days, cur.health_idle_days),
     num(b.upsell_threshold, cur.upsell_threshold),
     nowUTC());
+
+  /* المفتاح مخزَّنٌ في ذاكرة مسار الخرائط دقيقةً — يُسقَط فوراً فيعمل التبديل
+     من أول تحديثٍ للشاشة لا بعد دقيقة يظنّها المشغّل عطلاً. */
+  forgetMapsKey();
 
   await plog(req, { action: 'update', entity: 'platform_settings', entityId: 1,
     summary: `${req.ctx.adminName} حدّث إعدادات المنصة`,
