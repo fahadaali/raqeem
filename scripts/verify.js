@@ -2006,6 +2006,22 @@ section('٢٣. الشاشة الرئيسية العامة ومحرّرها', asy
         readFileSync('web/js/views/admin/sections.js', 'utf8')));
   }
 
+  /* استعادة حساب لوحة المنصّة، وصونُ ما أدخله صاحبها من إعدادات */
+  {
+    const ss = readFileSync('server/core/seed-saas.js', 'utf8');
+    ok('التهيئة لا تمحو بيانات البنك المُدخَلة',
+      /bankIsBlank[\s\S]{0,400}: settings\.bank_details/.test(ss));
+    ok('التهيئة تُنشئ مدير المنصّة إن غاب',
+      /if \(!existingAdmin\)[\s\S]{0,200}INSERT INTO platform_admins/.test(ss));
+    const up = readFileSync('server/core/upgrade.js', 'utf8');
+    ok('الترحيلة تنقل مدير المنصّة القديم من users',
+      /FROM users WHERE is_platform_admin = 1[\s\S]{0,600}INSERT INTO platform_admins/.test(up));
+    const wk = readFileSync('server/worker/index.js', 'utf8');
+    ok('جواب التهيئة يذكر حسابات اللوحة',
+      /SELECT email, status, totp_enabled FROM platform_admins/.test(wk));
+    ok('جواب التهيئة يذكر ما غيّرته الترحيلة', /schema_changes: added/.test(wk));
+  }
+
   /* حدّ الكرون خمسةٌ للحساب كلِّه — وبيئة التجربة لا تزاحم الإنتاج عليه */
   {
     const wr = readFileSync('wrangler.toml', 'utf8');

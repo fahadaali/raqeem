@@ -170,9 +170,14 @@ f.addEventListener('submit',async(e)=>{
   const d=await r.json().catch(()=>({}));
   o.textContent=JSON.stringify(d,null,1);o.style.display='block';
   if(r.ok){
+   const esc=(x)=>String(x).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+   const adm=(d.admins||[]).map(a=>'<code>'+esc(a.email)+'</code>'
+     +(a.status!=='active'?' (موقوف)':'')+(a.totp?' (بتحقّق بخطوتين)':'')).join('، ');
+   const chg=(d.schema_changes||[]);
    show('ok','<b>تمّت التهيئة.</b><ol>'
+    +'<li>تغييرات المخطط: '+(chg.length?'<code>'+esc(chg.join('، '))+'</code>':'لا شيء — القاعدة محدَّثة أصلاً')+'</li>'
+    +'<li>حسابات لوحة المنصة: '+(adm||'<b>لا حساب</b> — لم يُنشأ أيّ مدير منصة')+'</li>'
     +'<li>افتح <code>/</code> وادخل بـ <code>admin@riyadh-qu.sa</code> / <code>Admin@123</code></li>'
-    +'<li>لوحة المنصة على <code>/admin</code> بحساب مستقل: <code>admin@raqeem.sa</code> / <code>Admin@123</code></li>'
     +'<li>غيّر كل كلمات المرور الافتراضية فوراً</li>'
     +'<li>احذف السرّ <code>BOOTSTRAP_TOKEN</code> من إعدادات العامل</li></ol>');
    b.textContent='تمّت التهيئة';
@@ -203,14 +208,33 @@ async function handleBootstrap(request, container) {
     return Response.json({ error: 'رمز التهيئة غير صحيح' }, { status: 401 });
 
   const url = new URL(request.url);
-  await migrate(container);
+  const { added } = await migrate(container);
   const tenantId = url.searchParams.get('schema-only') === '1'
     ? null
     : await seed(container, { force: url.searchParams.get('force') === '1' });
 
+  /*
+   * حسابات لوحة المنصّة تُذكَر في الجواب.
+   *
+   * «بيانات الدخول غير صحيحة» جوابٌ واحد لحالتين لا تُميَّزان من الشاشة: حسابٌ
+   * لا وجود له، وكلمةُ مرورٍ لا تطابق. وإخفاءُ الفرق مقصودٌ في شاشة الدخول —
+   * فمن يخمّن لا يُعان على معرفة أيّ البريدين قائم. أمّا هنا، خلف سرّ التهيئة،
+   * فالمالكُ يحتاج أن يرى أيّ الحالتين هي، فيُقال له صراحةً.
+   */
+  let admins = [];
+  try {
+    admins = await container.db.all(
+      `SELECT email, status, totp_enabled FROM platform_admins ORDER BY id`);
+  } catch { /* الجدول لم يُنشأ بعد — والترحيلة أعلاه تكفّلت به */ }
+
   return Response.json({
     ok: true,
     migrated: true,
+    /* ما أضافته الترحيلة فعلاً — فارغةٌ تعني أن القاعدة كانت محدَّثة أصلاً */
+    schema_changes: added,
+    admins: admins.map(a => ({
+      email: a.email, status: a.status, totp: !!a.totp_enabled
+    })),
     seeded: tenantId ? { tenant_id: tenantId } : 'البيانات موجودة مسبقاً — تم التخطي',
     database: container.db.dialect,
     storage: container.storage?.driver || 'غير مربوط',

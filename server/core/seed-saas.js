@@ -84,14 +84,22 @@ export async function seedSaaS(app, { tenantOneOwnerEmail = 'admin@riyadh-qu.sa'
     ]));
   }
 
-  /* ── إعدادات المنصة (تُنشأ بقيمها الافتراضية) ── */
+  /*
+   * ── إعدادات المنصة ──
+   * قيمٌ افتراضية تُملأ مرّةً ولا تُعاد كتابتها. والتهيئة تُستدعى ثانيةً بعد أول
+   * تشغيل — لترحيل مخطط أو لاستعادة حساب — فلو كُتبت هذه القيم في كل مرّة لمَحَت
+   * بيانات البنك الحقيقية التي أدخلها صاحب المنصّة وأعادتها إلى آيبان تجريبيّ
+   * من أصفار. وهو مالٌ يُحوَّل إليه، فالخطأ فيه أغلى من أن يمرّ صامتاً.
+   */
   const settings = await platformSettings(app);
+  /* `platformSettings` تُعيدها مفكوكةً كائناً، فالفراغ يُقاس بعدد مفاتيحها */
+  const bankIsBlank = !Object.keys(settings.bank_details || {}).length;
   await db.run(
     `UPDATE platform_settings SET bank_details=?, vat_number=?, cr_number=?, updated_at=? WHERE id=1`,
-    JSON.stringify({
+    JSON.stringify(bankIsBlank ? {
       bank: 'مصرف الراجحي', beneficiary: 'شركة رقيم لتقنية المعلومات',
       iban: 'SA0000000000000000000000', note: 'يرجى كتابة رقم الفاتورة في خانة الوصف'
-    }),
+    } : settings.bank_details),
     settings.vat_number || '300000000000003', settings.cr_number || '1010000000', nowUTC());
 
   /*
