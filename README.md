@@ -434,7 +434,7 @@ npm run verify:identity
 | `VAPID_*` | مفاتيح إشعارات الدفع (`npm run gen:vapid` أو `npm run cf:secrets`) |
 | `BACKUP_ENABLED` / `BACKUP_KEEP` | النسخ الاحتياطي اليومي وعدد النسخ المحفوظة |
 | `GEOFENCE_DEFAULT_RADIUS` | نطاق التحضير الافتراضي بالمتر |
-| `GOOGLE_MAPS_API_KEY` | مفتاح **Map Tiles API** لخرائط قوقل — يفتح القمر الصناعي والتضاريس |
+| `GOOGLE_MAPS_API_KEY` | مفتاح **Map Tiles API** لخرائط قوقل — وحده يفتح القمر الصناعي والتضاريس. مئة ألف مربّعٍ شهرياً بلا مقابل، لكنّه يشترط بطاقةً وفوترةً مفعّلة |
 | `GEOAPIFY_API_KEY` | مفتاح **Geoapify** — بديلٌ مجاني بلا بطاقة. والمفتاحان الأيسر ضبطهما من لوحة المنصة ← الإعدادات ← الخرائط بلا إعادة نشر، وبلا أيّهما تعمل الطبقة المفتوحة |
 | `RATE_LIMIT_*` · `LOGIN_ACCOUNT_MAX` | حدود الطلبات ومحاولات الدخول |
 | `BOOTSTRAP_TOKEN` | يحمي مسار التهيئة على Cloudflare |
