@@ -78,8 +78,11 @@ router.get('/:id/rollover/preview', can('terms.close'), h(async (req) => {
     FROM finance_requests f LEFT JOIN users u ON u.id=f.requester_id
     WHERE f.tenant_id=? AND f.term_id=? AND f.type='custody' AND f.status<>'rejected'`, req.ctx.tenantId, t.id);
 
-  const budgets = await app.db.all('SELECT id,name,category,amount,spent FROM budgets WHERE tenant_id=? AND term_id=?',
-    req.ctx.tenantId, t.id);
+  /* اسم اللجنة مع البند: من يغلق فصلاً يرى ما يُرحَّل منسوباً إلى صاحبه */
+  const budgets = await app.db.all(`SELECT b.id, b.name, b.category, b.amount, b.spent,
+      b.committee_id, cm.name AS committee_name
+    FROM budgets b LEFT JOIN committees cm ON cm.id=b.committee_id
+    WHERE b.tenant_id=? AND b.term_id=?`, req.ctx.tenantId, t.id);
 
   return {
     term: t, staff, open_tasks: openTasks, committees, custody, budgets,

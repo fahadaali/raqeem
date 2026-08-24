@@ -71,8 +71,18 @@ export async function runRollover(app, { rolloverId, tenantId, userId }) {
     /* ٤) ترحيل بنود الميزانية بأرصدة جديدة */
     if (opts.carry_budgets) {
       const budgets = await app.db.all('SELECT * FROM budgets WHERE tenant_id=? AND term_id=?', tenantId, from.id);
-      const rows = budgets.map(b => ['INSERT INTO budgets(tenant_id,branch_id,term_id,name,category,amount,spent) VALUES(?,?,?,?,?,?,0)',
-        [tenantId, b.branch_id, to.id, b.name, b.category, b.amount]]);
+      /*
+       * اللجنة تُرحَّل مع البند كما يُرحَّل فرعُه — وإلا عاد بندُ لجنةٍ في الفصل
+       * الجديد بندَ مجمّعٍ بلا صاحب، فيضيع تخصيصٌ اتُّخذ في الفصل الماضي.
+       *
+       * واللجان المُرحَّلة تأخذ معرّفاتٍ جديدة، فيُترجَم المعرّف عبر `committeeMap`
+       * ليشير البند إلى لجنة فصله لا إلى لجنة الفصل المُغلق. ولجنةٌ لم تُرحَّل
+       * يبقى بندُها على معرّفها القديم: الصفّ قائمٌ لم يُحذف، وإبقاء النسبة أصدق
+       * من محوها.
+       */
+      const rows = budgets.map(b => ['INSERT INTO budgets(tenant_id,branch_id,committee_id,term_id,name,category,amount,spent) VALUES(?,?,?,?,?,?,?,0)',
+        [tenantId, b.branch_id, committeeMap[b.committee_id] ?? b.committee_id ?? null,
+         to.id, b.name, b.category, b.amount]]);
       if (rows.length) await app.db.batch(rows);
       summary.budgets = rows.length;
     }

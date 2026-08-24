@@ -158,7 +158,11 @@ async function rolloverWizard(term, reload) {
       el('label.check-row', {}, [
         el('input', { type: 'checkbox', checked: picked.budgets, onchange: (e) => { picked.budgets = e.target.checked; } }),
         el('div.t', {}, ['إنشاء بنود الميزانية نفسها برصيد جديد',
-          el('small', { text: `${AR_NUM(pv.budgets.length)} بند · المتبقي حالياً ${money(pv.stats.budgets_remaining)} ر.س` })])
+          /* بنود اللجان تُذكَر على حدة: تخصيصٌ يعبر مع البند، فيُرى قبل أن يُعبَر به */
+          el('small', { text: `${AR_NUM(pv.budgets.length)} بند`
+            + (pv.budgets.some(b => b.committee_id)
+              ? ` (منها ${AR_NUM(pv.budgets.filter(b => b.committee_id).length)} للجان، تُرحَّل بلجانها)` : '')
+            + ` · المتبقي حالياً ${money(pv.stats.budgets_remaining)} ر.س` })])
       ]),
       pv.custody.length ? card('العهد التي سترحّل', table([
         { header: 'رقم الطلب', key: 'number' }, { header: 'البيان', key: 'title' },

@@ -153,6 +153,8 @@ section('٣. الفصول والتجميد (Immutability)', async () => {
   const preview = await call('GET', `/api/terms/${current.id}/rollover/preview`, { token: S.owner });
   ok('معاينة الترحيل تُرجع الموظفين والمهام واللجان',
     preview.data.staff.length > 0 && preview.data.committees.length > 0 && Array.isArray(preview.data.open_tasks));
+  ok('معاينة الترحيل تنسب البند إلى لجنته',
+    Array.isArray(preview.data.budgets) && preview.data.budgets.every(b => 'committee_id' in b && 'committee_name' in b));
   ok('معاينة الترحيل تحصر العهد والميزانيات',
     typeof preview.data.stats.custody_total === 'number' && typeof preview.data.stats.budgets_remaining === 'number');
   ok('منع المعلم من معالج الإغلاق', (await call('GET', `/api/terms/${current.id}/rollover/preview`, { token: S.teacher })).status === 403);
