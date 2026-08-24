@@ -477,6 +477,14 @@ label.field>span .req{color:var(--danger)}
   padding:10px 14px;background:var(--surface);transition:.14s;font-size:13.5px;min-height:42px;
   color:var(--text-dark)}
 .input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--mint)}
+/*
+ * مربّع الاختيار يأخذ صنف `.input` كبقية الحقول، و`.input` يفرض عرضاً كاملاً
+ * وارتفاعاً أدنى وحشوة — فيخرج صندوقاً ضخماً يهبط نصُّه تحته. يُستثنى بمقاسه
+ * الطبيعي، ولونُه من توكن الهوية لا من افتراض المتصفّح.
+ */
+.input[type="checkbox"],.input[type="radio"]{width:18px;min-width:18px;height:18px;min-height:18px;
+  padding:0;flex:0 0 auto;accent-color:var(--primary);cursor:pointer}
+.input[type="checkbox"]:focus,.input[type="radio"]:focus{box-shadow:0 0 0 3px var(--mint)}
 .input:disabled{background:var(--surface-2);color:var(--text-3);cursor:not-allowed}
 textarea.input{min-height:88px;resize:vertical;line-height:1.8}
 .hint{font-size:11.5px;color:var(--text-light);margin-top:4px}
@@ -914,6 +922,12 @@ table.tbl.sheet td:first-child::after,table.tbl.sheet th:first-child::after{
   width:max-content;max-width:88%;z-index:9;background:var(--overlay);color:var(--on-color);
   border-radius:var(--r-pill);padding:6px 14px;font-size:11.5px;pointer-events:none}
 .checkin-map{width:100%;max-width:420px}
+
+/* ── صفّ وثيقةٍ في ملف الموظف ─────────────────────────── */
+.docrow{display:flex;align-items:center;gap:10px;padding:9px 11px;
+  border:1px solid var(--border);border-radius:var(--r);background:var(--surface-2)}
+.docrow:hover{border-color:var(--brand-100)}
+.docrow .ic{color:var(--text-3);flex:0 0 auto}
 
 /* ── بيان إغلاق العهدة ─────────────────────────────────── */
 .settle-scale{height:10px;border-radius:var(--r-pill);background:var(--surface-2);

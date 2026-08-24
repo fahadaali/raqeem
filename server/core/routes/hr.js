@@ -34,20 +34,46 @@ router.use('/leaves/*', requireFeature('attendance'));
 router.use('/advances', requireFeature('payroll'));
 router.use('/advances/*', requireFeature('payroll'));
 
+/**
+ * فروع الموظف التي يصحّ التحضير منها.
+ *
+ * من عُيّن على فروعٍ عدّة يُحضِّر من أيّها كان — وكان الخادم يقيس المسافة إلى فرعٍ
+ * واحدٍ يختاره هو، فيُرفض من وقف في فرعه الثاني وهو داخل نطاقه تماماً. فصارت
+ * الفروع كلُّها تُقاس ويُقبل أقربُها الذي هو داخل نطاقه.
+ *
+ * وبلا إحداثيات لا يُقاس فرع، فتُستبعد — لا تُرفَض المحاولة بسببها.
+ */
+const checkinBranches = async (app, ctx) => {
+  const ids = ctx.branchIds || [];
+  if (!ids.length) return [];
+  return app.db.all(
+    `SELECT id,name,lat,lng,geofence_radius,address FROM branches
+     WHERE tenant_id=? AND is_active=1 AND lat IS NOT NULL AND lng IS NOT NULL
+       AND id IN (${ids.map(() => '?').join(',')}) ORDER BY name`,
+    ctx.tenantId, ...ids);
+};
+
+/** هل يُسمح لهذا الموظف بالحضور عن بُعد؟ */
+const remoteAllowed = async (app, ctx) => Boolean((await app.db.get(
+  'SELECT remote_allowed FROM employees WHERE tenant_id=? AND user_id=?', ctx.tenantId, ctx.userId))?.remote_allowed);
+
 router.get('/attendance/today', can('hr.attendance.self'), h(async (req) => {
   const app = req.app;
   const date = localDate();
   const row = await app.db.get('SELECT * FROM attendance WHERE tenant_id=? AND user_id=? AND date=?',
     req.ctx.tenantId, req.ctx.userId, date);
-  const branchId = req.ctx.activeBranchId || req.ctx.primaryBranchId || req.ctx.branchIds[0];
-  const branch = branchId
-    ? await app.db.get('SELECT id,name,lat,lng,geofence_radius,address FROM branches WHERE id=? AND tenant_id=?', branchId, req.ctx.tenantId)
-    : null;
+
+  const branches = await checkinBranches(app, req.ctx);
+  /* الفرع المبدئي — عليه تفتح الخريطة قبل أن يُعرف موقع الموظف */
+  const preferred = req.ctx.activeBranchId || req.ctx.primaryBranchId;
+  const branch = branches.find(b => b.id === preferred) || branches[0] || null;
   const settings = req.ctx.tenantSettings || {};
   return {
     date, record: row || null,
     next_action: !row || !row.check_in_at ? 'check_in' : (!row.check_out_at ? 'check_out' : 'done'),
     branch,
+    branches,
+    remote_allowed: await remoteAllowed(app, req.ctx),
     geofence_radius: branch?.geofence_radius || app.cfg.geofenceDefault,
     workday: settings.workday || { start: '07:30', end: '13:30' },
     server_time: nowUTC()
@@ -59,22 +85,58 @@ router.post('/attendance/check', can('hr.attendance.self'), h(async (req) => {
   const { lat, lng, accuracy, branch_id } = req.body || {};
   if (lat === undefined || lng === undefined) throw badRequest('تعذّر تحديد موقعك، فعّل خدمة الموقع وأعد المحاولة');
 
-  const branchId = branch_id ? await assertBranch(app, req.ctx, branch_id)
-    : (req.ctx.activeBranchId || req.ctx.primaryBranchId || req.ctx.branchIds[0]);
-  const branch = await app.db.get('SELECT * FROM branches WHERE id=? AND tenant_id=?', branchId, req.ctx.tenantId);
-  if (!branch) throw badRequest('لم يتم تحديد الفرع الخاص بك، راجع الموارد البشرية');
-  if (branch.lat == null || branch.lng == null) throw badRequest('لم تُضبط إحداثيات الفرع بعد، راجع الإدارة');
+  /* أرقامٌ عربية كما في بقية رسائل المنصة — والشارة فوق الخريطة بجانبها */
+  const m = (n) => Number(n).toLocaleString('ar-SA');
+  const remote = await remoteAllowed(app, req.ctx);
 
-  const distance = haversine(Number(lat), Number(lng), branch.lat, branch.lng);
-  const radius = branch.geofence_radius || app.cfg.geofenceDefault;
-  if (distance > radius) {
-    /* أرقامٌ عربية كما في بقية رسائل المنصة — والشارة فوق الخريطة بجانبها */
-    const m = (n) => Number(n).toLocaleString('ar-SA');
-    await audit(req, { action: 'reject', entity: 'attendance', branchId,
-      summary: `محاولة تحضير مرفوضة — المسافة ${m(distance)}م تتجاوز نطاق الفرع (${m(radius)}م)` });
-    throw outOfRange(
-      `أنت خارج نطاق الفرع (${m(distance)} متراً من ${branch.name}). النطاق المسموح ${m(radius)} متراً.`,
-      { distance, radius });
+  /*
+   * فرعٌ بعينه إن طُلب، وإلا فكلُّ فروع الموظف: من عُيّن على فروعٍ عدّة يُحضِّر من
+   * أيّها وقف فيه. ويُقاس أقربُها إليه لا أوّلُها في القائمة.
+   */
+  let candidates;
+  if (branch_id) {
+    const one = await app.db.get('SELECT * FROM branches WHERE id=? AND tenant_id=?',
+      await assertBranch(app, req.ctx, branch_id), req.ctx.tenantId);
+    candidates = one ? [one] : [];
+  } else {
+    candidates = await checkinBranches(app, req.ctx);
+  }
+
+  /*
+   * العمل عن بُعد: لا نطاقَ يُقاس، والفرع يبقى للنسبة الإدارية فقط. ولو لم يكن
+   * للموظف فرعٌ بإحداثيات لم يمنعه ذلك — فمن يعمل عن بُعد قد لا يكون له مقرّ.
+   */
+  let branch = null, distance = null;
+  if (remote) {
+    branch = candidates[0]
+      || await app.db.get('SELECT * FROM branches WHERE id=? AND tenant_id=?',
+        req.ctx.activeBranchId || req.ctx.primaryBranchId || req.ctx.branchIds[0] || 0, req.ctx.tenantId)
+      || null;
+    if (branch) distance = haversine(Number(lat), Number(lng), branch.lat, branch.lng);
+  } else {
+    if (!candidates.length) {
+      throw badRequest(req.ctx.branchIds?.length
+        ? 'لم تُضبط إحداثيات فرعك بعد، راجع الإدارة'
+        : 'لم يتم تحديد الفرع الخاص بك، راجع الموارد البشرية');
+    }
+    /* الأقرب أوّلاً، فإن كان داخل نطاقه قُبل — وإن لم يكن فهو الذي تُذكر مسافته */
+    const measured = candidates
+      .map(b => ({ b, d: haversine(Number(lat), Number(lng), b.lat, b.lng),
+        r: b.geofence_radius || app.cfg.geofenceDefault }))
+      .sort((x, y) => (x.d - x.r) - (y.d - y.r));
+    const hit = measured.find(x => x.d <= x.r) || null;
+
+    if (!hit) {
+      const n = measured[0];
+      await audit(req, { action: 'reject', entity: 'attendance', branchId: n.b.id,
+        summary: `محاولة تحضير مرفوضة — المسافة ${m(n.d)}م تتجاوز نطاق الفرع (${m(n.r)}م)` });
+      throw outOfRange(
+        measured.length > 1
+          ? `أنت خارج نطاق فروعك كلّها. أقربها ${n.b.name} على بُعد ${m(n.d)} متراً، ونطاقه ${m(n.r)} متراً.`
+          : `أنت خارج نطاق الفرع (${m(n.d)} متراً من ${n.b.name}). النطاق المسموح ${m(n.r)} متراً.`,
+        { distance: n.d, radius: n.r, branch_id: n.b.id, branch_name: n.b.name });
+    }
+    branch = hit.b; distance = hit.d;
   }
 
   const term = await currentTerm(app, req.ctx.tenantId);
@@ -86,17 +148,24 @@ router.post('/attendance/check', can('hr.attendance.self'), h(async (req) => {
   const startMin = hhmmToMin(settings.workday?.start || '07:30');
   const graceMin = Number(settings.late_after_minutes ?? 15);
 
+  /* أين وقع الحضور — يُكتب في السجلّ والتنبيه معاً فلا يُسأل عنه بعد شهر */
+  const place = remote ? 'عن بُعد' : `في ${branch.name} (${m(distance)}م)`;
+
   if (!existing) {
     const late = localMinutes() > startMin + graceMin;
     const r = await app.db.run(
-      `INSERT INTO attendance(tenant_id,branch_id,term_id,user_id,date,check_in_at,in_lat,in_lng,in_distance,status)
-       VALUES(?,?,?,?,?,?,?,?,?,?)`,
-      req.ctx.tenantId, branch.id, term?.id || null, req.ctx.userId, date, nowUTC(),
-      Number(lat), Number(lng), distance, late ? 'late' : 'present');
-    await audit(req, { action: 'create', entity: 'attendance', entityId: r.lastId, branchId: branch.id,
-      summary: `${req.ctx.userName} سجّل الحضور في ${branch.name} (${distance}م)` });
-    return { ok: true, action: 'check_in', distance, status: late ? 'late' : 'present',
-      message: late ? 'تم تسجيل حضورك — مسجّل كتأخير' : 'تم تسجيل حضورك بنجاح، وفقك الله',
+      `INSERT INTO attendance(tenant_id,branch_id,term_id,user_id,date,check_in_at,in_lat,in_lng,in_distance,is_remote,status)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+      req.ctx.tenantId, branch?.id || null, term?.id || null, req.ctx.userId, date, nowUTC(),
+      Number(lat), Number(lng), distance, remote ? 1 : 0, late ? 'late' : 'present');
+    await audit(req, { action: 'create', entity: 'attendance', entityId: r.lastId, branchId: branch?.id || null,
+      summary: `${req.ctx.userName} سجّل الحضور ${place}` });
+    return { ok: true, action: 'check_in', distance, remote, branch: branch?.name || null,
+      status: late ? 'late' : 'present',
+      /* الفرع يُسمّى في الحالتين: من له فروعٌ عدّة يحتاج أن يعرف أيَّها سُجّل له،
+         والتأخير لا يُلغي ذلك — بل هو أحوج ما يكون إليه حين يُراجَع السجلّ */
+      message: (remote ? 'تم تسجيل حضورك عن بُعد' : `تم تسجيل حضورك في ${branch.name}`)
+        + (late ? ' — مسجّل كتأخير' : '، وفقك الله'),
       record: await app.db.get('SELECT * FROM attendance WHERE id=?', r.lastId) };
   }
 
@@ -105,8 +174,8 @@ router.post('/attendance/check', can('hr.attendance.self'), h(async (req) => {
   const minutes = Math.max(0, Math.round((Date.now() - new Date(existing.check_in_at).getTime()) / 60000));
   await app.db.run('UPDATE attendance SET check_out_at=?,out_lat=?,out_lng=?,out_distance=?,minutes_worked=? WHERE id=?',
     nowUTC(), Number(lat), Number(lng), distance, minutes, existing.id);
-  await audit(req, { action: 'update', entity: 'attendance', entityId: existing.id, branchId: branch.id,
-    summary: `${req.ctx.userName} سجّل الانصراف من ${branch.name} — ${Math.floor(minutes / 60)} ساعة و${minutes % 60} دقيقة` });
+  await audit(req, { action: 'update', entity: 'attendance', entityId: existing.id, branchId: branch?.id || null,
+    summary: `${req.ctx.userName} سجّل الانصراف ${remote ? 'عن بُعد' : `من ${branch.name}`} — ${Math.floor(minutes / 60)} ساعة و${minutes % 60} دقيقة` });
   return { ok: true, action: 'check_out', distance, minutes,
     message: `تم تسجيل انصرافك — مدة العمل ${Math.floor(minutes / 60).toLocaleString('ar-SA')} ساعة و${(minutes % 60).toLocaleString('ar-SA')} دقيقة`,
     record: await app.db.get('SELECT * FROM attendance WHERE id=?', existing.id) };
@@ -184,7 +253,8 @@ router.get('/employees/:userId/file', can('hr.employees.view', 'hr.attendance.se
     'SELECT AVG(score) AS avg_score, COUNT(*) AS c FROM form_submissions WHERE tenant_id=? AND subject_user_id=?',
     req.ctx.tenantId, userId);
 
-  return { employee: emp, attendance, attendance_summary: summary, leaves, advances,
+  return { employee: emp, documents: await docsOf(app, req.ctx.tenantId, userId),
+    attendance, attendance_summary: summary, leaves, advances,
     payroll: payroll.map(p => ({ ...p, details: j(p.details, {}) })),
     tasks: { total: tasks.total || 0, done: tasks.done || 0 },
     evaluation: { avg: evals.avg_score ? Number(evals.avg_score.toFixed(1)) : null, count: evals.c } };
@@ -196,29 +266,165 @@ router.post('/employees', can('hr.employees.manage'), h(async (req) => {
   if (!p.user_id) throw badRequest('يجب اختيار المستخدم');
   const bid = p.branch_id ? await assertBranch(app, req.ctx, p.branch_id) : req.ctx.primaryBranchId;
   await app.db.run(
-    `INSERT INTO employees(tenant_id,branch_id,user_id,employee_no,job_title,department,contract_type,hire_date,contract_end,basic_salary,allowances,bank_iban)
-     VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+    `INSERT INTO employees(tenant_id,branch_id,user_id,employee_no,job_title,department,contract_type,hire_date,contract_end,basic_salary,allowances,bank_iban,remote_allowed)
+     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
      ON CONFLICT(tenant_id,user_id) DO UPDATE SET job_title=excluded.job_title, department=excluded.department,
-       basic_salary=excluded.basic_salary, allowances=excluded.allowances, branch_id=excluded.branch_id`,
+       basic_salary=excluded.basic_salary, allowances=excluded.allowances, branch_id=excluded.branch_id,
+       remote_allowed=excluded.remote_allowed`,
     req.ctx.tenantId, bid, p.user_id, p.employee_no || null, p.job_title || null, p.department || null,
     p.contract_type || 'دوام كامل', p.hire_date || null, p.contract_end || null,
-    Number(p.basic_salary) || 0, Number(p.allowances) || 0, p.bank_iban || null);
+    Number(p.basic_salary) || 0, Number(p.allowances) || 0, p.bank_iban || null, p.remote_allowed ? 1 : 0);
   await audit(req, { action: 'create', entity: 'employee', entityId: p.user_id, summary: `تحديث ملف موظف (${p.job_title || ''})` });
   return created({ ok: true });
 }));
+
+/*
+ * تعديل ملف الموظف — وبياناته في جدولين لا جدول.
+ *
+ * الوظيفة والعقد والراتب في `employees`، والاسم والبريد والجوال والهوية في
+ * `users`. وكان لا بدّ من شاشتين لتغيير اسمٍ وراتب، والمستخدم لا يعرف ذلك ولا
+ * يعنيه. فصار المسار يقبل المجموعتين معاً، وكلُّ مجموعةٍ تُحرَس بصلاحيتها هي:
+ *
+ *   • بيانات الوظيفة والعقد  → `hr.employees.manage` (حارس المسار نفسه)
+ *   • الراتب والبدلات والآيبان → `hr.payroll.view` — من لا يراه لا يضعه
+ *   • الاسم والبريد والجوال والهوية → `users.manage`
+ *
+ * فمسؤول الموارد البشرية بلا صلاحية المستخدمين يعدّل الوظيفة والراتب، ويُردّ
+ * برسالة صريحة إن حاول تغيير الاسم — لا يمرّ التعديل صامتاً ولا يُرفض كلُّه.
+ */
+const EMP_FIELDS = ['employee_no', 'job_title', 'department', 'contract_type',
+  'hire_date', 'contract_end', 'status', 'remote_allowed'];
+const PAY_FIELDS = ['basic_salary', 'allowances', 'bank_iban'];
+const USER_FIELDS = ['name', 'email', 'phone', 'national_id'];
+const touches = (p, keys) => keys.some(k => p[k] !== undefined);
 
 router.patch('/employees/:id', can('hr.employees.manage'), h(async (req) => {
   const app = req.app;
   const e = await findScoped(app, req.ctx, 'employees', req.params.id, { branchCheck: true });
   if (!e) throw notFound('ملف الموظف غير موجود');
   const p = req.body || {};
+
+  if (touches(p, PAY_FIELDS) && !has(req.ctx, 'hr.payroll.view'))
+    throw forbidden('تعديل الراتب والبيانات البنكية يحتاج صلاحية الرواتب');
+  if (touches(p, USER_FIELDS) && !has(req.ctx, 'users.manage'))
+    throw forbidden('تعديل الاسم والبريد والجوال والهوية يحتاج صلاحية إدارة المستخدمين');
+
+  const num = (v, d) => (v === undefined || v === null || v === '' || Number.isNaN(Number(v)) ? d : Number(v));
   await app.db.run(
-    `UPDATE employees SET employee_no=?,job_title=?,department=?,contract_type=?,hire_date=?,contract_end=?,basic_salary=?,allowances=?,bank_iban=?,status=?,branch_id=? WHERE id=? AND tenant_id=?`,
+    `UPDATE employees SET employee_no=?,job_title=?,department=?,contract_type=?,hire_date=?,contract_end=?,
+      basic_salary=?,allowances=?,bank_iban=?,status=?,remote_allowed=?,branch_id=? WHERE id=? AND tenant_id=?`,
     p.employee_no ?? e.employee_no, p.job_title ?? e.job_title, p.department ?? e.department,
-    p.contract_type ?? e.contract_type, p.hire_date ?? e.hire_date, p.contract_end ?? e.contract_end,
-    p.basic_salary ?? e.basic_salary, p.allowances ?? e.allowances, p.bank_iban ?? e.bank_iban,
-    p.status ?? e.status, p.branch_id ? await assertBranch(app, req.ctx, p.branch_id) : e.branch_id, e.id, req.ctx.tenantId);
+    p.contract_type ?? e.contract_type,
+    /* التاريخ يُمحى بإرسال فراغ ويبقى إن لم يُرسَل — و`??` وحدها تخلط بينهما */
+    p.hire_date !== undefined ? (p.hire_date || null) : e.hire_date,
+    p.contract_end !== undefined ? (p.contract_end || null) : e.contract_end,
+    num(p.basic_salary, e.basic_salary), num(p.allowances, e.allowances),
+    p.bank_iban !== undefined ? (String(p.bank_iban).trim() || null) : e.bank_iban,
+    p.status ?? e.status,
+    p.remote_allowed === undefined ? e.remote_allowed : (p.remote_allowed ? 1 : 0),
+    p.branch_id ? await assertBranch(app, req.ctx, p.branch_id) : e.branch_id, e.id, req.ctx.tenantId);
+
+  if (touches(p, USER_FIELDS)) {
+    const u = await app.db.get('SELECT * FROM users WHERE id=? AND tenant_id=?', e.user_id, req.ctx.tenantId);
+    if (!u) throw notFound('حساب الموظف غير موجود');
+    const email = p.email !== undefined ? String(p.email).trim().toLowerCase() : u.email;
+    if (!email) throw badRequest('البريد الإلكتروني مطلوب');
+    if (email !== u.email) {
+      const taken = await app.db.get('SELECT id FROM users WHERE email=? AND id<>?', email, u.id);
+      if (taken) throw badRequest('البريد الإلكتروني مستخدم لحساب آخر');
+    }
+    await app.db.run('UPDATE users SET name=?,email=?,phone=?,national_id=? WHERE id=? AND tenant_id=?',
+      String(p.name ?? u.name).trim() || u.name, email,
+      p.phone !== undefined ? (String(p.phone).trim() || null) : u.phone,
+      p.national_id !== undefined ? (String(p.national_id).trim() || null) : u.national_id,
+      u.id, req.ctx.tenantId);
+  }
+
   await audit(req, { action: 'update', entity: 'employee', entityId: e.id, summary: 'تعديل ملف موظف', before: e, after: p });
+  return { ok: true };
+}));
+
+/* ─────────────── وثائق الموظف ─────────────── */
+/*
+ * الملفّ يُرفع أولاً إلى `/api/files` كبقية مرفقات المنصة، ثم يُربط هنا بصاحبه:
+ * لمن هو، وما نوعه، وبأي اسمٍ يُعرَف. والتسمية ليست ترفاً — «IMG_2481.jpg» لا
+ * يصلح عنواناً لصورة إقامة، ومن يفتح الملف بعد سنةٍ يبحث عن «إقامة ١٤٤٧» لا عن
+ * اسم الملف كما خرج من الهاتف. وتاريخ الانتهاء للهوية والإقامة والعقد يُدخَل
+ * اختيارياً فتُعرف الوثيقة المنتهية من الشاشة بلا تفتيش.
+ */
+const DOC_KINDS = new Set(['id', 'contract', 'certificate', 'other']);
+
+/** ملفُّ موظفٍ يقرؤه صاحبُه أو من يملك عرض ملفات الموظفين */
+const assertFileAccess = (ctx, userId) => {
+  if (userId !== ctx.userId && !has(ctx, 'hr.employees.view')) throw forbidden();
+};
+
+const docsOf = (app, tenantId, userId) => app.db.all(
+  `SELECT d.id, d.kind, d.title, d.expires_at, d.note, d.created_at,
+          d.file_id, f.original_name, f.mime, f.size, u.name AS uploaded_by_name
+     FROM employee_documents d
+     JOIN files f ON f.id = d.file_id
+     LEFT JOIN users u ON u.id = d.uploaded_by
+    WHERE d.tenant_id=? AND d.user_id=?
+    ORDER BY d.created_at DESC`, tenantId, userId);
+
+router.get('/employees/:userId/documents', can('hr.employees.view', 'hr.attendance.self'), h(async (req) => {
+  const userId = Number(req.params.userId);
+  assertFileAccess(req.ctx, userId);
+  return docsOf(req.app, req.ctx.tenantId, userId);
+}));
+
+router.post('/employees/:userId/documents', can('hr.employees.manage'), h(async (req) => {
+  const app = req.app;
+  const userId = Number(req.params.userId);
+  const p = req.body || {};
+  const emp = await app.db.get('SELECT user_id FROM employees WHERE tenant_id=? AND user_id=?', req.ctx.tenantId, userId);
+  if (!emp) throw notFound('ملف الموظف غير موجود');
+
+  /* الملفّ من هذه الجهة لا رقمٌ يُكتب بالهواء */
+  const file = await app.db.get('SELECT id, original_name FROM files WHERE id=? AND tenant_id=?',
+    Number(p.file_id) || 0, req.ctx.tenantId);
+  if (!file) throw badRequest('الملف غير موجود — ارفعه أولاً');
+
+  const kind = DOC_KINDS.has(p.kind) ? p.kind : 'other';
+  const title = String(p.title || '').trim() || file.original_name;
+  const r = await app.db.run(
+    `INSERT INTO employee_documents(tenant_id,user_id,file_id,kind,title,expires_at,note,uploaded_by)
+     VALUES(?,?,?,?,?,?,?,?)`,
+    req.ctx.tenantId, userId, file.id, kind, title,
+    p.expires_at || null, String(p.note || '').trim() || null, req.ctx.userId);
+  await audit(req, { action: 'create', entity: 'employee_document', entityId: r.lastId,
+    summary: `إرفاق وثيقة «${title}» بملف موظف` });
+  return created({ ok: true, id: r.lastId });
+}));
+
+router.patch('/employees/:userId/documents/:id', can('hr.employees.manage'), h(async (req) => {
+  const app = req.app;
+  const userId = Number(req.params.userId);
+  const d = await app.db.get('SELECT * FROM employee_documents WHERE id=? AND tenant_id=? AND user_id=?',
+    Number(req.params.id), req.ctx.tenantId, userId);
+  if (!d) throw notFound('الوثيقة غير موجودة');
+  const p = req.body || {};
+  const title = p.title !== undefined ? (String(p.title).trim() || d.title) : d.title;
+  await app.db.run('UPDATE employee_documents SET kind=?,title=?,expires_at=?,note=? WHERE id=? AND tenant_id=?',
+    DOC_KINDS.has(p.kind) ? p.kind : d.kind, title,
+    p.expires_at !== undefined ? (p.expires_at || null) : d.expires_at,
+    p.note !== undefined ? (String(p.note).trim() || null) : d.note,
+    d.id, req.ctx.tenantId);
+  await audit(req, { action: 'update', entity: 'employee_document', entityId: d.id,
+    summary: `تعديل وثيقة «${title}»`, before: d, after: p });
+  return { ok: true };
+}));
+
+router.delete('/employees/:userId/documents/:id', can('hr.employees.manage'), h(async (req) => {
+  const app = req.app;
+  const d = await app.db.get('SELECT * FROM employee_documents WHERE id=? AND tenant_id=? AND user_id=?',
+    Number(req.params.id), req.ctx.tenantId, Number(req.params.userId));
+  if (!d) throw notFound('الوثيقة غير موجودة');
+  /* يُفكّ الربط ويبقى الملفّ في مخزن الجهة — حذفُ ملفٍ قد يُشار إليه من موضعٍ آخر */
+  await app.db.run('DELETE FROM employee_documents WHERE id=? AND tenant_id=?', d.id, req.ctx.tenantId);
+  await audit(req, { action: 'delete', entity: 'employee_document', entityId: d.id,
+    summary: `حذف وثيقة «${d.title || ''}» من ملف موظف` });
   return { ok: true };
 }));
 

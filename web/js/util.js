@@ -125,6 +125,8 @@ export const T = {
   ticketChip: { open: 'warn', in_progress: 'info', resolved: 'ok', closed: '' },
   term: { open: 'مفتوح', closed: 'مغلق', archived: 'مؤرشف' },
   leave: { pending: 'بانتظار الاعتماد', approved: 'معتمدة', rejected: 'مرفوضة' },
+  docKind: { id: 'الهوية / الإقامة', contract: 'العقد', certificate: 'شهادة', other: 'أخرى' },
+  docIcon: { id: 'id-card', contract: 'file-signature', certificate: 'award', other: 'paperclip' },
   audit: { create: 'إنشاء', update: 'تعديل', delete: 'حذف', approve: 'اعتماد', reject: 'رفض', login: 'دخول', export: 'تصدير' },
   notifIcon: { tasks: 'clipboard-list', finance: 'banknote', hr: 'user-check', chat: 'message-circle',
     tickets: 'headset', system: 'bell', general: 'bell' }
@@ -151,7 +153,9 @@ export function modal({ title, body, footer, size = '', icon = '', onClose, clos
   const back = el('div.modal-back');
   const box = el('div.modal' + (size ? '.' + size : ''));
   const close = () => { back.remove(); document.body.style.overflow = ''; onClose?.(); };
-  box.append(
+  /* `mount` لا `append`: نافذةٌ بلا تذييل كانت تكتب النصّ «null» في أسفلها —
+     `append` تحوّل القيمة الفارغة إلى نصّها. (وهو العطب نفسه الذي أُصلح في `drawer`.) */
+  mount(box,
     el('div.modal-head', {}, [el('h3', { icon: icon || null, text: title }), el('button.x', { icon: 'x', onclick: close, 'aria-label': 'إغلاق' })]),
     el('div.modal-body', {}, [body]),
     footer ? el('div.modal-foot', {}, footer) : null

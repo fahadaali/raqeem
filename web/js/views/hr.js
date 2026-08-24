@@ -40,13 +40,57 @@ async function checkinScreen() {
       ? 'رفضت إذن الموقع — فعّله من إعدادات المتصفح لتتمكن من التحضير'
       : 'تعذّر تحديد موقعك، تأكد من تفعيل خدمة الموقع (GPS)');
 
-    /** أين أنا من الفرع؟ نصٌّ واحد يقرؤه المُحضِّر قبل أن يضغط */
+    /*
+     * فروع الموظف كلُّها لا فرعٌ واحد: من عُيّن على فروعٍ عدّة يُحضِّر من أيّها وقف
+     * فيه، فتُقاس المسافةُ إليها جميعاً ويُتَّخذ أقربُها — كما يفعل الخادم تماماً.
+     */
+    const spots = (d.branches?.length ? d.branches : (d.branch ? [d.branch] : []))
+      .filter(b => b.lat != null && b.lng != null);
+    const radiusOf = (b) => b.geofence_radius || d.geofence_radius || 50;
+
+    /** أقرب فرعٍ إلى نقطة — ومعه مسافته ونطاقه وهل هو داخله */
+    const nearestTo = (la, ln) => {
+      if (!spots.length) return null;
+      return spots
+        .map(b => { const dist = distanceM(b.lat, b.lng, la, ln), r = radiusOf(b);
+          return { b, dist, r, inside: dist <= r }; })
+        .sort((x, y) => (x.dist - x.r) - (y.dist - y.r))[0];
+    };
+
+    /** أين أنا من فرعي؟ نصٌّ واحد يقرؤه المُحضِّر قبل أن يضغط */
     const awayText = (la, ln) => {
-      if (!d.branch?.lat) return '';
-      const away = distanceM(d.branch.lat, d.branch.lng, la, ln);
-      return away <= d.geofence_radius
-        ? `أنت داخل النطاق — ${AR_NUM(away)} م من ${d.branch.name}`
-        : `أنت على بُعد ${AR_NUM(away)} م — تقدّم إلى داخل النطاق (${AR_NUM(d.geofence_radius)} م)`;
+      if (d.remote_allowed) return 'تعمل عن بُعد — التحضير متاح من أي مكان';
+      const n = nearestTo(la, ln);
+      if (!n) return '';
+      if (n.inside) return `أنت داخل نطاق ${n.b.name} — ${AR_NUM(n.dist)} م`;
+      return spots.length > 1
+        ? `أنت خارج نطاق فروعك. أقربها ${n.b.name} على بُعد ${AR_NUM(n.dist)} م (النطاق ${AR_NUM(n.r)} م)`
+        : `أنت على بُعد ${AR_NUM(n.dist)} م — تقدّم إلى داخل النطاق (${AR_NUM(n.r)} م)`;
+    };
+
+    let shown = d.branch || spots[0] || null;
+    /* شارتا الفرع ونطاقه تُبنيان معاً: نطاقُ فرعٍ آخر تحت اسم هذا الفرع كذبٌ صريح */
+    const chipsRow = el('div.row', { style: { justifyContent: 'center', gap: '8px', marginTop: '9px' } });
+    const paintChips = () => {
+      clear(chipsRow).append(
+        chip(d.remote_allowed ? 'عن بُعد — بلا نطاق' : (shown ? shown.name : 'لم يُحدد فرع'),
+          d.remote_allowed ? 'info' : shown ? 'info' : 'warn',
+          d.remote_allowed ? 'laptop' : 'landmark'),
+        d.remote_allowed ? null
+          : chip(`النطاق ${AR_NUM(shown ? radiusOf(shown) : d.geofence_radius)} م`, '', 'map-pin'),
+        /* من له فروعٌ عدّة يعرف أنّ الخريطة تتبع أقربها لا فرعاً بعينه */
+        !d.remote_allowed && spots.length > 1 ? chip(`${AR_NUM(spots.length)} فروع`, '', 'building-2') : null
+      );
+    };
+    paintChips();
+
+    /* الخريطة تتبع أقرب فرعٍ إلى المُحضِّر — لا الأول في قائمته */
+    const focusNearest = (la, ln) => {
+      const n = nearestTo(la, ln);
+      if (!n || n.b.id === shown?.id) return;
+      shown = n.b;
+      mapBox.update({ lat: n.b.lat, lng: n.b.lng, radius: n.r });
+      paintChips();
     };
 
     /*
@@ -55,26 +99,28 @@ async function checkinScreen() {
      * بعينه — أهو خارج النطاق، أم أنّ إحداثيات الفرع نفسها خطأ.
      */
     const mapBox = geoMap({
-      lat: d.branch?.lat, lng: d.branch?.lng, radius: d.geofence_radius || 50, height: 250,
-      onLocate: (pos, err) => { status.textContent = err ? geoErrText(err) : awayText(pos.lat, pos.lng); }
+      lat: shown?.lat, lng: shown?.lng, radius: shown ? radiusOf(shown) : (d.geofence_radius || 50), height: 250,
+      onLocate: (pos, err) => {
+        if (err) { status.textContent = geoErrText(err); return; }
+        focusNearest(pos.lat, pos.lng);
+        status.textContent = awayText(pos.lat, pos.lng);
+      }
     });
-    const mapWrap = el('div.checkin-map', {}, [
-      mapBox,
-      el('div.row', { style: { justifyContent: 'center', gap: '8px', marginTop: '9px' } }, [
-        chip(d.branch ? d.branch.name : 'لم يُحدد فرع', d.branch ? 'info' : 'warn', 'landmark'),
-        chip(`النطاق ${AR_NUM(d.geofence_radius)} م`, '', 'map-pin')
-      ])
-    ]);
+    const mapWrap = el('div.checkin-map', {}, [mapBox, chipsRow]);
 
     /* الموقع يُعرَض قبل الضغط: من يرى نفسه خارج النطاق يتقدّم قبل أن يُرفَض */
     const locate = (opts = {}) => new Promise((res, rej) =>
       navigator.geolocation.getCurrentPosition(res, rej,
         { enableHighAccuracy: true, timeout: 12000, maximumAge: 0, ...opts }));
-    if (navigator.geolocation && d.branch?.lat) {
+    if (navigator.geolocation && spots.length) {
       locate({ maximumAge: 60000 }).then((pos) => {
         const { latitude, longitude, accuracy } = pos.coords;
         mapBox.update({ me: { lat: latitude, lng: longitude, accuracy } });
+        focusNearest(latitude, longitude);
+        status.textContent = awayText(latitude, longitude);
       }).catch(() => { /* لا إذن بعد — الخريطة تبقى على الفرع وحده */ });
+    } else if (d.remote_allowed) {
+      status.textContent = 'تعمل عن بُعد — التحضير متاح من أي مكان';
     }
 
     const btn = el('button.checkin-btn' + cls, { disabled: action === 'done' }, [
@@ -90,10 +136,9 @@ async function checkinScreen() {
       navigator.geolocation.getCurrentPosition(async (pos) => {
         const { latitude, longitude, accuracy } = pos.coords;
         btn.classList.remove('busy');
-        if (d.branch?.lat) {
+        if (spots.length) {
           mapBox.update({ me: { lat: latitude, lng: longitude, accuracy } });
-          const away = distanceM(d.branch.lat, d.branch.lng, latitude, longitude);
-          if (away > d.geofence_radius) status.textContent = awayText(latitude, longitude);
+          focusNearest(latitude, longitude);
         }
         try {
           const res = await api.post('/api/hr/attendance/check', { lat: latitude, lng: longitude, accuracy });
@@ -120,11 +165,19 @@ async function checkinScreen() {
         el('div.row', { style: { justifyContent: 'center' } }, [
           r?.check_in_at ? chip('الحضور: ' + clockOf(r.check_in_at), 'ok', 'log-out') : chip('لم تسجّل الحضور بعد', 'warn', 'hourglass'),
           r?.check_out_at ? chip('الانصراف: ' + clockOf(r.check_out_at), 'danger', 'flag') : null,
+          r?.is_remote ? chip('عن بُعد', 'info', 'laptop') : null,
           r?.status === 'late' ? chip('مسجّل كتأخير', 'warn') : null,
           r?.minutes_worked ? chip(`${AR_NUM(Math.floor(r.minutes_worked / 60))}س ${AR_NUM(r.minutes_worked % 60)}د`, 'info', 'timer') : null
         ]),
-        el('div.hint', { style: { maxWidth: '380px' },
-          text: `اسحب الخريطة لتتنقّل، وكبّرها بزرّي + و−، وبدّل طبقتها من زرّ الطبقات، واضغط زرّ الهدف لترى موقعك. ويتحقق النظام من موقعك بمعادلة هافرساين، ويقبل التسجيل فقط داخل نطاق ${AR_NUM(d.geofence_radius)} متراً من إحداثيات الفرع. دوام اليوم: ${d.workday.start} — ${d.workday.end}` })
+        el('div.hint', { style: { maxWidth: '380px' }, text: [
+          'اسحب الخريطة لتتنقّل، وكبّرها بزرّي + و−، وبدّل طبقتها من زرّ الطبقات، واضغط زرّ الهدف لترى موقعك.',
+          d.remote_allowed
+            ? 'ملفّك مضبوطٌ على العمل عن بُعد، فيُقبل تسجيلك من أي مكان بلا نطاق جغرافي.'
+            : spots.length > 1
+              ? `أنت معيَّنٌ على ${AR_NUM(spots.length)} فروع، ويُقبل تسجيلك داخل نطاق أيّها كنت — والخريطة تتبع أقربها إليك.`
+              : `ويتحقق النظام من موقعك بمعادلة هافرساين، ويقبل التسجيل فقط داخل نطاق ${AR_NUM(shown ? radiusOf(shown) : d.geofence_radius)} متراً من إحداثيات الفرع.`,
+          `دوام اليوم: ${d.workday.start} — ${d.workday.end}`
+        ].join(' ') })
       ])
     ]));
 
@@ -164,11 +217,13 @@ async function attendanceTab() {
         { header: 'التاريخ', key: 'date', render: r => fmtDate(r.date, state.calendar, 'short') },
         { header: 'الموظف', key: 'user_name', render: r => el('div.row', { style: { gap: '6px', flexWrap: 'nowrap' } }, [avatar(r.user_name, 'sm'), el('span', { text: r.user_name, style: { fontSize: '12.5px' } })]) },
         { header: 'الرقم الوظيفي', key: 'employee_no' },
-        { header: 'الفرع', key: 'branch_name' },
+        { header: 'الفرع', key: 'branch_name',
+          render: r => (r.is_remote ? chip('عن بُعد', 'info', 'laptop') : (r.branch_name || '—')) },
         { header: 'الحالة', key: 'status', render: r => chip(T.attendance[r.status], T.attendanceChip[r.status]) },
         { header: 'الحضور', key: 'in', render: r => clockOf(r.check_in_at) },
         { header: 'الانصراف', key: 'out', render: r => clockOf(r.check_out_at) },
-        { header: 'المسافة', key: 'dist', num: true, render: r => r.in_distance != null ? `${AR_NUM(r.in_distance)} م` : '—' }
+        { header: 'المسافة', key: 'dist', num: true,
+          render: r => (r.is_remote ? '—' : (r.in_distance != null ? `${AR_NUM(r.in_distance)} م` : '—')) }
       ], rows, { emptyText: 'لا توجد سجلات ضمن الفترة المحددة' }), { p0: true })
     );
   };
@@ -194,14 +249,23 @@ async function employeesTab() {
     { header: 'الموظف', key: 'name', render: r => el('div.row', { style: { gap: '7px', flexWrap: 'nowrap' } }, [avatar(r.name, 'sm'), el('div', {}, [el('div', { text: r.name, style: { fontSize: '12.5px', fontWeight: '600' } }), el('small', { text: r.email, style: { color: 'var(--text-3)', fontSize: '11px' } })])]) },
     { header: 'المسمى', key: 'job_title' },
     { header: 'القسم', key: 'department' },
-    { header: 'الفرع', key: 'branch_name' },
+    { header: 'الفرع', key: 'branch_name',
+      render: r => (r.remote_allowed ? chip('عن بُعد', 'info', 'laptop') : (r.branch_name || '—')) },
     ...(can('hr.payroll.view') ? [{ header: 'الراتب (ر.س)', key: 'basic_salary', num: true, render: r => money(r.basic_salary + r.allowances) }] : []),
     { header: '', key: 'a', render: r => el('button.btn.sm.ghost', { text: 'الملف الشامل', onclick: () => openEmployeeFile(r.user_id) }) }
   ], rows, { emptyText: 'لا توجد ملفات موظفين' }), { p0: true });
 }
 
 export async function openEmployeeFile(userId) {
-  const d = await api.get(`/api/hr/employees/${userId}/file`);
+  const m = modal({ title: 'ملف الموظف الشامل', body: skeleton(6), size: 'wide' });
+  const paint = async () => {
+    const d = await api.get(`/api/hr/employees/${userId}/file`);
+    clear(m.body).append(fileBody(d, userId, paint));
+  };
+  await paint();
+}
+
+function fileBody(d, userId, reload) {
   const e = d.employee;
   const s = d.attendance_summary;
   const totalDays = s.present + s.late + s.absent + s.leave;
@@ -212,11 +276,17 @@ export async function openEmployeeFile(userId) {
       avatar(e.name, 'lg'),
       el('div', { style: { flex: 1 } }, [
         el('h3', { text: e.name }),
-        el('div.hint', { text: `${e.job_title || ''} · ${e.department || ''} · ${e.branch_name || ''}` }),
+        el('div.hint', { text: [e.job_title, e.department, e.branch_name].filter(Boolean).join(' · ') || '—' }),
         el('div.row', { style: { marginTop: '6px' } }, [
-          chip(e.employee_no || '—'), chip(e.contract_type || ''), chip(e.role_name, 'brand')
+          chip(e.employee_no || '—'), chip(e.contract_type || ''), chip(e.role_name, 'brand'),
+          e.remote_allowed ? chip('يعمل عن بُعد', 'info', 'laptop') : null,
+          e.status && e.status !== 'active' ? chip('موقوف', 'danger') : null
         ])
-      ])
+      ]),
+      can('hr.employees.manage')
+        ? el('button.btn.sm', { icon: 'pencil', text: 'تعديل البيانات',
+          onclick: () => editEmployee(e, reload) })
+        : null
     ]),
     el('div.grid.g4', {}, [
       el('div.stat.ok', {}, [el('div.label', { text: 'نسبة الحضور' }), el('div.value', { text: pct(rate) }), el('div.hint', { text: `${AR_NUM(totalDays)} يوم عمل` })]),
@@ -229,12 +299,15 @@ export async function openEmployeeFile(userId) {
       infoRow('نهاية العقد', e.contract_end ? fmtDate(e.contract_end, state.calendar) : 'غير محدد'),
       infoRow('الجوال', e.phone || '—'),
       infoRow('البريد', e.email),
+      infoRow('رقم الهوية / الإقامة', e.national_id || '—'),
+      infoRow('مكان العمل', e.remote_allowed ? 'عن بُعد — يحضر من أي مكان' : 'من مقرّ الفرع'),
       ...(can('hr.payroll.view') ? [
         infoRow('الراتب الأساسي', money(e.basic_salary) + ' ر.س'),
         infoRow('البدلات', money(e.allowances) + ' ر.س'),
         infoRow('الآيبان', e.bank_iban || '—')
       ] : [])
     ])),
+    documentsCard(d.documents || [], userId, reload),
     d.leaves.length ? card('الإجازات', table([
       { header: 'من', key: 'start_date', render: r => fmtDate(r.start_date, state.calendar, 'short') },
       { header: 'إلى', key: 'end_date', render: r => fmtDate(r.end_date, state.calendar, 'short') },
@@ -248,8 +321,221 @@ export async function openEmployeeFile(userId) {
       { header: 'الصافي (ر.س)', key: 'net', num: true, render: r => el('b', { text: money(r.net) }) }
     ], d.payroll), { p0: true }) : null
   ]);
-  modal({ title: 'ملف الموظف الشامل', body, size: 'wide' });
+  return body;
 }
+/* ═══════════ تعديل بيانات الموظف ═══════════ */
+/*
+ * البيانات في جدولين — الوظيفة والعقد في `employees`، والاسم والبريد والجوال
+ * والهوية في `users` — وكان تغييرُ اسمٍ وراتبٍ يقتضي شاشتين. فصارت نموذجاً
+ * واحداً، والخادم يفرّقهما ويحرس كلّ مجموعةٍ بصلاحيتها.
+ *
+ * وما لا يملك المستخدم صلاحيته لا يُعرَض له أصلاً: عرضُ حقلٍ يُردّ عند الحفظ
+ * إغراءٌ بلا طائل.
+ */
+async function editEmployee(e, reload) {
+  const mayPay = can('hr.payroll.view');
+  const mayUser = can('users.manage');
+  /* تعذّرت قراءة الفروع — يُخفى الحقل ويبقى الفرع كما هو، لا يُفرَّغ */
+  const branches = (await api.get('/api/org/branches').catch(() => []))
+    .filter(b => b.is_active !== 0);
+
+  const f = {
+    name: input({ value: e.name || '' }),
+    email: input({ type: 'email', value: e.email || '', dir: 'ltr' }),
+    phone: input({ value: e.phone || '', dir: 'ltr', placeholder: '05…' }),
+    national_id: input({ value: e.national_id || '', dir: 'ltr', placeholder: '١٠ أرقام' }),
+    employee_no: input({ value: e.employee_no || '' }),
+    job_title: input({ value: e.job_title || '' }),
+    department: input({ value: e.department || '' }),
+    contract_type: select(
+      ['دوام كامل', 'دوام جزئي', 'متعاون', 'عقد مؤقت'].map(v => ({ value: v, label: v })),
+      { value: e.contract_type || 'دوام كامل' }),
+    hire_date: input({ type: 'date', value: e.hire_date || '' }),
+    contract_end: input({ type: 'date', value: e.contract_end || '' }),
+    basic_salary: input({ type: 'number', step: '0.01', min: '0', value: e.basic_salary ?? 0, dir: 'ltr' }),
+    allowances: input({ type: 'number', step: '0.01', min: '0', value: e.allowances ?? 0, dir: 'ltr' }),
+    bank_iban: input({ value: e.bank_iban || '', dir: 'ltr', placeholder: 'SA…' })
+  };
+  const branchSel = branches.length
+    ? select(branches.map(b => ({ value: String(b.id), label: b.name })), { value: String(e.branch_id || '') })
+    : null;
+  const remote = input({ type: 'checkbox', checked: !!e.remote_allowed });
+  const active = input({ type: 'checkbox', checked: (e.status || 'active') === 'active' });
+
+  const m = modal({
+    title: `تعديل ملف — ${e.name}`, icon: 'pencil', size: 'wide',
+    body: el('div.stack', {}, [
+      mayUser ? card('البيانات الشخصية', el('div.grid-2', {}, [
+        field('الاسم', f.name), field('البريد الإلكتروني', f.email),
+        field('الجوال', f.phone), field('رقم الهوية / الإقامة', f.national_id)
+      ])) : el('p.hint', { text: 'تعديل الاسم والبريد والجوال والهوية يحتاج صلاحية إدارة المستخدمين.' }),
+
+      card('الوظيفة والتعاقد', el('div.stack', {}, [
+        el('div.grid-2', {}, [
+          field('الرقم الوظيفي', f.employee_no), field('المسمى الوظيفي', f.job_title),
+          field('القسم', f.department), field('نوع التعاقد', f.contract_type),
+          field('تاريخ المباشرة', f.hire_date), field('نهاية العقد', f.contract_end),
+          ...(branchSel ? [field('الفرع', branchSel)] : [])
+        ]),
+        el('label.row', { style: { gap: '8px' } }, [remote,
+          el('span', { text: 'يعمل عن بُعد — يسجّل حضوره من أي مكان بلا نطاق جغرافي' })]),
+        el('label.row', { style: { gap: '8px' } }, [active, el('span', { text: 'الملف نشط' })])
+      ])),
+
+      mayPay ? card('الراتب والحساب البنكي', el('div.grid-2', {}, [
+        field('الراتب الأساسي (ر.س)', f.basic_salary),
+        field('البدلات (ر.س)', f.allowances),
+        field('الآيبان', f.bank_iban, { hint: 'يُستعمل في مسير الرواتب — تحقّق من صحته قبل الحفظ' })
+      ])) : null
+    ]),
+    footer: [
+      el('button.btn.ghost', { text: 'إلغاء', onclick: () => m.close() }),
+      el('button.btn', { icon: 'save', text: 'حفظ', onclick: async (ev) => {
+        ev.target.disabled = true;
+        try {
+          await api.patch(`/api/hr/employees/${e.id}`, {
+            ...(mayUser ? {
+              name: f.name.value.trim(), email: f.email.value.trim(),
+              phone: f.phone.value.trim(), national_id: f.national_id.value.trim()
+            } : {}),
+            ...(mayPay ? {
+              basic_salary: Number(f.basic_salary.value) || 0,
+              allowances: Number(f.allowances.value) || 0,
+              bank_iban: f.bank_iban.value.trim()
+            } : {}),
+            employee_no: f.employee_no.value.trim(), job_title: f.job_title.value.trim(),
+            department: f.department.value.trim(), contract_type: f.contract_type.value,
+            hire_date: f.hire_date.value, contract_end: f.contract_end.value,
+            remote_allowed: remote.checked, status: active.checked ? 'active' : 'inactive',
+            ...(branchSel?.value ? { branch_id: Number(branchSel.value) } : {})
+          });
+          toast('حُفظت بيانات الموظف', 'ok');
+          m.close(); await reload();
+        } catch (err) { toast(err.message, 'warn'); ev.target.disabled = false; }
+      } })
+    ]
+  });
+}
+
+/* ═══════════ وثائق الموظف ═══════════ */
+/*
+ * الملفّ يُرفع إلى `/api/files` كبقية مرفقات المنصة ثم يُربَط بصاحبه بنوعٍ واسم.
+ * والتسمية هي الفائدة: «IMG_2481.jpg» لا يصلح عنواناً لصورة إقامة، ومن يفتح
+ * الملفّ بعد سنة يبحث عن «إقامة ١٤٤٧» لا عن اسم الملف كما خرج من الهاتف.
+ */
+const DOC_ACCEPT = 'image/*,application/pdf,.pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.doc,.docx,.xls,.xlsx';
+
+/** حالة الوثيقة من تاريخ انتهائها — ما يُقرأ من الشاشة بلا فتحِ ملف */
+function docExpiry(iso) {
+  if (!iso) return null;
+  const days = Math.ceil((new Date(iso + 'T00:00:00') - new Date(todayISO() + 'T00:00:00')) / 86400000);
+  if (days < 0) return { text: 'منتهية', kind: 'danger' };
+  if (days === 0) return { text: 'تنتهي اليوم', kind: 'danger' };
+  if (days <= 30) return { text: `تنتهي خلال ${AR_NUM(days)} يوماً`, kind: 'warn' };
+  return { text: `سارية حتى ${fmtDate(iso, state.calendar, 'short')}`, kind: '' };
+}
+
+function documentsCard(docs, userId, reload) {
+  const may = can('hr.employees.manage');
+  const rows = docs.map(doc => {
+    const exp = docExpiry(doc.expires_at);
+    return el('div.docrow', {}, [
+      el('span.ic', { icon: T.docIcon[doc.kind] || 'paperclip', iconSize: 'card' }),
+      el('div', { style: { flex: 1, minWidth: 0 } }, [
+        el('div', { text: doc.title || doc.original_name,
+          style: { fontSize: '12.5px', fontWeight: '600' } }),
+        el('div.row', { style: { gap: '6px', marginTop: '3px' } }, [
+          chip(T.docKind[doc.kind] || 'أخرى'),
+          exp ? chip(exp.text, exp.kind) : null,
+          doc.note ? el('small', { text: doc.note, style: { color: 'var(--text-3)', fontSize: '11px' } }) : null
+        ])
+      ]),
+      el('div.row', { style: { gap: '4px', flexWrap: 'nowrap' } }, [
+        el('a.btn.sm.ghost', { icon: 'download', text: 'فتح', href: `/api/files/${doc.file_id}`,
+          target: '_blank', rel: 'noopener' }),
+        may ? el('button.btn.sm.ghost', { icon: 'pencil', 'aria-label': 'تعديل الوثيقة',
+          onclick: () => docForm(userId, doc, reload) }) : null,
+        may ? el('button.btn.sm.ghost.danger', { icon: 'trash-2', 'aria-label': 'حذف الوثيقة',
+          onclick: async () => {
+            if (!await confirmDialog(`حذف «${doc.title || doc.original_name}» من ملف الموظف؟`,
+              { confirmText: 'حذف', danger: true })) return;
+            try {
+              await api.del(`/api/hr/employees/${userId}/documents/${doc.id}`);
+              toast('حُذفت الوثيقة', 'ok'); await reload();
+            } catch (err) { toast(err.message, 'warn'); }
+          } }) : null
+      ])
+    ]);
+  });
+
+  const head = may ? el('button.btn.sm', { icon: 'upload', text: 'إرفاق وثيقة',
+    onclick: () => pickAndUpload(userId, reload) }) : null;
+
+  return card('الوثائق', el('div.stack', {}, [
+    head ? el('div.row', { style: { justifyContent: 'flex-end' } }, [head]) : null,
+    rows.length ? el('div.stack', { style: { gap: '6px' } }, rows)
+      : empty('paperclip', 'لا وثائق مرفقة',
+        may ? 'أرفق الهوية أو الإقامة والعقد والشهادات ليكتمل الملف' : 'لم تُرفَق وثائق بعد')
+  ]));
+}
+
+/** يختار ملفاً ويرفعه ثم يسأل عن نوعه واسمه */
+function pickAndUpload(userId, reload) {
+  const inp = el('input', { type: 'file', hidden: true, accept: DOC_ACCEPT });
+  document.body.append(inp);
+  inp.onchange = async () => {
+    const file = inp.files?.[0];
+    inp.remove();
+    if (!file) return;
+    const fd = new FormData();
+    fd.append('files', file);
+    fd.append('context', 'employee_docs');
+    try {
+      const res = await api.post('/api/files', fd);
+      const up = (res.files || res)[0];
+      if (!up) throw new Error('تعذّر رفع الملف');
+      /* الرفع تمّ والربط لم يتمّ بعد — فالنموذج يفتح على الملف المرفوع */
+      docForm(userId, { file_id: up.id, original_name: up.name, kind: 'other', title: '' }, reload);
+    } catch (err) { toast(err.message || 'تعذّر رفع الملف', 'err'); }
+  };
+  inp.click();
+}
+
+/** نموذج الوثيقة — يُستعمل للإرفاق الجديد وللتعديل معاً */
+function docForm(userId, doc, reload) {
+  const isNew = !doc.id;
+  const kind = select(Object.entries(T.docKind).map(([value, label]) => ({ value, label })),
+    { value: doc.kind || 'other' });
+  const title = input({ value: doc.title || doc.original_name || '', placeholder: 'مثال: إقامة ١٤٤٧' });
+  const expires = input({ type: 'date', value: doc.expires_at || '' });
+  const note = input({ value: doc.note || '', placeholder: 'اختياري' });
+
+  const m = modal({
+    title: isNew ? 'تسمية الوثيقة' : 'تعديل الوثيقة', icon: 'paperclip', size: 'narrow',
+    body: el('div.stack', {}, [
+      isNew ? el('p.hint', { text: `أُرفع الملف: ${doc.original_name}` }) : null,
+      field('النوع', kind),
+      field('التسمية', title, { hint: 'الاسم الذي تُعرَف به الوثيقة في الملف — لا اسم الملف على الجهاز' }),
+      field('تاريخ الانتهاء', expires, { hint: 'اختياري — للهوية والإقامة والعقد. تظهر الوثيقة المنتهية في الملف.' }),
+      field('ملاحظة', note)
+    ]),
+    footer: [
+      el('button.btn.ghost', { text: 'إلغاء', onclick: () => m.close() }),
+      el('button.btn', { icon: 'save', text: isNew ? 'إرفاق' : 'حفظ', onclick: async (ev) => {
+        ev.target.disabled = true;
+        const payload = { kind: kind.value, title: title.value.trim(),
+          expires_at: expires.value || null, note: note.value.trim() };
+        try {
+          if (isNew) await api.post(`/api/hr/employees/${userId}/documents`, { ...payload, file_id: doc.file_id });
+          else await api.patch(`/api/hr/employees/${userId}/documents/${doc.id}`, payload);
+          toast(isNew ? 'أُرفقت الوثيقة' : 'حُفظت الوثيقة', 'ok');
+          m.close(); await reload();
+        } catch (err) { toast(err.message, 'warn'); ev.target.disabled = false; }
+      } })
+    ]
+  });
+}
+
 const infoRow = (label, value) => el('div', { style: { display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border)' } }, [
   el('span', { style: { color: 'var(--text-3)', fontSize: '12px' }, text: label }),
   el('b', { style: { fontSize: '12.5px' }, text: String(value) })

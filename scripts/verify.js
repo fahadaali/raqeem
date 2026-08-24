@@ -279,6 +279,64 @@ section('٥. الحضور الجغرافي والرواتب', async () => {
   ok('رفض التحضير دون إحداثيات',
     (await call('POST', '/api/hr/attendance/check', { token: S.employee, body: {} })).status === 400);
 
+  /* ── التحضير من أكثر من فرع ──
+     مدير الفرع الرئيسي معيَّنٌ على B01 وB02 وبينهما نحو أربعة كيلومترات. وكان
+     الخادم يقيس إلى فرعٍ واحدٍ يختاره هو، فيُرفض من وقف في فرعه الثاني وهو داخل
+     نطاقه تماماً. فتُقاس فروعه كلُّها ويُقبل أقربُها. */
+  const bmToday = (await call('GET', '/api/hr/attendance/today', { token: S.branch_manager })).data;
+  ok('حالة التحضير تُرجع فروع الموظف كلَّها',
+    Array.isArray(bmToday.branches) && bmToday.branches.length === 2,
+    `عددها ${bmToday.branches?.length}`);
+  ok('وكلُّ فرعٍ فيها بإحداثيات ونطاق',
+    bmToday.branches.every(b => b.lat != null && b.lng != null && b.geofence_radius > 0));
+
+  const b01 = S.branches.find(x => x.code === 'B01');
+  const b02 = S.branches.find(x => x.code === 'B02');
+  /* الفرع الثاني — ليس المبدئيّ ولا الأول في قائمته */
+  const atB02 = await call('POST', '/api/hr/attendance/check', {
+    token: S.branch_manager, body: { lat: b02.lat, lng: b02.lng } });
+  ok('التحضير يُقبل من الفرع الثاني لا من المبدئيّ وحده',
+    [200, 409].includes(atB02.status), `status ${atB02.status} · ${atB02.data?.error?.message || ''}`);
+  if (atB02.status === 200) {
+    ok('والسجلّ يُنسب إلى الفرع الذي وقف فيه',
+      atB02.data.record?.branch_id === b02.id, `branch ${atB02.data.record?.branch_id} والمتوقع ${b02.id}`);
+    ok('ورسالة القبول تسمّي الفرع', /النرجس/.test(atB02.data.message || ''), atB02.data.message);
+  }
+  /* وبُعدٌ عن فروعه كلِّها يُرفض برسالةٍ تسمّي أقربها */
+  const farAll = await call('POST', '/api/hr/attendance/check', {
+    token: S.branch_manager, body: { lat: 25.9, lng: 47.9 } });
+  ok('البعد عن الفروع كلّها مرفوض',
+    farAll.status === 422 && farAll.data.error?.code === 'OUT_OF_RANGE');
+  ok('ورسالته تسمّي أقرب الفروع لا فرعاً بعينه',
+    /أقربها/.test(farAll.data.error?.message || ''), farAll.data.error?.message || '(لا رسالة)');
+  ok('وفرعٌ يُطلب صراحةً يُقاس وحده',
+    (await call('POST', '/api/hr/attendance/check', {
+      token: S.branch_manager, body: { lat: b02.lat, lng: b02.lng, branch_id: b01.id } })).status === 422);
+
+  /* ── العمل عن بُعد ──
+     من ضُبط ملفُّه على العمل عن بُعد يُحضِّر من أي مكان، ويُعلَّم سجلُّه بذلك فلا
+     يُقرأ بعد شهرٍ حضوراً في الفرع. */
+  const teacherEmp = (await call('GET', '/api/hr/employees', { token: S.hr })).data
+    .find(e => e.user_id === S.u_teacher.id);
+  ok('ملف الموظف يحمل علَم العمل عن بُعد', teacherEmp && 'remote_allowed' in teacherEmp);
+  ok('تفعيل العمل عن بُعد من ملف الموظف',
+    (await call('PATCH', `/api/hr/employees/${teacherEmp.id}`, {
+      token: S.hr, body: { remote_allowed: true } })).status === 200);
+  ok('والحالة تظهر في حالة التحضير',
+    (await call('GET', '/api/hr/attendance/today', { token: S.teacher })).data.remote_allowed === true);
+  const remoteChk = await call('POST', '/api/hr/attendance/check', {
+    token: S.teacher, body: { lat: 21.4225, lng: 39.8262 } });   /* مكة — بعيدةٌ عن كل فروعه */
+  ok('التحضير عن بُعد يُقبل من أي مكان',
+    [200, 409].includes(remoteChk.status), `status ${remoteChk.status} · ${remoteChk.data?.error?.message || ''}`);
+  if (remoteChk.status === 200) {
+    ok('والسجلّ يُعلَّم أنّه عن بُعد', remoteChk.data.record?.is_remote === 1);
+    ok('ورسالته تقول ذلك', /عن بُعد/.test(remoteChk.data.message || ''), remoteChk.data.message);
+  }
+  ok('وإطفاؤه يعيد اشتراط النطاق',
+    (await call('PATCH', `/api/hr/employees/${teacherEmp.id}`, {
+      token: S.hr, body: { remote_allowed: false } })).status === 200
+    && (await call('GET', '/api/hr/attendance/today', { token: S.teacher })).data.remote_allowed === false);
+
   /* خريطة التحضير: كتالوج الطبقات عامٌّ بالضرورة (وسم <img> لا يحمل مصادقة)،
      ووسيط المربّعات لا يُمرّر إلا ما تحقّق من مداه — فلا يصير وسيطاً مفتوحاً. */
   const layers = await call('GET', '/api/map/layers');
@@ -298,6 +356,74 @@ section('٥. الحضور الجغرافي والرواتب', async () => {
   const file = (await call('GET', `/api/hr/employees/${S.u_teacher.id}/file`, { token: S.hr })).data;
   ok('ملف الموظف يجمع الحضور والإجازات والمهام والتقييم',
     !!file.employee && !!file.attendance_summary && !!file.tasks && 'evaluation' in file);
+  ok('والملف يحمل وثائقه معه في نداءٍ واحد', Array.isArray(file.documents));
+
+  /* ── تعديل بيانات الموظف من ملفه ──
+     البيانات في جدولين — الوظيفة في `employees` والاسم في `users` — والنموذج
+     واحد. فيُتحقَّق أنّ المجموعتين تُحفظان معاً وأنّ كلّاً منهما تُحرَس بصلاحيتها. */
+  const empRow = (await call('GET', '/api/hr/employees', { token: S.hr })).data
+    .find(e => e.user_id === S.u_teacher.id);
+  const edited = await call('PATCH', `/api/hr/employees/${empRow.id}`, {
+    token: S.hr, body: { job_title: 'معلّم قرآن أوّل', department: 'التحفيظ',
+      basic_salary: 7250, allowances: 900, bank_iban: 'SA0380000000608010167519',
+      phone: '0501112223', national_id: '1098765432' } });
+  ok('حفظ بيانات الوظيفة والراتب والمستخدم من نموذجٍ واحد', edited.status === 200,
+    edited.data?.error?.message || '');
+  const after = (await call('GET', `/api/hr/employees/${S.u_teacher.id}/file`, { token: S.hr })).data.employee;
+  ok('المسمى الوظيفي والراتب حُفظا', after.job_title === 'معلّم قرآن أوّل' && after.basic_salary === 7250);
+  ok('والآيبان والبدلات كذلك', after.bank_iban === 'SA0380000000608010167519' && after.allowances === 900);
+  ok('وحقول المستخدم في جدولها الآخر', after.phone === '0501112223' && after.national_id === '1098765432');
+  ok('التاريخ يُمحى بإرسال فراغ',
+    (await call('PATCH', `/api/hr/employees/${empRow.id}`, { token: S.hr, body: { contract_end: '' } })).status === 200
+    && (await call('GET', `/api/hr/employees/${S.u_teacher.id}/file`, { token: S.hr })).data.employee.contract_end === null);
+  ok('بريدٌ يملكه حسابٌ آخر مرفوض',
+    (await call('PATCH', `/api/hr/employees/${empRow.id}`, {
+      token: S.hr, body: { email: 'admin@riyadh-qu.sa' } })).status === 400);
+  ok('المعلم لا يعدّل ملفه بنفسه',
+    (await call('PATCH', `/api/hr/employees/${empRow.id}`, { token: S.teacher, body: { basic_salary: 99999 } })).status === 403);
+  /* والمشرف يملك عرض الموظفين لا إدارتهم */
+  ok('من لا يملك إدارة الموظفين لا يعدّل',
+    (await call('PATCH', `/api/hr/employees/${empRow.id}`, { token: S.supervisor, body: { job_title: 'x' } })).status === 403);
+
+  /* ── وثائق الموظف ──
+     الملفّ يُرفع كبقية مرفقات المنصة ثم يُربط بصاحبه بنوعٍ واسمٍ يُعرَف به. */
+  const fd = new FormData();
+  fd.append('files', new Blob([Buffer.from('%PDF-1.4 test')], { type: 'application/pdf' }), 'iqama.pdf');
+  fd.append('context', 'employee_docs');
+  const up = await call('POST', '/api/files', { token: S.hr, body: fd });
+  ok('رفع ملف الوثيقة', up.status === 201 && up.data.files?.[0]?.id, `status ${up.status}`);
+  const fileId = up.data.files?.[0]?.id;
+
+  const doc = await call('POST', `/api/hr/employees/${S.u_teacher.id}/documents`, {
+    token: S.hr, body: { file_id: fileId, kind: 'id', title: 'إقامة ١٤٤٧', expires_at: '2027-03-01' } });
+  ok('ربط الوثيقة بملف الموظف', doc.status === 201, doc.data?.error?.message || '');
+  const docs = (await call('GET', `/api/hr/employees/${S.u_teacher.id}/documents`, { token: S.hr })).data;
+  ok('الوثيقة تظهر باسمها لا باسم ملفها على القرص',
+    docs[0]?.title === 'إقامة ١٤٤٧' && docs[0]?.original_name === 'iqama.pdf');
+  ok('ونوعها وتاريخ انتهائها محفوظان', docs[0]?.kind === 'id' && docs[0]?.expires_at === '2027-03-01');
+  ok('نوعٌ مجهول يعود إلى «أخرى»',
+    (await call('PATCH', `/api/hr/employees/${S.u_teacher.id}/documents/${docs[0].id}`, {
+      token: S.hr, body: { kind: 'nonsense' } })).status === 200);
+  ok('إعادة التسمية',
+    (await call('PATCH', `/api/hr/employees/${S.u_teacher.id}/documents/${docs[0].id}`, {
+      token: S.hr, body: { kind: 'contract', title: 'عقد العمل ١٤٤٨' } })).status === 200
+    && (await call('GET', `/api/hr/employees/${S.u_teacher.id}/documents`, { token: S.hr }))
+      .data[0].title === 'عقد العمل ١٤٤٨');
+  ok('الموظف يرى وثائق ملفه',
+    (await call('GET', `/api/hr/employees/${S.u_teacher.id}/documents`, { token: S.teacher })).status === 200);
+  ok('ولا يرى وثائق غيره',
+    (await call('GET', `/api/hr/employees/${S.u_employee.id}/documents`, { token: S.teacher })).status === 403);
+  ok('ولا يرفع وثيقةً لنفسه',
+    (await call('POST', `/api/hr/employees/${S.u_teacher.id}/documents`, {
+      token: S.teacher, body: { file_id: fileId, title: 'x' } })).status === 403);
+  ok('ملفٌّ لا وجود له مرفوض',
+    (await call('POST', `/api/hr/employees/${S.u_teacher.id}/documents`, {
+      token: S.hr, body: { file_id: 999999, title: 'x' } })).status === 400);
+  ok('حذف الوثيقة يفكّ الربط',
+    (await call('DELETE', `/api/hr/employees/${S.u_teacher.id}/documents/${docs[0].id}`, { token: S.hr })).status === 200
+    && (await call('GET', `/api/hr/employees/${S.u_teacher.id}/documents`, { token: S.hr })).data.length === 0);
+  ok('والملفّ نفسه يبقى في مخزن الجهة',
+    (await call('GET', `/api/files/${fileId}`, { token: S.hr, raw: true })).status === 200);
   ok('الموظف يرى ملفه الشخصي',
     (await call('GET', `/api/hr/employees/${S.u_teacher.id}/file`, { token: S.teacher })).status === 200);
   ok('منع الموظف من ملفات الآخرين',
@@ -2081,6 +2207,41 @@ section('٢٣. الشاشة الرئيسية العامة ومحرّرها', asy
   /* شيفرة التطبيق من الشبكة أولاً: الذاكرة أولاً تُبقي المستخدم وراء نسخة */
   ok('شيفرة التطبيق تُجلَب من الشبكة أولاً',
     /isCode/.test(readFileSync('web/sw.js', 'utf8')));
+
+  /*
+   * `append` تحوّل القيمة الفارغة إلى نصّها، فيُكتب «null» في الصفحة. وقع في
+   * `drawer` فأُصلح، ثم وقع في `modal` — وهو يظهر في كل نافذةٍ بلا تذييل. فيُحرَس
+   * البناؤون المشتركون: ما كان بنيةً اختيارية يُركَّب بـ `mount` لا بـ `append`.
+   */
+  {
+    /*
+     * الشكل المقصود: وسيطٌ في `append` هو شرطٌ ينتهي إلى `null` — تحوّله المتصفّح
+     * إلى النصّ «null» فيُطبع في الصفحة. أمّا
+     * `append(c instanceof Node ? c : createTextNode(...))` فهو الحارس نفسه.
+     * تُوزَن الأقواس فعلاً لا تُخمَّن الأسطر: الوسيط قد يمتدّ على خمسة أسطر.
+     */
+    const bad = [];
+    for (const f of ['web/js/util.js', 'web/js/app.js', 'web/js/admin-shell.js']) {
+      const src = readFileSync(f, 'utf8');
+      for (const m of src.matchAll(/[\w$)\]]\s*\.append\(/g)) {
+        let i = m.index + m[0].length, depth = 1, args = [''];
+        while (i < src.length && depth > 0) {
+          const c = src[i];
+          if ('([{'.includes(c)) depth++;
+          else if (')]}'.includes(c)) { depth--; if (!depth) break; }
+          else if (c === ',' && depth === 1) { args.push(''); i++; continue; }
+          args[args.length - 1] += c; i++;
+        }
+        for (const a of args) {
+          if (/\?[\s\S]*:\s*null\s*$/.test(a.trim())) {
+            bad.push(`${f}:${src.slice(0, m.index).split('\n').length}`);
+            break;
+          }
+        }
+      }
+    }
+    ok('بناؤو الواجهة لا يُلحقون قيمةً فارغة فتُطبَع «null»', bad.length === 0, bad.join(' · '));
+  }
 
   /* ── المناطق الآمنة: الجزيرة الديناميكية تبتلع أعلى الشاشة في التطبيق المثبَّت ── */
   {

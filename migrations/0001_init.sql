@@ -245,6 +245,7 @@ CREATE TABLE IF NOT EXISTS employees (
   basic_salary  REAL NOT NULL DEFAULT 0,
   allowances    REAL NOT NULL DEFAULT 0,
   bank_iban     TEXT,
+  remote_allowed INTEGER NOT NULL DEFAULT 0,  
   status        TEXT NOT NULL DEFAULT 'active',
   created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   UNIQUE (tenant_id, user_id)
@@ -263,6 +264,7 @@ CREATE TABLE IF NOT EXISTS attendance (
   check_out_at  TEXT,
   in_lat REAL, in_lng REAL, in_distance REAL,
   out_lat REAL, out_lng REAL, out_distance REAL,
+  is_remote     INTEGER NOT NULL DEFAULT 0,         
   status        TEXT NOT NULL DEFAULT 'present',     
   minutes_worked INTEGER NOT NULL DEFAULT 0,
   note          TEXT,
@@ -885,6 +887,21 @@ CREATE TABLE IF NOT EXISTS platform_settings (
   landing            TEXT NOT NULL DEFAULT '{}',   
   updated_at         TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
+
+CREATE TABLE IF NOT EXISTS employee_documents (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  tenant_id   INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  file_id     INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+  kind        TEXT NOT NULL DEFAULT 'other',   
+  title       TEXT,                            
+  expires_at  TEXT,                            
+  note        TEXT,
+  uploaded_by INTEGER REFERENCES users(id),
+  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+CREATE INDEX IF NOT EXISTS ix_empdocs_user ON employee_documents(tenant_id, user_id);
 
 CREATE TABLE IF NOT EXISTS platform_logs (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,

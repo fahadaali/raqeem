@@ -245,6 +245,7 @@ CREATE TABLE IF NOT EXISTS employees (
   basic_salary  REAL NOT NULL DEFAULT 0,
   allowances    REAL NOT NULL DEFAULT 0,
   bank_iban     TEXT,
+  remote_allowed INTEGER NOT NULL DEFAULT 0,  -- يحضر من أي مكان بلا نطاق جغرافي
   status        TEXT NOT NULL DEFAULT 'active',
   created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   UNIQUE (tenant_id, user_id)
@@ -262,6 +263,7 @@ CREATE TABLE IF NOT EXISTS attendance (
   check_out_at  TEXT,
   in_lat REAL, in_lng REAL, in_distance REAL,
   out_lat REAL, out_lng REAL, out_distance REAL,
+  is_remote     INTEGER NOT NULL DEFAULT 0,         -- حضورٌ عن بُعد — بلا نطاق
   status        TEXT NOT NULL DEFAULT 'present',     -- present|late|absent|leave
   minutes_worked INTEGER NOT NULL DEFAULT 0,
   note          TEXT,
@@ -896,6 +898,23 @@ CREATE TABLE IF NOT EXISTS platform_settings (
   landing            TEXT NOT NULL DEFAULT '{}',   -- JSON: محتوى الشاشة الرئيسية العامة
   updated_at         TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
+
+-- وثائق الموظف — الهوية والإقامة والعقد والشهادات وما سواها.
+-- الملفّ نفسه في `files`؛ وهذا الجدول يقول لمن هو، وما نوعه، وبأي اسمٍ يُعرَف
+-- في ملفّه (فاسم الملف على القرص لا يصلح عنواناً)، ومتى ينتهي إن كان له انتهاء.
+CREATE TABLE IF NOT EXISTS employee_documents (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  tenant_id   INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  file_id     INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+  kind        TEXT NOT NULL DEFAULT 'other',   -- id|contract|certificate|other
+  title       TEXT,                            -- تسمية الوثيقة كما يكتبها المستخدم
+  expires_at  TEXT,                            -- YYYY-MM-DD — للهوية والإقامة والعقد
+  note        TEXT,
+  uploaded_by INTEGER REFERENCES users(id),
+  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS ix_empdocs_user ON employee_documents(tenant_id, user_id);
 
 -- سجلّ عمليات مالك المنصة — مقفل ومنفصل عن سجلات الجهات (Append-only)
 CREATE TABLE IF NOT EXISTS platform_logs (

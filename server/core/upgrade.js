@@ -29,6 +29,10 @@ const ADDITIONS = [
   /* ── تخصيص الميزانية على مستوى اللجنة كما على مستوى الفرع ── */
   ['budgets', 'committee_id',    'INTEGER'],
 
+  /* ── العمل عن بُعد: موظفٌ يحضر من أي مكان، وسجلٌّ يقول إنّ حضوره كان كذلك ── */
+  ['employees',  'remote_allowed', 'INTEGER NOT NULL DEFAULT 0'],
+  ['attendance', 'is_remote',      'INTEGER NOT NULL DEFAULT 0'],
+
   /* ── إغلاق العهد المالية ── */
   ['finance_requests', 'settle_status',  'TEXT'],
   ['finance_requests', 'settled_amount', 'REAL NOT NULL DEFAULT 0'],
@@ -111,7 +115,8 @@ export async function reconcileIndexes(app) {
     'CREATE INDEX IF NOT EXISTS ix_users_platform ON users(is_platform_admin)',
     'CREATE INDEX IF NOT EXISTS ix_tickets_vendor ON tickets(vendor_escalated, vendor_status)',
     'CREATE INDEX IF NOT EXISTS ix_subinv_doctype ON subscription_invoices(doc_type, tenant_id)',
-    'CREATE INDEX IF NOT EXISTS ix_budgets_scope ON budgets(tenant_id, branch_id, committee_id, term_id)'
+    'CREATE INDEX IF NOT EXISTS ix_budgets_scope ON budgets(tenant_id, branch_id, committee_id, term_id)',
+    'CREATE INDEX IF NOT EXISTS ix_empdocs_user ON employee_documents(tenant_id, user_id)'
   ];
   for (const sql of stmts) { try { await app.db.run(sql); } catch { /* موجود مسبقاً */ } }
 }
