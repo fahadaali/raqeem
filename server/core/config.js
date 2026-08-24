@@ -39,6 +39,15 @@ export function buildConfig(env = {}) {
       loginAccountMax: num(env.LOGIN_ACCOUNT_MAX, 8)
     },
 
+    /*
+     * الخريطة: مفتاح خرائط قوقل سرٌّ يبقى على الخادم — الوسيط في
+     * routes/map.js يجلب المربّعات به. وبلا مفتاحٍ تعمل الخريطة على
+     * الطبقة المفتوحة، فلا تتعطّل شاشة التحضير لغياب اشتراك.
+     */
+    maps: {
+      googleKey: env.GOOGLE_MAPS_API_KEY || ''
+    },
+
     geofenceDefault: num(env.GEOFENCE_DEFAULT_RADIUS, 50),
     uploadMaxMb: num(env.UPLOAD_MAX_MB, 15),
     trustProxy: bool(env.TRUST_PROXY, true)

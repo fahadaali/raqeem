@@ -33,12 +33,30 @@ async function checkinScreen() {
     const label = { check_in: 'تسجيل الحضور', check_out: 'تسجيل الانصراف', done: 'اكتمل اليوم' }[action];
     const cls = action === 'check_out' ? '.out' : action === 'done' ? '.done' : '';
 
+    const status = el('div', { style: { fontSize: '13px', color: 'var(--text-2)', minHeight: '22px' } });
+
+    /* رسالةُ تعذّر الموقع واحدة أينما جاء الطلب — من الزرّ الكبير أو من الخريطة */
+    const geoErrText = (err) => (err?.code === 1
+      ? 'رفضت إذن الموقع — فعّله من إعدادات المتصفح لتتمكن من التحضير'
+      : 'تعذّر تحديد موقعك، تأكد من تفعيل خدمة الموقع (GPS)');
+
+    /** أين أنا من الفرع؟ نصٌّ واحد يقرؤه المُحضِّر قبل أن يضغط */
+    const awayText = (la, ln) => {
+      if (!d.branch?.lat) return '';
+      const away = distanceM(d.branch.lat, d.branch.lng, la, ln);
+      return away <= d.geofence_radius
+        ? `أنت داخل النطاق — ${AR_NUM(away)} م من ${d.branch.name}`
+        : `أنت على بُعد ${AR_NUM(away)} م — تقدّم إلى داخل النطاق (${AR_NUM(d.geofence_radius)} م)`;
+    };
+
     /*
-     * خريطة حقيقية لا رسمٌ تخطيطي: المُحضِّر يرى مسجده ونطاقه وموضعَه منه، فإن
-     * رُفض تحضيره عرف السبب بعينه — أهو خارج النطاق أم أنّ إحداثيات الفرع خطأ.
+     * خريطة تفاعلية لا صورةٌ ثابتة: المُحضِّر يسحبها ويكبّرها ويبدّل طبقتها
+     * ويضغط «موقعي» فيرى مسجده ونطاقه وموضعَه منه. فإن رُفض تحضيره عرف السبب
+     * بعينه — أهو خارج النطاق، أم أنّ إحداثيات الفرع نفسها خطأ.
      */
     const mapBox = geoMap({
-      lat: d.branch?.lat, lng: d.branch?.lng, radius: d.geofence_radius || 50, height: 230
+      lat: d.branch?.lat, lng: d.branch?.lng, radius: d.geofence_radius || 50, height: 250,
+      onLocate: (pos, err) => { status.textContent = err ? geoErrText(err) : awayText(pos.lat, pos.lng); }
     });
     const mapWrap = el('div.checkin-map', {}, [
       mapBox,
@@ -58,7 +76,6 @@ async function checkinScreen() {
         mapBox.update({ me: { lat: latitude, lng: longitude, accuracy } });
       }).catch(() => { /* لا إذن بعد — الخريطة تبقى على الفرع وحده */ });
     }
-    const status = el('div', { style: { fontSize: '13px', color: 'var(--text-2)', minHeight: '22px' } });
 
     const btn = el('button.checkin-btn' + cls, { disabled: action === 'done' }, [
       el('span.ic', { icon: action === 'done' ? 'circle-check' : action === 'check_out' ? 'flag' : 'map-pin', iconSize: 24 }),
@@ -76,9 +93,7 @@ async function checkinScreen() {
         if (d.branch?.lat) {
           mapBox.update({ me: { lat: latitude, lng: longitude, accuracy } });
           const away = distanceM(d.branch.lat, d.branch.lng, latitude, longitude);
-          if (away > d.geofence_radius) {
-            status.textContent = `أنت على بُعد ${AR_NUM(away)} م — تقدّم إلى داخل النطاق (${AR_NUM(d.geofence_radius)} م)`;
-          }
+          if (away > d.geofence_radius) status.textContent = awayText(latitude, longitude);
         }
         try {
           const res = await api.post('/api/hr/attendance/check', { lat: latitude, lng: longitude, accuracy });
@@ -90,9 +105,7 @@ async function checkinScreen() {
         }
       }, (err) => {
         btn.disabled = false; btn.classList.remove('busy');
-        status.textContent = err.code === 1
-          ? 'رفضت إذن الموقع — فعّله من إعدادات المتصفح لتتمكن من التحضير'
-          : 'تعذّر تحديد موقعك، تأكد من تفعيل خدمة الموقع (GPS)';
+        status.textContent = geoErrText(err);
         toast(status.textContent, 'err');
       }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
     };
@@ -111,7 +124,7 @@ async function checkinScreen() {
           r?.minutes_worked ? chip(`${AR_NUM(Math.floor(r.minutes_worked / 60))}س ${AR_NUM(r.minutes_worked % 60)}د`, 'info', 'timer') : null
         ]),
         el('div.hint', { style: { maxWidth: '380px' },
-          text: `يتحقق النظام من موقعك بمعادلة هافرساين، ويقبل التسجيل فقط داخل نطاق ${AR_NUM(d.geofence_radius)} متراً من إحداثيات الفرع. دوام اليوم: ${d.workday.start} — ${d.workday.end}` })
+          text: `اسحب الخريطة لتتنقّل، وكبّرها بزرّي + و−، وبدّل طبقتها من زرّ الطبقات، واضغط زرّ الهدف لترى موقعك. ويتحقق النظام من موقعك بمعادلة هافرساين، ويقبل التسجيل فقط داخل نطاق ${AR_NUM(d.geofence_radius)} متراً من إحداثيات الفرع. دوام اليوم: ${d.workday.start} — ${d.workday.end}` })
       ])
     ]));
 

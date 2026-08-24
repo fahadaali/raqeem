@@ -67,9 +67,29 @@
   --pulse-from:rgba(232,162,92,.5); --pulse-to:rgba(232,162,92,0);
   --grid-line:rgba(34,48,43,.04);
   --wash-primary:rgba(47,138,111,.09);
+  --wash-info:rgba(62,124,166,.16);         /* غسل أزرق — دائرة دقّة الموقع */
   --ring-danger:rgba(180,85,46,.30);        /* هالة الطيني — كهالة سنا */
   --ink-a12:rgba(34,48,43,.12);             /* ظلٌّ داخليّ من الحبر الدافئ */
   --gradient:linear-gradient(184.78deg,#2f8a6f 7.64%,#1c5e4c 120.07%);
+
+  /* ── الغشاء الزجاجي فوق النمط الزخرفي ──────────────────────
+     النمط زخرفةٌ لا رسالة. كان يُطبع صريحاً على كل غلافٍ وشريط
+     فيزاحم النصّ ويشوّش العين، فصار يُقرأ من تحت غشاءٍ رقيق:
+     ظاهرٌ جزئياً، حاضرٌ في الإحساس لا في المزاحمة.
+     كلُّ غشاء بلون أرضيّته نفسها فلا تنزاح النِّسَب ولا يتبدّل اللون،
+     وتدرّجُه الخفيف هو ما يعطي إحساس الزجاج لا مجرّد التخفيف.
+     ولضبط قوّته في المنصة كلّها يكفي تعديل هذه القيم الستّ. */
+  --veil-brand-1:rgba(28,94,76,.62); --veil-brand-2:rgba(28,94,76,.34);
+  --veil-ink-1:rgba(34,48,43,.62); --veil-ink-2:rgba(34,48,43,.34);
+  --veil-light-1:rgba(251,247,239,.74); --veil-light-2:rgba(251,247,239,.46);
+
+  /* النمط ملفٌّ واحد، والغشاء طبقةٌ فوقه في مكدّس الخلفية نفسه —
+     فيبقى اللون توكناً والنمط ملفاً كما يقول الدليل. */
+  --pattern-cream:url("/assets/brand/pattern-overlay-cream.svg");
+  --pattern-green:url("/assets/brand/pattern-overlay-green.svg");
+  --glass-on-brand:linear-gradient(158deg,var(--veil-brand-1),var(--veil-brand-2)),var(--pattern-cream);
+  --glass-on-ink:linear-gradient(158deg,var(--veil-ink-1),var(--veil-ink-2)),var(--pattern-cream);
+  --glass-on-light:linear-gradient(158deg,var(--veil-light-1),var(--veil-light-2)),var(--pattern-green);
 
   --r-sm:8px; --r:12px; --r-lg:16px; --r-xl:22px; --r-pill:999px;
   --side:262px; --top:60px;
@@ -117,13 +137,22 @@ img{max-width:100%}
 
 /* ── النمط الزخرفي: النجمة الثمانية ─────────────────────────
    شفافية منخفضة، على الأغلفة والترويسات والفواصل — ولا تُوضع
-   خلف نصوص طويلة (دليل الهوية · البند ٥). */
-.bg-pattern-light{background-image:url("/assets/brand/pattern-tile-light.svg");background-repeat:repeat}
-.bg-pattern-dark{background-image:url("/assets/brand/pattern-tile-dark.svg");background-repeat:repeat}
+   خلف نصوص طويلة (دليل الهوية · البند ٥).
+   وكلُّ موضعٍ يحمل النمط يحمل غشاءه معه: `--glass-on-*` تجمع
+   الاثنين في مكدّسٍ واحد، فلا يظهر النمط في المنصة عارياً. */
+.bg-pattern-light{background-color:var(--light);
+  background-image:var(--glass-on-light);background-repeat:repeat}
+.bg-pattern-dark{background-color:var(--brand-surface);
+  background-image:var(--glass-on-brand);background-repeat:repeat}
+/*
+ * طبقةُ نمطٍ فوق عنصرٍ قائم: هنا وحدها يمكن أن يكون الزجاج زجاجاً حقيقياً —
+ * الطبقة معزولة في `::before` فيُشوَّش النمط نفسه بضبابةٍ دون الوصول إلى النص.
+ */
 .pattern-overlay{position:relative;isolation:isolate}
 .pattern-overlay::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;
-  background-image:url("/assets/brand/pattern-overlay-cream.svg");background-repeat:repeat;opacity:.55}
-.pattern-overlay.on-light::before{background-image:url("/assets/brand/pattern-overlay-green.svg");opacity:.5}
+  background-image:var(--pattern-cream);background-repeat:repeat;
+  opacity:.32;filter:blur(.4px)}
+.pattern-overlay.on-light::before{background-image:var(--pattern-green);opacity:.28}
 
 /* ── أيقونات لوسايد ─────────────────────────────────────────
    حجمها من `width/height` في الـ SVG نفسه، ولونها `currentColor`
@@ -145,7 +174,7 @@ img{max-width:100%}
 
 /* ── شاشة الإقلاع ─────────────────────────────────────────── */
 .boot{position:fixed;inset:0;display:grid;place-content:center;justify-items:center;gap:10px;
-  background-color:var(--brand-surface);background-image:url("/assets/brand/pattern-overlay-cream.svg");
+  background-color:var(--brand-surface);background-image:var(--glass-on-brand);
   background-repeat:repeat;color:var(--on-brand);z-index:9999;padding:24px;text-align:center}
 .boot-logo img{border-radius:26%;box-shadow:var(--shadow-lg)}
 .boot-name{font-family:var(--font-head);font-size:30px;font-weight:900;margin-top:10px;color:var(--on-brand)}
@@ -157,7 +186,7 @@ img{max-width:100%}
 
 /* ── شاشة الدخول ──────────────────────────────────────────── */
 .login-wrap{min-height:100dvh;display:grid;grid-template-columns:1fr;place-items:center;
-  background-color:var(--brand-surface);background-image:url("/assets/brand/pattern-overlay-cream.svg");
+  background-color:var(--brand-surface);background-image:var(--glass-on-brand);
   background-repeat:repeat;
   padding:calc(20px + var(--safe-t)) 20px calc(20px + var(--safe-b))}
 .login-card{width:100%;max-width:412px;background:var(--surface);border-radius:var(--r-xl);
@@ -185,7 +214,7 @@ img{max-width:100%}
 .public-wrap{min-height:100dvh;background:var(--cream);
   padding:0 0 calc(28px + var(--safe-b));display:flex;flex-direction:column;align-items:center;gap:22px}
 .public-head{text-align:center;color:var(--on-brand);max-width:none;width:100%;
-  background-color:var(--brand-surface);background-image:url("/assets/brand/pattern-overlay-cream.svg");
+  background-color:var(--brand-surface);background-image:var(--glass-on-brand);
   background-repeat:repeat;padding:34px 18px 40px;margin-bottom:-46px}
 /* عمودٌ متمركز: قواعد `margin:x 0 y` على العناوين تُبطل `margin-inline:auto`،
    فالتمركز يأتي من الحاوية لا من هوامش الأبناء. */
@@ -318,7 +347,7 @@ img{max-width:100%}
 /* ── الهيكل العام ─────────────────────────────────────────── */
 .shell{display:grid;grid-template-columns:var(--side) 1fr;min-height:100dvh}
 .sidebar{background-color:var(--brand-surface);color:var(--on-brand);display:flex;flex-direction:column;
-  background-image:url("/assets/brand/pattern-overlay-cream.svg");background-repeat:repeat;
+  background-image:var(--glass-on-brand);background-repeat:repeat;
   position:sticky;top:0;height:100dvh;overflow:hidden;z-index:60}
 .side-head{display:flex;gap:11px;align-items:center;padding:calc(16px + var(--safe-t)) 18px 16px;border-bottom:1px solid var(--cream-a12);flex:0 0 auto}
 .side-head img{width:40px;height:40px;border-radius:28%;flex:0 0 auto}
@@ -720,18 +749,31 @@ table.tbl.editable td[contenteditable]:focus{background:var(--brand-50);box-shad
 .checkin-btn.busy::before{animation:checkPulse 1.1s ease-out infinite}
 @media (prefers-reduced-motion:reduce){ .checkin-btn::before{animation:none!important} }
 
-/* ── الخريطة الحقيقية ─────────────────────────────────────
-   مربّعات OpenStreetMap، والدائرة والعلامتان فوقها من عندنا. */
+/* ── الخريطة التفاعلية ────────────────────────────────────
+   المربّعات من مزوّد الخرائط عبر وسيط الخادم، وكلُّ ما فوقها —
+   الدائرة والعلامات والأزرار ومبدّل الطبقات — من نظام التصميم
+   نفسه: أيقونات لوسايد، وتوكنز الألوان، واتجاهٌ من اليمين. */
 .geomap{position:relative;width:100%;border-radius:var(--r-lg);overflow:hidden;
   border:1px solid var(--border);background:var(--surface-2);touch-action:none;
-  box-shadow:var(--shadow-sm)}
+  box-shadow:var(--shadow-sm);cursor:grab;user-select:none}
+.geomap:active,.geomap.gm-grab{cursor:grabbing}
 .gm-tiles,.gm-marks{position:absolute;inset:0}
-.gm-marks{pointer-events:none}
-.gm-tile{position:absolute;width:256px;height:256px;max-width:none;user-select:none}
+/*
+ * طبقة المربّعات تُعزَل في سياق تكديسٍ خاصّ بها: ترتيبُ المربّعات فيما بينها
+ * (الجديد فوق القديم أثناء التكبير) شأنٌ داخليّ، وبلا عزلٍ يتسلّق إلى سياق
+ * الخريطة فتُدفَن تحته دائرةُ النطاق وعلامةُ الموقع.
+ */
+.gm-tiles{z-index:0;isolation:isolate}
+.gm-marks{z-index:2;pointer-events:none}
+.gm-tile{position:absolute;width:256px;height:256px;max-width:none;user-select:none;
+  -webkit-user-drag:none}
 /* الوضع الداكن: تُخفَّف المربّعات لتجلس مع السطح لا تصرخ فوقه */
 [data-theme="dark"] .gm-tiles{filter:brightness(.72) contrast(1.06) saturate(.85)}
 .gm-fence{position:absolute;border:2px dashed var(--primary);border-radius:50%;
   background:var(--wash-primary);pointer-events:none}
+/* دائرة دقّة الموقع: ما يعرفه الجهاز عن نفسه — تُرسم تحت النقطة لا فوقها */
+.gm-acc{position:absolute;border-radius:50%;background:var(--wash-info);
+  border:1px solid var(--info);opacity:.5;pointer-events:none;z-index:1}
 .gm-pin{position:absolute;transform:translate(-50%,-50%);width:34px;height:34px;border-radius:50%;
   display:grid;place-items:center;background:var(--surface);color:var(--primary-dark);
   border:2px solid var(--primary);box-shadow:var(--shadow);z-index:3}  /* rtl-ok: تمركز هندسي */
@@ -740,20 +782,62 @@ table.tbl.editable td[contenteditable]:focus{background:var(--brand-50);box-shad
 .gm-me{position:absolute;transform:translate(-50%,-50%);width:17px;height:17px;border-radius:50%;
   border:3px solid var(--surface);box-shadow:var(--shadow);z-index:4}  /* rtl-ok: تمركز هندسي */
 .gm-me.in{background:var(--info)} .gm-me.out{background:var(--error)}
-.gm-dist{position:absolute;inset-block-start:8px;inset-inline-start:8px;z-index:5;
-  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-pill);
+.gm-hud{position:absolute;inset-block-start:8px;inset-inline-start:8px;z-index:6;
+  display:flex;flex-direction:column;gap:6px;pointer-events:none;max-width:calc(100% - 70px)}
+.gm-dist{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-pill);
   padding:4px 12px;font-size:11.5px;font-weight:700;box-shadow:var(--shadow-sm)}
 .gm-dist.in{color:var(--primary-dark);border-color:var(--primary)}
 .gm-dist.out{color:var(--error);border-color:var(--error)}
 .gm-dist.warn{color:var(--review-ink);border-color:var(--secondary);background:var(--mint-2)}
 /* موقعٌ لم يُثبَّت بعد: الدبّوس والدائرة يُخفَّفان فلا يُقرآن موقعاً مقرَّراً */
 .geomap.gm-unset .gm-pin,.geomap.gm-unset .gm-fence{opacity:.6}
-.gm-credit{position:absolute;inset-block-end:0;inset-inline-end:0;z-index:5;
+.gm-credit{position:absolute;inset-block-end:0;inset-inline-end:0;z-index:6;
   background:var(--surface);color:var(--text-3);font-size:10px;padding:2px 7px;
   border-start-start-radius:6px;text-decoration:none}
 .gm-empty{position:absolute;inset:0;display:grid;place-items:center;align-content:center;gap:8px;
   color:var(--text-3);text-align:center}
 .gm-empty p{margin:0;font-size:12.5px}
+
+/* أدوات الخريطة: عمودٌ عند حافّة البدء (يمين الشاشة) بعيداً عن حاشية المصدر */
+.gm-ctrl{position:absolute;inset-inline-start:8px;inset-block-end:8px;z-index:7;
+  display:flex;flex-direction:column;gap:6px}
+.gm-btn{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;
+  background:var(--surface);color:var(--text-dark);border:1px solid var(--border);
+  box-shadow:var(--shadow-sm);cursor:pointer;padding:0;transition:.15s;touch-action:manipulation}
+.gm-btn:hover:not(:disabled){color:var(--primary-dark);border-color:var(--primary);background:var(--mint)}
+.gm-btn:disabled{opacity:.42;cursor:default}
+.gm-btn.on{color:var(--primary-dark);border-color:var(--primary);background:var(--mint)}
+/* الزرّ ينتظر إشارة القمر: نبضةٌ هادئة بدل دوّارةٍ لا معنى لها */
+.gm-btn.busy{cursor:progress;animation:gmPulse 1.2s ease-in-out infinite}
+@keyframes gmPulse{50%{opacity:.45}}
+@media (prefers-reduced-motion:reduce){.gm-btn.busy{animation:none}}
+/* الإصبع أعرض من المؤشّر: تكبر الأزرار على الشاشات اللمسية وحدها */
+@media (pointer:coarse){
+  .gm-btn{width:40px;height:40px}
+  .gm-layer{padding:10px 11px}
+}
+
+/* مبدّل الطبقات — لا يظهر إلا حين تتعدّد الطبقات فعلاً */
+.gm-layers{position:relative}
+/*
+ * اللوحة تُفتح نحو داخل الخريطة وإلى أسفل: الخريطة تقصّ ما تجاوز حدّها
+ * (`overflow:hidden`)، وزرُّ الطبقات في أعلى العمود — فما فُتح صعوداً ضاع.
+ */
+.gm-panel{position:absolute;inset-block-start:0;inset-inline-start:calc(100% + 6px);
+  min-width:158px;max-height:calc(100% + 160px);overflow-y:auto;
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r);box-shadow:var(--shadow-lg);padding:5px;display:flex;
+  flex-direction:column;gap:2px;z-index:8}
+.gm-layer{display:flex;align-items:center;gap:8px;width:100%;text-align:start;
+  background:none;border:0;border-radius:8px;padding:7px 9px;cursor:pointer;
+  font-size:12.5px;color:var(--text-2);transition:.12s}
+.gm-layer:hover{background:var(--surface-2);color:var(--text-dark)}
+.gm-layer.on{background:var(--mint);color:var(--primary-dark);font-weight:600}
+.gm-layer-t{flex:1;min-width:0}
+/* تنبيهٌ يظهر مرّة عند محاولة التكبير بالعجلة قبل الاشتباك بالخريطة */
+.gm-hint{position:absolute;inset-block-end:10px;left:50%;transform:translateX(-50%);  /* rtl-ok: تمركز هندسي */
+  width:max-content;max-width:88%;z-index:9;background:var(--overlay);color:var(--on-color);
+  border-radius:var(--r-pill);padding:6px 14px;font-size:11.5px;pointer-events:none}
 .checkin-map{width:100%;max-width:420px}
 
 /* ── بيان إغلاق العهدة ─────────────────────────────────── */
@@ -1047,7 +1131,7 @@ table.tbl.editable td[contenteditable]:focus{background:var(--brand-50);box-shad
 
 .admin-shell{display:grid;grid-template-columns:250px 1fr;min-height:100dvh;background:var(--bg)}
 .admin-side{background-color:var(--adm);color:var(--adm-txt);display:flex;flex-direction:column;
-  background-image:url("/assets/brand/pattern-overlay-cream.svg");background-repeat:repeat;
+  background-image:var(--glass-on-ink);background-repeat:repeat;
   border-inline-start:0;border-inline-end:1px solid var(--adm-line);
   position:sticky;inset-block-start:0;height:100dvh;overflow-y:auto}
 .admin-brand{display:flex;align-items:center;gap:11px;padding:18px 16px;border-bottom:1px solid var(--adm-line)}
@@ -1080,7 +1164,7 @@ table.tbl.editable td[contenteditable]:focus{background:var(--brand-50);box-shad
 
 /* شاشة دخول اللوحة */
 .admin-login{min-height:100dvh;display:grid;place-items:center;padding:20px;
-  background-color:var(--brand-ink);background-image:url("/assets/brand/pattern-overlay-cream.svg");background-repeat:repeat}
+  background-color:var(--brand-ink);background-image:var(--glass-on-ink);background-repeat:repeat}
 .admin-login-card{background:var(--surface);border-radius:var(--r-xl);padding:32px 28px;width:min(420px,100%);
   box-shadow:var(--shadow-lg)}
 .admin-login-brand{text-align:center;margin-bottom:22px}
@@ -1132,7 +1216,7 @@ table.tbl.editable td[contenteditable]:focus{background:var(--brand-50);box-shad
 /* الغلاف: أخضر غامق يحمل النمط الزخرفي بشفافية منخفضة — لا خلف النص */
 .land-hero{display:grid;gap:30px;align-items:center;grid-template-columns:1fr;
   padding:clamp(34px,7vw,78px) clamp(14px,4vw,42px);
-  background-color:var(--brand-surface);background-image:url("/assets/brand/pattern-overlay-cream.svg");
+  background-color:var(--brand-surface);background-image:var(--glass-on-brand);
   background-repeat:repeat;color:var(--on-brand)}
 .land-hero.has-art{grid-template-columns:1fr 1.06fr;gap:clamp(24px,4vw,44px)}
 /* بلا صورة: نصٌّ متمركز محدود العرض، لا سطرٌ يمتدّ ونصفُ شاشة فارغ */
@@ -1235,7 +1319,7 @@ table.tbl.editable td[contenteditable]:focus{background:var(--brand-50);box-shad
 .land-sec p{font-size:14.5px;line-height:1.95;color:var(--text-2);margin:0 0 14px;white-space:pre-line}
 /* لوحة الدعوة: خضراء بالنمط الزخرفي والنص فوقها قشدي */
 .land-sec.cta{text-align:center;border-radius:var(--r-xl);max-width:none;padding-block:clamp(32px,5vw,56px);
-  background-color:var(--brand-surface);background-image:url("/assets/brand/pattern-overlay-cream.svg");
+  background-color:var(--brand-surface);background-image:var(--glass-on-brand);
   background-repeat:repeat;margin:0 clamp(14px,4vw,42px) clamp(24px,4vw,48px)}
 .land-sec.cta h2,.land-sec.cta p{color:var(--on-brand)}
 

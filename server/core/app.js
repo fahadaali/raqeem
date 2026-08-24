@@ -18,6 +18,7 @@ import notificationRoutes from './routes/notifications.js';
 import { importsRouter, reportsRouter, auditRouter, dashboardRouter, approvalsRouter, setupRouter } from './routes/data.js';
 import { keysRouter, publicRouter } from './routes/integration.js';
 import publicSaasRoutes from './routes/public.js';
+import mapRoutes from './routes/map.js';
 import billingRoutes from './routes/billing.js';
 import adminRoutes from './routes/admin.js';
 import adminAuthRoutes from './routes/admin-auth.js';
@@ -64,6 +65,10 @@ export function createApi(container) {
 
   /* الواجهات العامة للمرحلة الثانية: الأسعار والتسجيل الآلي وهوية النطاق */
   api.route('/public', publicSaasRoutes);
+
+  /* مربّعات الخريطة — عامة بالضرورة: وسم <img> لا يحمل ترويسة مصادقة،
+     والمعروض خرائطُ عامة لا بيانات جهة (انظر routes/map.js) */
+  api.route('/map', mapRoutes);
 
   /* إشعار بوابة الدفع — تُناديه البوابة نفسها بلا جلسة */
   api.post('/webhooks/payments', h(async (req) => {

@@ -79,6 +79,7 @@ BACKUP_KEEP = "14"
 #   npx wrangler secret put VAPID_PUBLIC_KEY
 #   npx wrangler secret put VAPID_PRIVATE_KEY
 #   npx wrangler secret put BOOTSTRAP_TOKEN
+#   npx wrangler secret put GOOGLE_MAPS_API_KEY   # مفتاح Map Tiles API — بدونه تعمل الخريطة على الطبقة المفتوحة
 
 # ─── الطابور (اختياري — يتطلّب خطة Workers Paid) ───
 # لتفعيله: أزل التعليق، ثم:  npx wrangler queues create raqeem-jobs

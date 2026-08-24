@@ -236,6 +236,20 @@ section('٥. الحضور الجغرافي والرواتب', async () => {
   ok('رفض التحضير دون إحداثيات',
     (await call('POST', '/api/hr/attendance/check', { token: S.employee, body: {} })).status === 400);
 
+  /* خريطة التحضير: كتالوج الطبقات عامٌّ بالضرورة (وسم <img> لا يحمل مصادقة)،
+     ووسيط المربّعات لا يُمرّر إلا ما تحقّق من مداه — فلا يصير وسيطاً مفتوحاً. */
+  const layers = await call('GET', '/api/map/layers');
+  ok('كتالوج طبقات الخريطة متاح بلا جلسة',
+    layers.status === 200 && Array.isArray(layers.data?.layers) && layers.data.layers.length >= 1);
+  ok('كل طبقة تحمل قالب عنوان ومصدراً',
+    (layers.data?.layers || []).every(l => l.id && l.label && /\{z\}/.test(l.url || '') && l.attribution));
+  ok('وسيط المربّعات يرفض طبقةً مجهولة',
+    (await call('GET', '/api/map/tile/anything/12/1/1')).status === 400);
+  ok('وسيط المربّعات يرفض تكبيراً خارج المدى',
+    (await call('GET', '/api/map/tile/osm/40/1/1')).status === 400);
+  ok('وسيط المربّعات يرفض إحداثيات خارج الشبكة',
+    (await call('GET', '/api/map/tile/osm/3/9999/1')).status === 400);
+
   const file = (await call('GET', `/api/hr/employees/${S.u_teacher.id}/file`, { token: S.hr })).data;
   ok('ملف الموظف يجمع الحضور والإجازات والمهام والتقييم',
     !!file.employee && !!file.attendance_summary && !!file.tasks && 'evaluation' in file);

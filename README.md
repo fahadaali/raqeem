@@ -365,6 +365,7 @@ Node وفي Workers معاً. المحوّلان لا يزيدان عن ربط �
 | الأيقونات | Lucide حصراً عبر `web/js/icons.js` — لا رموز تعبيرية |
 | الاتجاه | RTL بالكامل بخصائص منطقية فقط (`inset-inline-*` لا `left/right`) |
 | الشعار والنمط | `web/assets/brand/` تُستعمل كما هي ولا يُعاد رسمها |
+| الغشاء الزجاجي | النمط الزخرفي لا يُطبع عارياً: `--glass-on-brand` / `--glass-on-ink` / `--glass-on-light` تجمع الغشاء والنمط في مكدّسٍ واحد فيبقى ظاهراً جزئياً |
 
 والالتزام مفحوصٌ آلياً:
 
@@ -429,6 +430,7 @@ npm run verify:identity
 | `VAPID_*` | مفاتيح إشعارات الدفع (`npm run gen:vapid` أو `npm run cf:secrets`) |
 | `BACKUP_ENABLED` / `BACKUP_KEEP` | النسخ الاحتياطي اليومي وعدد النسخ المحفوظة |
 | `GEOFENCE_DEFAULT_RADIUS` | نطاق التحضير الافتراضي بالمتر |
+| `GOOGLE_MAPS_API_KEY` | مفتاح **Map Tiles API** لخرائط قوقل في شاشة التحضير وإعداد الفرع — بدونه تعمل الخريطة على الطبقة المفتوحة |
 | `RATE_LIMIT_*` · `LOGIN_ACCOUNT_MAX` | حدود الطلبات ومحاولات الدخول |
 | `BOOTSTRAP_TOKEN` | يحمي مسار التهيئة على Cloudflare |
 

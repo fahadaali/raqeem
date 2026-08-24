@@ -5,9 +5,12 @@
    • استقبال إشعارات الدفع (Web Push) على المتصفح والأندرويد والآيفون
    • مزامنة خلفية لإعادة إرسال العمليات التي تمت أثناء انقطاع الشبكة
    ═══════════════════════════════════════════════════════════════════════ */
-const VERSION = 'raqeem-v1.6.0';
+const VERSION = 'raqeem-v1.7.0';
 const SHELL_CACHE = `${VERSION}-shell`;
 const DATA_CACHE = `${VERSION}-data`;
+const TILE_CACHE = `${VERSION}-tiles`;
+/* سقفٌ لمربّعات الخريطة المحفوظة — نحو خمس عشرة شاشة، يكفي حيَّ المسجد ولا يتضخّم */
+const TILE_KEEP = 320;
 
 const SHELL = [
   '/', '/index.html', '/offline.html', '/manifest.webmanifest',
@@ -30,6 +33,24 @@ const SHELL = [
   '/assets/brand/pattern-overlay-cream.svg', '/assets/brand/pattern-overlay-green.svg',
   '/assets/brand/pattern-tile-light.svg', '/assets/brand/pattern-tile-dark.svg'
 ];
+
+/*
+ * مربّعات الخريطة تُقصّ من ذاكرة قديمة حين تتجاوز السقف.
+ * الأقدم أولاً لأن `cache.keys()` تعيدها بترتيب الإدراج، والمربّع الأقدم
+ * أبعد ما يكون عن نطاق الفرع الذي يُفتح كل يوم.
+ */
+let trimming = false;
+async function trimTiles(cache) {
+  if (trimming) return;
+  trimming = true;
+  try {
+    const keys = await cache.keys();
+    if (keys.length > TILE_KEEP) {
+      await Promise.all(keys.slice(0, keys.length - TILE_KEEP).map(k => cache.delete(k)));
+    }
+  } catch { /* ذاكرةٌ ممتلئة أو محذوفة — لا يضرّ */ }
+  finally { trimming = false; }
+}
 
 // استعلامات تُحفظ نسخة منها للعرض دون اتصال
 const CACHEABLE_API = [/\/api\/auth\/me$/, /\/api\/dashboard/, /\/api\/tasks/, /\/api\/notifications/, /\/api\/hr\/attendance\/today/];
@@ -115,6 +136,30 @@ self.addEventListener('fetch', (event) => {
             + '<body style="font-family:system-ui;text-align:center;padding:3rem" dir="rtl">'
             + '<h1>لا يوجد اتصال</h1><p>أعد المحاولة بعد عودة الشبكة.</p>',
             { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } });
+      }
+    })());
+    return;
+  }
+
+  /*
+   * مربّعات الخريطة → الذاكرة أولاً.
+   *
+   * صورةٌ ثابتة لا تتغيّر، وإعادةُ جلبها في كل فتحةٍ لشاشة التحضير هدرٌ في
+   * الشبكة وفي حصّة مزوّد الخرائط. والفائدة الأكبر: من فتح الشاشة مرّةً يرى
+   * خريطةَ مسجده ونطاقَه دون اتصال — وهو أكثر ما يُحتاج في فناء المسجد.
+   */
+  if (url.pathname.startsWith('/api/map/tile/')) {
+    event.respondWith((async () => {
+      const cache = await caches.open(TILE_CACHE);
+      const hit = await cache.match(request, { ignoreVary: true });
+      if (hit) return hit;
+      try {
+        const res = await fetch(request);
+        if (res.ok) { await cache.put(request, res.clone()); trimTiles(cache); }
+        return res;
+      } catch {
+        /* لا اتصال ولا نسخة: الخريطة تُخفي المربّع وتبقي الدائرة والعلامات */
+        return new Response(null, { status: 504 });
       }
     })());
     return;

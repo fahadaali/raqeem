@@ -10,7 +10,10 @@
 -->
 <style>
  body{margin:0;min-height:100dvh;display:grid;place-items:center;
-      background-color:#1C5E4C;background-image:url("/assets/brand/pattern-overlay-cream.svg");
+      background-color:#1C5E4C;
+      /* الغشاء الزجاجي فوق النمط — كما في app.css، مكتوباً هنا لأن الصفحة قائمة بذاتها */
+      background-image:linear-gradient(158deg,rgba(28,94,76,.62),rgba(28,94,76,.34)),
+                       url("/assets/brand/pattern-overlay-cream.svg");
       background-repeat:repeat;color:#FBF7EF;
       font-family:"IBM Plex Sans Arabic","Segoe UI",Tahoma,system-ui,sans-serif;text-align:center;padding:24px}
  .box{max-width:420px}
