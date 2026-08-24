@@ -239,21 +239,56 @@ const DAILY_BY_HOUR = {
   3: (app) => periodic.deadlines(app)
 };
 
-const CRON_JOBS = {
-  /* كل ٥ دقائق: تصريف طابور المعالجة الخلفية وإعادة العالق منه */
-  '*/5 * * * *': async (app) => ({ drained: await drain(app, { max: 40 }), requeued: await requeueStuck(app) }),
-  /* كل ١٥ دقيقة: تصعيد التذاكر المتجاوزة لاتفاقية مستوى الخدمة (البند ٨) */
-  '*/15 * * * *': async (app) => periodic.sla(app),
-  /* كل ساعة: إعادة احتساب مؤشرات الأداء (البند ٧) */
-  '0 * * * *': async (app) => periodic.kpi(app),
-  /* اليوميات الأربع في مُشغِّلٍ واحد */
-  '0 0,1,2,3 * * *': async (app, at) => {
-    const hour = new Date(at).getUTCHours();
-    const job = DAILY_BY_HOUR[hour];
-    return job ? await job(app) : { skipped: hour };
-  },
+/*
+ * نبضةٌ واحدةٌ تُغني عن أربعة مُشغِّلات.
+ *
+ * الخطة المجانية في كلاود فلير تسمح بخمسة مُشغِّلات للحساب كلِّه — لا للعامل
+ * وحده — فكلُّ مُشغِّلٍ نحجزه يزاحم ما سواه على سِعةٍ ضيّقة. والمواقيت التي
+ * كانت موزّعةً على أربعة تُستخرَج من وقت الحدث نفسه: النبضة كلَّ خمس دقائق
+ * تصرّف الطابور، وعند كلِّ ربع ساعةٍ تُصعِّد التذاكر، وعند رأس الساعة تُعيد
+ * احتساب المؤشرات، وعند رأس الساعات الأربع الأولى تُشغّل يوميّتها.
+ *
+ * وكلُّ وظيفةٍ تُنفَّذ في عزلةٍ عن أختها: سقوط النسخ الاحتياطي لا يُسقط تصريف
+ * الطابور معه، ولا يُخفي أثره — يُسجَّل خطؤه ويمضي ما بعده.
+ */
+async function tick(app, at) {
+  const now = new Date(at);
+  const minute = now.getUTCMinutes();
+  const hour = now.getUTCHours();
+  const out = {};
 
-  /* المفاتيح المفردة تبقى: عاملٌ منشورٌ بضبطٍ قديم لا تسقط يومياته حتى يُحدَّث */
+  const step = async (name, fn) => {
+    try {
+      out[name] = await fn();
+    } catch (e) {
+      out[name] = { error: String(e?.message || e) };
+      console.error('[cron]', name, e?.stack || e);
+    }
+  };
+
+  await step('drained', () => drain(app, { max: 40 }));
+  await step('requeued', () => requeueStuck(app));
+  if (minute % 15 === 0) await step('sla', () => periodic.sla(app));
+  if (minute === 0) await step('kpi', () => periodic.kpi(app));
+
+  const daily = minute === 0 ? DAILY_BY_HOUR[hour] : null;
+  if (daily) await step('daily', () => daily(app));
+
+  return out;
+}
+
+const CRON_JOBS = {
+  /* النبضة الوحيدة: كلُّ ما سبق يوزَّع من وقتها */
+  '*/5 * * * *': tick,
+
+  /* المفاتيح القديمة تبقى: عاملٌ منشورٌ بضبطٍ سابق لا تسقط وظائفه حتى يُحدَّث */
+  '*/15 * * * *': async (app) => periodic.sla(app),
+  '0 * * * *': async (app) => periodic.kpi(app),
+  '0 0,1,2,3 * * *': async (app, at) => {
+    const h = new Date(at).getUTCHours();
+    const job = DAILY_BY_HOUR[h];
+    return job ? await job(app) : { skipped: h };
+  },
   '0 3 * * *': async (app) => periodic.deadlines(app),
   '0 2 * * *': async (app) => periodic.backup(app),
   '0 1 * * *': async (app) => periodic.subscriptions(app),

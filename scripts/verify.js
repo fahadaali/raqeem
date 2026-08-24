@@ -2010,8 +2010,12 @@ section('٢٣. الشاشة الرئيسية العامة ومحرّرها', asy
   {
     const wr = readFileSync('wrangler.toml', 'utf8');
     const top = (wr.match(/\[triggers\][\s\S]*?crons = \[([\s\S]*?)\]/) || [, ''])[1];
-    ok('مُشغِّلات الإنتاج خمسةٌ فأقلّ',
-      (top.match(/"/g) || []).length / 2 <= 5, `${(top.match(/"/g) || []).length / 2}`);
+    ok('مُشغِّل الإنتاج نبضةٌ واحدة',
+      (top.match(/"/g) || []).length / 2 === 1, `${(top.match(/"/g) || []).length / 2}`);
+    const wk = readFileSync('server/worker/index.js', 'utf8');
+    ok('النبضة توزّع الوظائف من وقتها',
+      /minute % 15 === 0[\s\S]{0,120}minute === 0[\s\S]{0,200}DAILY_BY_HOUR\[hour\]/.test(wk));
+    ok('سقوط وظيفةٍ لا يُسقط أخواتها', /const step = async \(name, fn\) => \{[\s\S]{0,240}catch/.test(wk));
     ok('بيئة التجربة بلا مُشغِّلات', /\[env\.staging\.triggers\][\s\S]*?crons = \[\s*\]/.test(wr));
   }
 
