@@ -1,7 +1,7 @@
 import api from '../api.js';
 import { state, can } from '../state.js';
 import {
-  el, clear, mount, card, chip, empty, table, toast, drawer, modal, field, input, textarea, select,
+  el, clear, mount, card, chip, empty, table, toast, drawer, modal, field, input, textarea, select, picker, userOptions,
   T, AR_NUM, avatar, timeAgo, skeleton, qs
 } from '../util.js';
 import { fmtDateTime } from '../hijri.js';
@@ -113,7 +113,8 @@ async function openTicket(id, reload) {
 
   if (isSupport) {
     const status = select(Object.entries(T.ticket).map(([v, l]) => ({ value: v, label: l })), { value: t.status });
-    const assignee = select([{ value: '', label: '— غير مُسندة —' }, ...users.map(u => ({ value: u.id, label: u.name }))], { value: t.assignee_id || '' });
+    const assignee = picker([{ value: '', label: '— غير مُسندة —' }, ...userOptions(users)],
+      { value: t.assignee_id || '', placeholder: '— غير مُسندة —', ariaLabel: 'المسؤول عن التذكرة' });
     const priority = select(Object.entries(T.priority).map(([v, l]) => ({ value: v, label: l })), { value: t.priority });
     body.append(card('إدارة التذكرة', [
       el('div.grid.g3', {}, [field('الحالة', status), field('المسؤول', assignee), field('الأهمية', priority)]),

@@ -1,6 +1,6 @@
 import api from '../api.js';
 import { state } from '../state.js';
-import { el, clear, mount, card, chip, empty, table, modal, field, input, searchInput, select, T, AR_NUM, avatar, skeleton, debounce } from '../util.js';
+import { el, clear, mount, card, chip, empty, table, modal, field, input, searchInput, select, picker, userOptions, T, AR_NUM, avatar, skeleton, debounce } from '../util.js';
 import { fmtDateTime, todayISO, addDaysISO } from '../hijri.js';
 
 export async function render() {
@@ -12,7 +12,7 @@ export async function render() {
   q.field.addEventListener('input', debounce((e) => { filters.q = e.target.value; filters.offset = 0; load(); }, 340));
   const from = input({ type: 'date', value: addDaysISO(todayISO(), -30), onchange: (e) => { filters.from = e.target.value; load(); } });
   const to = input({ type: 'date', value: todayISO(), onchange: (e) => { filters.to = e.target.value; load(); } });
-  const userSel = select([{ value: '', label: 'كل المستخدمين' }, ...users.map(u => ({ value: u.id, label: u.name }))],
+  const userSel = picker([{ value: '', label: 'كل المستخدمين' }, ...userOptions(users)],
     { onchange: (e) => { filters.user_id = e.target.value; load(); } });
   const actionSel = select([{ value: '', label: 'كل الإجراءات' }, ...Object.entries(T.audit).map(([v, l]) => ({ value: v, label: l }))],
     { onchange: (e) => { filters.action = e.target.value; load(); } });

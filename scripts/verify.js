@@ -208,6 +208,24 @@ section('٤. اللجان والمهام والقوالب', async () => {
   const coms = (await call('GET', '/api/tasks/committees', { token: S.owner })).data;
   ok('اللجان تُرجع الأعضاء وعدّاد المهام',
     coms.length >= 5 && coms.every(c => Array.isArray(c.members)) && coms.some(c => c.tasks_count > 0));
+  ok('عضوية المنسوب قد تمتدّ إلى أكثر من لجنة',
+    coms.flatMap(c => c.members.map(m => m.user_id))
+      .some((id, i, a) => a.indexOf(id) !== i));
+
+  /* ── ما يحتاجه التحرير المباشر في الجدول: تعديل خليّة واحدة كل مرّة ── */
+  const cell = (body) => call('PATCH', `/api/tasks/${S.taskId}`, { token: S.owner, body });
+  ok('تعديل خليّة الأولوية وحدها', (await cell({ priority: 'urgent' })).data.priority === 'urgent');
+  ok('تعديل خليّة الوزن وحدها', (await cell({ weight: 4 })).data.weight === 4);
+  ok('نقل المهمة إلى لجنة أخرى', (await cell({ committee_id: coms[1].id })).data.committee_id === coms[1].id);
+  ok('فكّ ارتباط المهمة باللجنة', (await cell({ committee_id: null })).data.committee_id === null);
+  ok('ضبط تاريخ الاستحقاق', (await cell({ due_date: '2026-12-15' })).data.due_date === '2026-12-15');
+  ok('مسح التاريخ بإرسال قيمة فارغة', (await cell({ due_date: null })).data.due_date === null);
+  ok('حقلٌ لم يُرسَل يبقى كما هو', (await cell({ progress: 55 })).data.priority === 'urgent');
+  ok('نسبة الإنجاز تُحصر بين صفر ومئة', (await cell({ progress: 900 })).data.progress === 100);
+  ok('التعديل يُرجع الصفّ محدَّثاً لا مجرّد إقرار',
+    typeof (await cell({ progress: 30 })).data.updated_at === 'string');
+  ok('المعلم لا يُسند المهام إلى غيره بلا صلاحية',
+    (await call('PATCH', `/api/tasks/${S.taskId}`, { token: S.teacher, body: { assignee_id: S.u_employee.id } })).status === 403);
 });
 
 /* ═════════ ٥. الحضور والنطاق الجغرافي والرواتب ═════════ */
@@ -301,6 +319,31 @@ section('٦. الدورة المالية ومحرك الحالة', async () => {
   const budget = budgets[0];
   const spentBefore = budget.spent;
 
+  /* ── تخصيص الميزانية على مستوى اللجنة كما على مستوى الفرع ── */
+  const cmts = (await call('GET', '/api/tasks/committees', { token: S.owner })).data;
+  const cbNew = await call('POST', '/api/finance/budgets', { token: S.owner,
+    body: { name: 'ميزانية تدقيق اللجنة', category: 'تدقيق', amount: 40000, committee_id: cmts[0].id } });
+  ok('إنشاء بند ميزانية للجنة', cbNew.status === 201);
+  const withC = (await call('GET', '/api/finance/budgets', { token: S.finance })).data.find(b => b.id === cbNew.data.id);
+  ok('البند يعود باسم لجنته ولونها', withC?.committee_name === cmts[0].name && !!withC?.committee_color);
+  const lvlC = (await call('GET', '/api/finance/budgets?level=committee', { token: S.finance })).data;
+  const lvlB = (await call('GET', '/api/finance/budgets?level=branch', { token: S.finance })).data;
+  ok('تصفية بنود اللجان', lvlC.length >= 1 && lvlC.every(b => b.committee_id));
+  ok('تصفية بنود الفروع', lvlB.length >= 1 && lvlB.every(b => !b.committee_id));
+  ok('التصفية بلجنة بعينها',
+    (await call('GET', `/api/finance/budgets?committee_id=${cmts[0].id}`, { token: S.finance })).data
+      .every(b => b.committee_id === cmts[0].id));
+  ok('نقل البند بين اللجان',
+    (await call('PATCH', `/api/finance/budgets/${cbNew.data.id}`, { token: S.owner, body: { committee_id: cmts[1].id } })).status === 200);
+  ok('إعادة البند إلى مستوى الفرع',
+    (await call('PATCH', `/api/finance/budgets/${cbNew.data.id}`, { token: S.owner, body: { committee_id: null } })).status === 200);
+  ok('لجنة خارج النطاق مرفوضة',
+    (await call('PATCH', `/api/finance/budgets/${cbNew.data.id}`, { token: S.owner, body: { committee_id: 999999 } })).status === 400);
+  ok('حذف بند نظيف',
+    (await call('DELETE', `/api/finance/budgets/${cbNew.data.id}`, { token: S.owner })).status === 200);
+  ok('المعلم لا يُنشئ بنود ميزانية',
+    (await call('POST', '/api/finance/budgets', { token: S.teacher, body: { name: 'x', amount: 1 } })).status === 403);
+
   const req = await call('POST', '/api/finance/requests', {
     token: S.employee, body: { title: 'طلب تدقيق آلي', amount: 7500, type: 'expense', budget_id: budget.id } });
   ok('رفع طلب مالي', req.status === 201 && /^FR-/.test(req.data.number));
@@ -334,6 +377,10 @@ section('٦. الدورة المالية ومحرك الحالة', async () => {
   eq('بعد الاعتماد المالي: معتمد نهائياً', s2.data.status, 'approved');
   const budgetAfter = (await call('GET', '/api/finance/budgets', { token: S.finance })).data.find(b => b.id === budget.id);
   near('الاعتماد النهائي يخصم من الميزانية', budgetAfter.spent, spentBefore + 7500, 0.01);
+  ok('خفض المعتمد دون المنصرف مرفوض',
+    (await call('PATCH', `/api/finance/budgets/${budget.id}`, { token: S.owner, body: { amount: 1 } })).status === 400);
+  ok('حذف بند صُرف منه مرفوض',
+    (await call('DELETE', `/api/finance/budgets/${budget.id}`, { token: S.owner })).status === 409);
   ok('منع إجراء جديد على طلب مُغلق',
     (await call('POST', `/api/finance/requests/${S.reqId}/decide`, { token: S.finance, body: { action: 'approve' } })).status === 409);
 

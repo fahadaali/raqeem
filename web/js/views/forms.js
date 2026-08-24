@@ -1,7 +1,7 @@
 import api from '../api.js';
 import { state, can } from '../state.js';
 import {
-  el, clear, card, chip, empty, table, toast, modal, field, input, textarea, select,
+  el, clear, card, chip, empty, table, toast, modal, field, input, textarea, select, picker, userOptions,
   tabs, AR_NUM, pct, avatar, progressBar, confirmDialog, skeleton, qs
 } from '../util.js';
 import { fmtDate, todayISO } from '../hijri.js';
@@ -177,7 +177,8 @@ async function fill(form, reload) {
   const answers = {};
   const body = el('div');
   const subject = form.type === 'evaluation'
-    ? select([{ value: '', label: '— اختر الشخص المُقيَّم —' }, ...users.map(u => ({ value: u.id, label: `${u.name} (${u.role_name})` }))])
+    ? picker([{ value: '', label: '— اختر الشخص المُقيَّم —' }, ...userOptions(users)],
+        { placeholder: '— اختر الشخص المُقيَّم —', ariaLabel: 'الشخص المُقيَّم' })
     : null;
   if (subject) body.append(field('الشخص المُقيَّم', subject, { required: true }));
 

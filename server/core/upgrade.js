@@ -26,6 +26,9 @@ const ADDITIONS = [
   /* ── بطاقة تجهيز الجهة الجديدة ── */
   ['tenants', 'setup_dismissed_at', 'TEXT'],
 
+  /* ── تخصيص الميزانية على مستوى اللجنة كما على مستوى الفرع ── */
+  ['budgets', 'committee_id',    'INTEGER'],
+
   /* ── إغلاق العهد المالية ── */
   ['finance_requests', 'settle_status',  'TEXT'],
   ['finance_requests', 'settled_amount', 'REAL NOT NULL DEFAULT 0'],
@@ -104,7 +107,8 @@ export async function reconcileIndexes(app) {
     'CREATE UNIQUE INDEX IF NOT EXISTS ux_tenants_domain ON tenants(custom_domain)',
     'CREATE INDEX IF NOT EXISTS ix_users_platform ON users(is_platform_admin)',
     'CREATE INDEX IF NOT EXISTS ix_tickets_vendor ON tickets(vendor_escalated, vendor_status)',
-    'CREATE INDEX IF NOT EXISTS ix_subinv_doctype ON subscription_invoices(doc_type, tenant_id)'
+    'CREATE INDEX IF NOT EXISTS ix_subinv_doctype ON subscription_invoices(doc_type, tenant_id)',
+    'CREATE INDEX IF NOT EXISTS ix_budgets_scope ON budgets(tenant_id, branch_id, committee_id, term_id)'
   ];
   for (const sql of stmts) { try { await app.db.run(sql); } catch { /* موجود مسبقاً */ } }
 }

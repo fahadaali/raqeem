@@ -1,7 +1,7 @@
 import api from '../api.js';
 import { state, can, termIsArchived } from '../state.js';
 import {
-  el, clear, mount, card, chip, empty, table, toast, modal, drawer, field, input, textarea, select,
+  el, clear, mount, card, chip, empty, table, toast, modal, drawer, field, input, textarea, select, picker,
   tabs, T, AR_NUM, pct, money, avatar, progressBar, confirmDialog, skeleton, timeAgo, qs
 } from '../util.js';
 import { fmtDate, fmtDateTime, todayISO } from '../hijri.js';
@@ -323,7 +323,15 @@ async function openRequestForm(req, reload) {
   const type = select(Object.entries(T.financeType).map(([v, l]) => ({ value: v, label: l })));
   const amount = input({ type: 'number', min: 0, step: '0.01', placeholder: '0.00', required: true });
   const desc = textarea({ placeholder: 'تفاصيل الطلب ومبرراته...' });
-  const budget = select([{ value: '', label: '— بدون بند ميزانية —' }, ...budgets.map(b => ({ value: b.id, label: `${b.name} (متبقي ${money(b.remaining)})` }))]);
+  /* البند يُنسَب إلى مستواه في القائمة — فلا يُخصم صرفُ لجنةٍ من بند أخرى سهواً */
+  const budget = picker([{ value: '', label: '— بدون بند ميزانية —' },
+    ...budgets.map(b => ({
+      value: b.id,
+      label: `${b.name} (متبقي ${money(b.remaining)})`,
+      sub: b.committee_name ? `لجنة ${b.committee_name}` : (b.branch_name || 'على مستوى المجمّع'),
+      color: b.committee_color || null,
+      group: b.committee_id ? 'بنود اللجان' : 'بنود الفروع'
+    }))], { placeholder: '— بدون بند ميزانية —', ariaLabel: 'بند الميزانية' });
   const branch = select([{ value: '', label: '— الفرع الافتراضي —' }, ...state.session.branches.map(b => ({ value: b.id, label: b.name }))]);
   const wf = select([{ value: '', label: '— المسار التلقائي حسب النوع —' }, ...workflows.map(w => ({ value: w.id, label: `${w.name} (${w.steps.length} خطوة)` }))]);
   const preview = el('div', { style: { marginTop: '10px' } });
@@ -409,48 +417,112 @@ async function invoicesTab() {
   ], rows, { emptyText: 'لا توجد فواتير مسجلة' }), { p0: true });
 }
 
-/* ═══════════ الميزانيات ═══════════ */
+/* ═══════════ الميزانيات ═══════════
+ *
+ * التخصيص على مستويين: الفرع واللجنة.
+ *
+ * اللجنة تصرف كما يصرف الفرع — لها خطّتها ومشترياتها — وكان صرفُها يذوب في
+ * وعاء الفرع فلا يُعرف نصيبُ لجنةٍ من أخرى، ولا يُقاس التزامُ رئيسها بما
+ * اعتُمد له. فصار لها بندُها، وصارت الشاشة مجموعتين تُقرآن على حدة.
+ */
 async function budgetsTab() {
   const body = el('div');
+  const committees = await api.get('/api/tasks/committees').catch(() => []);
+
+  const budgetCard = (b, reload) => el('div.card', {}, [el('div.card-body', {}, [
+    el('div.row.between', {}, [el('h4', { text: b.name }), chip(b.category || 'عام', 'brand')]),
+    el('div.row', { style: { gap: '6px', marginTop: '2px' } }, [
+      b.committee_name
+        ? chip(b.committee_name, 'brand', 'users-round')
+        : chip(b.branch_name || 'على مستوى المجمّع', '', 'building-2'),
+      b.committee_name && b.branch_name ? chip(b.branch_name, '', 'building-2') : null
+    ]),
+    el('div.row.between', { style: { marginTop: '12px', fontSize: '12.5px' } }, [
+      el('span', { text: `المنصرف: ${money(b.spent)} ر.س` }),
+      el('b', { text: `المتبقي: ${money(b.remaining)} ر.س`, style: { color: b.remaining < 0 ? 'var(--danger)' : 'var(--ok)' } })
+    ]),
+    el('div', { style: { margin: '7px 0' } }, [progressBar(b.usage_pct, b.usage_pct > 90 ? 'danger' : b.usage_pct > 70 ? 'gold' : 'ok')]),
+    el('div.row.between', { style: { fontSize: '11.5px', color: 'var(--text-3)' } }, [
+      el('span', { text: `المعتمد: ${money(b.amount)} ر.س` }), el('span', { text: `${pct(b.usage_pct)} مستهلك` })
+    ]),
+    can('budgets.manage') ? el('div.row', { style: { marginTop: '10px' } }, [
+      el('button.btn.sm.ghost', { icon: 'pencil', iconSize: 15, text: 'تعديل',
+        onclick: () => openBudget(reload, committees, b) }),
+      b.spent > 0 ? null : el('button.btn.sm.ghost', { icon: 'trash-2', iconSize: 15, text: 'حذف',
+        onclick: async () => {
+          if (!await confirmDialog(`سيُحذف بند «${b.name}» نهائياً.`, { danger: true, confirmText: 'حذف' })) return;
+          try { await api.del(`/api/finance/budgets/${b.id}`); toast('تم حذف البند', 'ok'); reload(); }
+          catch (err) { toast(err.message, 'err'); }
+        } })
+    ]) : null
+  ])]);
+
+  const group = (title, icon, rows, reload, hint) => el('div.stack', { style: { gap: '9px' } }, [
+    el('div.row.between', {}, [
+      el('h4', { icon, iconSize: 17,
+        style: { fontSize: '14px', display: 'flex', alignItems: 'center', gap: '7px' } },
+        [title, el('span.sub', { text: `(${AR_NUM(rows.length)})` })]),
+      el('span.hint', { text: `المعتمد: ${money(rows.reduce((a, r) => a + r.amount, 0))} ر.س · المنصرف: ${money(rows.reduce((a, r) => a + r.spent, 0))} ر.س` })
+    ]),
+    rows.length ? el('div.grid.g2', {}, rows.map(b => budgetCard(b, reload)))
+      : el('div.hint', { style: { padding: '10px 0' }, text: hint })
+  ]);
+
   const load = async () => {
     clear(body).append(skeleton(4));
     const rows = await api.get('/api/finance/budgets');
-    clear(body).append(el('div.grid.g2', {}, rows.map(b => el('div.card', {}, [el('div.card-body', {}, [
-      el('div.row.between', {}, [el('h4', { text: b.name }), chip(b.category || 'عام', 'brand')]),
-      el('div.hint', { text: b.branch_name || 'على مستوى المجمّع' }),
-      el('div.row.between', { style: { marginTop: '12px', fontSize: '12.5px' } }, [
-        el('span', { text: `المنصرف: ${money(b.spent)} ر.س` }),
-        el('b', { text: `المتبقي: ${money(b.remaining)} ر.س`, style: { color: b.remaining < 0 ? 'var(--danger)' : 'var(--ok)' } })
-      ]),
-      el('div', { style: { margin: '7px 0' } }, [progressBar(b.usage_pct, b.usage_pct > 90 ? 'danger' : b.usage_pct > 70 ? 'gold' : 'ok')]),
-      el('div.row.between', { style: { fontSize: '11.5px', color: 'var(--text-3)' } }, [
-        el('span', { text: `المعتمد: ${money(b.amount)} ر.س` }), el('span', { text: `${pct(b.usage_pct)} مستهلك` })
-      ])
-    ])]))));
-    if (!rows.length) clear(body).append(empty('chart-column', 'لا توجد ميزانيات', 'أنشئ بنود ميزانية لضبط المصروفات.'));
+    clear(body);
+    if (!rows.length) return body.append(empty('chart-column', 'لا توجد ميزانيات',
+      'أنشئ بنود ميزانية على مستوى الفروع واللجان لضبط المصروفات.'));
+    body.append(el('div.stack', { style: { gap: '20px' } }, [
+      group('على مستوى الفروع', 'building-2', rows.filter(b => !b.committee_id), load,
+        'لا بنود على مستوى الفروع بعد.'),
+      group('على مستوى اللجان', 'users-round', rows.filter(b => b.committee_id), load,
+        'لا بنود مخصّصة للجان بعد — أنشئ بنداً واختر له لجنة.')
+    ]));
   };
   await load();
   return el('div.stack', {}, [
-    card(null, [el('div.row.between', {}, [el('h3', { text: 'بنود الميزانية' }),
-      can('budgets.manage') ? el('button.btn.sm', { icon: 'plus', iconSize: 16, text: 'بند جديد', onclick: () => openBudget(load) }) : null])]),
+    card(null, [el('div.row.between', {}, [
+      el('div', {}, [el('h3', { text: 'بنود الميزانية' }),
+        el('div.hint', { text: 'يُخصَّص البند لفرع أو للجنة أو لهما معاً، ويُربط به الطلب المالي فيُخصم منه عند الاعتماد.' })]),
+      can('budgets.manage') ? el('button.btn.sm', { icon: 'plus', iconSize: 16, text: 'بند جديد',
+        onclick: () => openBudget(load, committees) }) : null])]),
     body
   ]);
 }
 
-function openBudget(reload) {
-  const name = input({ required: true }); const cat = input({ value: 'تشغيل' });
-  const amount = input({ type: 'number', min: 0, step: '0.01', required: true });
-  const branch = select([{ value: '', label: '— على مستوى المجمّع —' }, ...state.session.branches.map(b => ({ value: b.id, label: b.name }))]);
+function openBudget(reload, committees = [], b = null) {
+  const name = input({ value: b?.name || '', required: true });
+  const cat = input({ value: b?.category || 'تشغيل' });
+  const amount = input({ type: 'number', min: 0, step: '0.01', value: b?.amount ?? '', required: true });
+  const branch = select([{ value: '', label: '— على مستوى المجمّع —' },
+    ...state.session.branches.map(x => ({ value: x.id, label: x.name }))], { value: b?.branch_id || '' });
+  const committee = picker([{ value: '', label: '— غير مخصّص للجنة —' },
+    ...committees.map(c => ({ value: c.id, label: c.name, sub: c.branch_name || '', color: c.color }))],
+    { value: b?.committee_id || '', placeholder: '— غير مخصّص للجنة —', ariaLabel: 'اللجنة' });
+
   const m = modal({
-    title: 'بند ميزانية جديد', size: 'narrow',
-    body: el('div', {}, [field('اسم البند', name, { required: true }), field('التصنيف', cat),
-      field('المبلغ المعتمد (ر.س)', amount, { required: true }), field('الفرع', branch)]),
+    title: b ? `تعديل البند: ${b.name}` : 'بند ميزانية جديد', size: 'narrow',
+    body: el('div', {}, [
+      field('اسم البند', name, { required: true }), field('التصنيف', cat),
+      field('المبلغ المعتمد (ر.س)', amount, { required: true,
+        hint: b?.spent ? `المنصرف من هذا البند ${money(b.spent)} ر.س — لا يُخفَّض المعتمد دونه` : '' }),
+      el('div.grid.g2', {}, [field('الفرع', branch), field('اللجنة', committee)]),
+      el('div.hint', { text: 'اتركهما فارغين ليكون البند على مستوى المجمّع كلّه.' })
+    ]),
     footer: [el('button.btn.ghost', { text: 'إلغاء', onclick: () => m.close() }),
-      el('button.btn', { text: 'حفظ', onclick: async (e) => {
+      el('button.btn', { text: b ? 'حفظ التعديلات' : 'حفظ', onclick: async (e) => {
         if (!name.value || !amount.value) return toast('الاسم والمبلغ إلزاميان', 'warn');
         e.target.disabled = true;
-        try { await api.post('/api/finance/budgets', { name: name.value, category: cat.value, amount: Number(amount.value), branch_id: branch.value || null });
-          toast('تم إنشاء البند', 'ok'); m.close(); reload(); } finally { e.target.disabled = false; }
+        const payload = { name: name.value, category: cat.value, amount: Number(amount.value),
+          branch_id: branch.value || null, committee_id: committee.value || null };
+        try {
+          if (b) await api.patch(`/api/finance/budgets/${b.id}`, payload);
+          else await api.post('/api/finance/budgets', payload);
+          toast(b ? 'تم حفظ البند' : 'تم إنشاء البند', 'ok'); m.close(); reload();
+        } catch (err) { toast(err.message, 'err'); }
+        finally { e.target.disabled = false; }
       } })]
   });
 }

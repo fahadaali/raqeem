@@ -241,6 +241,209 @@ export function select(options, props = {}) {
   if (props.value !== undefined) s.value = props.value;
   return s;
 }
+/**
+ * المنتقي — قائمة منسدلة بحقل بحث، بديلُ `select` حيث تطول القائمة.
+ *
+ * قائمةُ مئةِ منسوبٍ في `<select>` تُقلَّب بالعين لا تُبحَث، فمن يعرف الاسم
+ * يضطرّ إلى مطاردته. هنا يُكتب حرفان فتنحصر القائمة.
+ *
+ * واللوحة تُعلَّق على `<body>` بموضعٍ ثابت لا داخل الحقل: الحقلُ قد يجلس في
+ * جدولٍ يقصّ ما تجاوز حدّه أو في نافذةٍ تمرّر محتواها، فتُقصّ اللوحة معه.
+ *
+ * الخصائص:
+ *   options  [{ value, label, sub, color, group }]
+ *   value    القيمة المختارة — تُقرأ وتُكتب كما في `select` (`p.value`)
+ *   onchange تُسجَّل مستمعاً لحدث `change` على العقدة، وللعقدة خاصّية `value`
+ *            — فالمنتقي بديلٌ مباشر لـ `select` في كل موضع بلا تغيير مُناديه
+ *   searchMin عدد الخيارات الذي يظهر عنده حقل البحث — صفرٌ (الافتراض) يعني دائماً
+ *   node.setOptions(opts, { value }) تُبدّل القائمة — تُستعمل حين تتغيّر اللجنة
+ *
+ * @param {Array}  options
+ * @param {object} props
+ */
+export function picker(options = [], {
+  value = '', placeholder = '— اختر —', searchPlaceholder = 'بحث بالاسم...',
+  emptyText = 'لا نتائج مطابقة', disabled = false, style = {}, ariaLabel = '',
+  onchange, cls = '', searchMin = 0
+} = {}) {
+  let opts = [...options];
+  let current = value === null || value === undefined ? '' : String(value);
+  let open = false, active = -1;
+
+  const face = el('span.picker-face');
+  const btn = el('button.picker-btn', {
+    type: 'button', disabled, 'aria-haspopup': 'listbox', 'aria-expanded': 'false',
+    'aria-label': ariaLabel || placeholder
+  }, [face, luIcon('chevron-down', { size: 15 })]);
+  const node = el('div.picker' + (cls ? '.' + cls : ''), { style }, [btn]);
+
+  const search = searchInput({ placeholder: searchPlaceholder, autocomplete: 'off' });
+  /*
+   * حقل البحث حاضرٌ افتراضاً: هو علّةُ وجود المنتقي، ومن يبحث عن اسمٍ في
+   * قائمة منسوبين لا يريد أن يقلّبها. ويُخفى بـ `searchMin` في القوائم
+   * القصيرة المعدودة وحدها — كالحالة والأولوية — حيث الخيارات كلّها أمام
+   * العين فالحقل زينةٌ تعترض.
+   */
+  const searchRow = el('div.picker-search', {}, [search]);
+  const list = el('div.picker-list', { role: 'listbox' });
+  const pop = el('div.picker-pop', { hidden: true }, [searchRow, list]);
+
+  const found = (v) => opts.find(o => String(o.value ?? '') === String(v ?? ''));
+
+  const paintFace = () => {
+    clear(face);
+    const o = found(current);
+    if (!o) { face.append(el('span.ph', { text: placeholder })); return; }
+    if (o.color) face.append(el('span.dot', { style: { background: o.color } }));
+    face.append(el('span.t', { text: o.label }));
+  };
+
+  /* عناصر القائمة تُبنى عند كل بحث — العدد صغير والبناء أوضح من إخفاءٍ وإظهار */
+  const paintList = () => {
+    const q = search.field.value.trim().toLowerCase();
+    const hits = opts.filter(o => !q
+      || String(o.label || '').toLowerCase().includes(q)
+      || String(o.sub || '').toLowerCase().includes(q));
+    clear(list);
+    active = hits.findIndex(o => String(o.value ?? '') === current);
+    if (!hits.length) { list.append(el('div.picker-empty', { text: emptyText })); return; }
+
+    let lastGroup = null;
+    hits.forEach((o, i) => {
+      if (o.group && o.group !== lastGroup) {
+        lastGroup = o.group;
+        list.append(el('div.picker-group', { text: o.group }));
+      }
+      const on = String(o.value ?? '') === current;
+      list.append(el('button.picker-opt' + (on ? '.on' : ''), {
+        type: 'button', role: 'option', 'aria-selected': on ? 'true' : 'false',
+        dataset: { i: String(i) },
+        onclick: () => pick(o)
+      }, [
+        o.color ? el('span.dot', { style: { background: o.color } }) : null,
+        el('span.t', {}, [o.label, o.sub ? el('small', { text: o.sub }) : null]),
+        on ? luIcon('check', { size: 15 }) : null
+      ]));
+    });
+    highlight();
+  };
+
+  const items = () => [...list.querySelectorAll('.picker-opt')];
+  const highlight = () => items().forEach((n, i) => n.classList.toggle('hot', i === active));
+
+  const place = () => {
+    const r = btn.getBoundingClientRect();
+    const w = Math.max(r.width, 208);
+    const room = window.innerHeight - r.bottom;
+    const flip = room < 240 && r.top > room;      /* لا متّسع أسفل: تُفتح صعوداً */
+    pop.style.width = `${w}px`;
+    /* rtl-ok: موضعٌ هندسيّ محسوبٌ من مستطيل الزرّ نفسه */
+    pop.style.left = `${Math.min(Math.max(8, r.left), Math.max(8, window.innerWidth - w - 8))}px`;
+    pop.style.top = flip ? 'auto' : `${r.bottom + 4}px`;
+    pop.style.bottom = flip ? `${window.innerHeight - r.top + 4}px` : 'auto';
+  };
+
+  function show() {
+    if (open || btn.disabled) return;
+    open = true;
+    document.body.append(pop);
+    pop.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+    node.classList.add('on');
+    search.field.value = '';
+    searchRow.hidden = opts.length < searchMin;
+    paintList();
+    place();
+    (searchRow.hidden ? btn : search.field).focus();
+    list.querySelector('.picker-opt.on')?.scrollIntoView({ block: 'nearest' });
+  }
+
+  function hide() {
+    if (!open) return;
+    open = false;
+    pop.hidden = true;
+    pop.remove();
+    btn.setAttribute('aria-expanded', 'false');
+    node.classList.remove('on');
+  }
+
+  function pick(o) {
+    const v = String(o.value ?? '');
+    hide();
+    if (v === current) return;
+    current = v;
+    paintFace();
+    node.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  btn.addEventListener('click', () => (open ? hide() : show()));
+  search.field.addEventListener('input', paintList);
+  /* التنقّل بالمفاتيح واحدٌ سواء كان التركيز في حقل البحث أو على الزرّ —
+     فالقائمة القصيرة تُفتح بلا حقل بحث، ويبقى التركيز على الزرّ. */
+  const nav = (e) => {
+    const n = items();
+    if (e.key === 'Escape') { e.stopPropagation(); hide(); btn.focus(); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.min(n.length - 1, active + 1); highlight(); n[active]?.scrollIntoView({ block: 'nearest' }); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(0, active - 1); highlight(); n[active]?.scrollIntoView({ block: 'nearest' }); }
+    else if (e.key === 'Enter') { e.preventDefault(); (n[active] || n[0])?.click(); }
+    else return false;
+    return true;
+  };
+  pop.addEventListener('keydown', nav);
+  btn.addEventListener('keydown', (e) => {
+    if (open) { nav(e); return; }
+    if (['ArrowDown', 'Enter', ' '].includes(e.key)) { e.preventDefault(); show(); }
+  });
+
+  /*
+   * المستمعات على المستند ترفع نفسها حين تُنزَع العقدة من الصفحة: الشاشات
+   * تُعيد بناء نفسها بعد كل حفظ، فلولا ذلك تراكمت مستمعاتٌ لمنتقياتٍ ميتة.
+   */
+  const away = (e) => {
+    if (!node.isConnected) return teardown();
+    if (!open || pop.contains(e.target) || node.contains(e.target)) return;
+    hide();
+  };
+  const follow = () => { if (!node.isConnected) return teardown(); if (open) place(); };
+  const teardown = () => {
+    hide();
+    document.removeEventListener('pointerdown', away);
+    window.removeEventListener('resize', follow);
+    window.removeEventListener('scroll', follow, true);
+  };
+  document.addEventListener('pointerdown', away);
+  window.addEventListener('resize', follow);
+  window.addEventListener('scroll', follow, true);   /* التقاط: أي حاوية تمرّر */
+
+  if (onchange) node.addEventListener('change', onchange);
+
+  Object.defineProperty(node, 'value', {
+    get: () => current,
+    set: (v) => { current = v === null || v === undefined ? '' : String(v); paintFace(); if (open) paintList(); }
+  });
+  Object.defineProperty(node, 'disabled', {
+    get: () => btn.disabled,
+    set: (v) => { btn.disabled = !!v; if (v) hide(); }
+  });
+  node.setOptions = (next = [], o = {}) => {
+    opts = [...next];
+    if (o.value !== undefined) current = o.value === null ? '' : String(o.value);
+    /* قيمةٌ لم تعد في القائمة تُسقَط — وإلا عرض الزرّ اسماً لا وجود له */
+    else if (current && !found(current)) current = '';
+    paintFace();
+    if (open) paintList();
+  };
+  node.open = show;
+  node.field = btn;
+  paintFace();
+  return node;
+}
+
+/** خيارات منسوبين جاهزة للمنتقي — الاسم سطراً والدور تحته */
+export const userOptions = (list = [], { group } = {}) => list.map(u => ({
+  value: u.id, label: u.name, sub: u.role_name || u.job_title || '', group
+}));
+
 export const card = (title, bodyChildren, { actions, sub, p0, icon = '' } = {}) => el('div.card', {}, [
   title ? el('div.card-head', {}, [
     el('h3', { icon: icon || null }, [title, sub ? el('span.sub', { text: sub }) : null]),

@@ -613,6 +613,82 @@ table.tbl td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
 table.tbl.editable td[contenteditable]{cursor:text;outline:none}
 table.tbl.editable td[contenteditable]:focus{background:var(--brand-50);box-shadow:inset 0 0 0 2px var(--brand)}
 
+/* ── جدولٌ يُحرَّر في مكانه (نمط الجداول الحسابية) ────────────
+   لا زرَّ تعديلٍ ولا نافذة: الخليّة نفسها هي الحقل. تُلمَّح بإطارٍ
+   خفيف عند التحويم فيُعرَف ما يُعدَّل، وتُملأ عند التحرير.
+   ولوحةُ المنتقي معلّقة على <body> بموضعٍ ثابت، فقصُّ الجدول
+   الأفقيُّ لا يبتلعها. */
+/* `.sheet` لا `.grid`: الأخيرة أداةُ تخطيطٍ عامة تضع `display:grid`،
+   فتُبطل تخطيط الجدول من أصله وتفصل الترويسة عن صفوفها. */
+table.tbl.sheet td{padding:5px 8px}
+table.tbl.sheet th{white-space:nowrap}
+/*
+ * عمود المهمة مثبَّتٌ على حافّة البداية: الجدول أعرض من الشاشة، ومن يمرّره
+ * ليصل إلى «الوزن» يفقد اسم المهمة التي يعدّلها — فيعدّل صفّاً لا يعرفه.
+ */
+table.tbl.sheet td:first-child,table.tbl.sheet th:first-child{
+  position:sticky;inset-inline-start:0;z-index:2;background:var(--surface)}
+table.tbl.sheet th:first-child{background:var(--surface-2);z-index:3}
+table.tbl.sheet tbody tr:hover td:first-child{background:var(--surface-2)}
+/* حدٌّ خفيف يفصل العمود المثبَّت عمّا يمرّ تحته */
+table.tbl.sheet td:first-child::after,table.tbl.sheet th:first-child::after{
+  content:"";position:absolute;inset-block:0;inset-inline-end:0;width:1px;background:var(--border)}
+.cellx{display:block;width:100%;min-height:30px;border:1px solid transparent;border-radius:8px;
+  padding:4px 7px;cursor:pointer;transition:.12s;background:transparent;text-align:start;
+  font:inherit;color:inherit}
+.cellx:hover{border-color:var(--border-2);background:var(--surface)}
+.cellx:focus-visible{outline:2px solid var(--primary);outline-offset:0}
+.cellx.busy{opacity:.5;cursor:progress}
+/* خليّةٌ حُفظت للتوّ: ومضةٌ نعناعية تقول «وصل» بلا إشعارٍ يتكرّر مع كل ضغطة */
+.cellx.saved{animation:cellSaved .9s ease-out}
+@keyframes cellSaved{0%{background:var(--mint);border-color:var(--primary)}100%{background:transparent;border-color:transparent}}
+@media (prefers-reduced-motion:reduce){.cellx.saved{animation:none}}
+.cellx.empty-v{color:var(--text-light)}
+.cellx-input{width:100%;min-height:30px;padding:4px 7px;font:inherit;border-radius:8px;
+  border:1px solid var(--primary);background:var(--surface);color:var(--text-dark);outline:none}
+.cell-num{font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* ── المنتقي: قائمة منسدلة بحقل بحث ──────────────────────────
+   اللوحة معلّقة على <body> بموضعٍ ثابت، فلا يقصّها جدولٌ ولا نافذة. */
+.picker{position:relative;display:block;min-width:0}
+.picker-btn{display:flex;align-items:center;gap:7px;width:100%;min-height:38px;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:6px 11px;cursor:pointer;font-size:13.5px;color:var(--text-dark);
+  text-align:start;transition:.15s}
+.picker-btn:hover:not(:disabled){border-color:var(--primary)}
+.picker-btn:disabled{opacity:.55;cursor:not-allowed;background:var(--surface-2)}
+.picker.on .picker-btn{border-color:var(--primary);box-shadow:0 0 0 3px var(--ring-primary)}
+.picker-btn>.lu{margin-inline-start:auto;color:var(--text-3);flex:0 0 auto}
+.picker-face{display:flex;align-items:center;gap:7px;min-width:0;flex:1}
+.picker-face .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.picker-face .ph{color:var(--text-light)}
+.picker .dot,.picker-opt .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+/* المنتقي داخل خليّة جدول: بلا حدٍّ ولا ارتفاعٍ زائد حتى يبقى الصفّ صفّاً،
+   ويأخذ ومضةَ الحفظ وانشغالَه كما تأخذها الخلايا النصّية */
+.cellx-picker>.picker-btn{min-height:30px;padding:3px 7px;font-size:12.5px;
+  border-color:transparent;background:transparent}
+.cellx-picker>.picker-btn:hover:not(:disabled){border-color:var(--border-2);background:var(--surface)}
+.picker-btn.busy{opacity:.5;cursor:progress}
+.picker-btn.saved{animation:cellSaved .9s ease-out}
+@media (prefers-reduced-motion:reduce){.picker-btn.saved{animation:none}}
+
+.picker-pop{position:fixed;z-index:8000;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r);box-shadow:var(--shadow-lg);display:flex;flex-direction:column;
+  overflow:hidden;max-height:min(320px,60vh)}
+.picker-search{padding:7px;border-bottom:1px solid var(--border);flex:0 0 auto}
+.picker-search .input{min-height:34px;font-size:13px}
+.picker-list{overflow-y:auto;padding:5px;display:flex;flex-direction:column;gap:1px}
+.picker-group{font-size:11px;font-weight:700;color:var(--text-3);padding:7px 9px 3px}
+.picker-opt{display:flex;align-items:center;gap:8px;width:100%;text-align:start;
+  background:none;border:0;border-radius:8px;padding:7px 9px;cursor:pointer;
+  font-size:13px;color:var(--text-2);transition:.1s}
+.picker-opt .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.picker-opt .t small{display:block;font-size:11px;color:var(--text-3);font-weight:400}
+.picker-opt:hover,.picker-opt.hot{background:var(--surface-2);color:var(--text-dark)}
+.picker-opt.on{background:var(--mint);color:var(--primary-dark);font-weight:600}
+.picker-opt.on .t small{color:var(--primary-dark);opacity:.75}
+.picker-empty{padding:16px 10px;text-align:center;font-size:12.5px;color:var(--text-3)}
+
 /* شاشة الفراغ: أيقونة بحجم البطاقة (٤٨) داخل قرصٍ نعناعي — سكينةٌ لا فراغ موحش */
 .empty{text-align:center;padding:46px 20px;color:var(--text-light)}
 .empty .ic{display:inline-grid;place-items:center;width:84px;height:84px;border-radius:50%;

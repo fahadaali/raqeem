@@ -2,17 +2,47 @@ import api from '../api.js';
 import { state, can, activeTerm, termIsArchived, currentTermObj } from '../state.js';
 import {
   el, clear, card, chip, empty, table, progressBar, toast, modal, drawer, confirmDialog,
-  field, input, searchInput, textarea, select, T, avatar, AR_NUM, pct, debounce, timeAgo, qs
+  field, input, searchInput, textarea, select, picker, userOptions,
+  T, avatar, AR_NUM, pct, debounce, timeAgo, qs
 } from '../util.js';
 import { fmtDate, todayISO, addDaysISO, daysBetween } from '../hijri.js';
 
 const STATUSES = ['todo', 'in_progress', 'review', 'done', 'blocked'];
+const PRIORITIES = Object.keys(T.priority);
 let view = localStorage.getItem('raqeem_tasks_view') || 'kanban';
 let filters = {};
 let cacheUsers = null, cacheCommittees = null;
 
 async function users() { if (!cacheUsers) cacheUsers = await api.get('/api/org/users').catch(() => []); return cacheUsers; }
 async function committees() { if (!cacheCommittees) cacheCommittees = await api.get('/api/tasks/committees').catch(() => []); return cacheCommittees; }
+/* اللجان تتغيّر أعضاؤها من شاشة اللجان، فتُسقَط الذاكرة ليُقرأ الجديد */
+export function forgetTaskCaches() { cacheUsers = null; cacheCommittees = null; }
+
+/**
+ * من يُسنَد إليه؟
+ *
+ * المهمة التي تحت لجنةٍ لا تُسنَد إلا إلى أعضائها: هم من يعرف عملها ومن
+ * يُحاسَب عليه. والمنسوب قد يكون في لجنةٍ وأكثر، فيظهر في كلٍّ منها.
+ * وحين لا لجنة للمهمة تُفتح القائمة على منسوبي الجهة كلّهم.
+ *
+ * ويبقى المكلَّف الحاليّ ظاهراً وإن لم يكن عضواً — تحت عنوانٍ يقول ذلك
+ * صراحةً — فتغييرُ لجنةِ مهمةٍ قائمة لا يُخفي من هي بين يديه الآن.
+ */
+function assigneeOptions(committeeId, us, cs, currentId) {
+  const cur = Number(currentId) || null;
+  const c = committeeId ? cs.find(x => String(x.id) === String(committeeId)) : null;
+  if (!c) return userOptions(us);
+
+  const ids = new Set((c.members || []).map(m => m.user_id));
+  const inside = userOptions(us.filter(u => ids.has(u.id)), { group: `أعضاء ${c.name}` });
+  const outsider = cur && !ids.has(cur) ? us.find(u => u.id === cur) : null;
+  return outsider
+    ? [...inside, ...userOptions([outsider], { group: 'من خارج اللجنة' })]
+    : inside;
+}
+
+/** خيارات المنتقي مع خيار «بلا قيمة» في رأسها */
+const withNone = (label, opts) => [{ value: '', label }, ...opts];
 
 export async function render({ route, navigate }) {
   filters = { ...route.query };
@@ -48,15 +78,36 @@ async function buildToolbar(reload, navigate, locked) {
     }
   })));
 
+  /*
+   * تصفيةٌ باللجنة تُضيّق تصفيةَ المكلَّف معها: من يبحث في مهام لجنةٍ لا يعنيه
+   * إلا أعضاؤها. وتغييرُ اللجنة يُسقط مكلَّفاً لم يعد ضمنها فلا تبقى تصفيةٌ
+   * لا تُرجع شيئاً بلا سبب ظاهر.
+   */
+  const assigneeFilter = picker(
+    withNone('كل المكلّفين', assigneeOptions(filters.committee_id, us, cs, filters.assignee_id)),
+    { value: filters.assignee_id || '', placeholder: 'كل المكلّفين', style: { maxWidth: '190px' },
+      ariaLabel: 'تصفية بالمكلّف',
+      onchange: (e) => { filters.assignee_id = e.target.value; reload(); } });
+
+  const committeeFilter = picker(
+    withNone('كل اللجان', cs.map(c => ({ value: c.id, label: c.name, color: c.color }))),
+    { value: filters.committee_id || '', placeholder: 'كل اللجان', style: { maxWidth: '175px' },
+      ariaLabel: 'تصفية باللجنة',
+      onchange: (e) => {
+        const v = e.target.value;
+        filters.committee_id = v;
+        const opts = assigneeOptions(v, us, cs, filters.assignee_id);
+        const keep = opts.some(o => String(o.value) === String(filters.assignee_id));
+        if (!keep) filters.assignee_id = '';
+        assigneeFilter.setOptions(withNone('كل المكلّفين', opts), { value: filters.assignee_id || '' });
+        reload();
+      } });
+
   return card(null, [el('div.row', {}, [
     viewBtns,
     search,
-    select([{ value: '', label: 'كل اللجان' }, ...cs.map(c => ({ value: c.id, label: c.name }))],
-      { value: filters.committee_id || '', style: { maxWidth: '160px' },
-        onchange: (e) => { filters.committee_id = e.target.value; reload(); } }),
-    select([{ value: '', label: 'كل المكلّفين' }, ...us.map(u => ({ value: u.id, label: u.name }))],
-      { value: filters.assignee_id || '', style: { maxWidth: '170px' },
-        onchange: (e) => { filters.assignee_id = e.target.value; reload(); } }),
+    committeeFilter,
+    assigneeFilter,
     select([{ value: '', label: 'كل الأولويات' }, ...Object.entries(T.priority).map(([v, l]) => ({ value: v, label: l }))],
       { value: filters.priority || '', style: { maxWidth: '130px' },
         onchange: (e) => { filters.priority = e.target.value; reload(); } }),
@@ -82,11 +133,11 @@ async function fetchTasks() {
 
 async function paint(container, navigate) {
   clear(container).append(el('div.skeleton', { style: { height: '160px' } }));
-  const tasks = await fetchTasks();
+  const [tasks, us, cs] = await Promise.all([fetchTasks(), users(), committees()]);
   clear(container);
   if (view === 'kanban') container.append(kanban(tasks, () => paint(container, navigate)));
   else if (view === 'gantt') container.append(await gantt(() => paint(container, navigate)));
-  else container.append(tableView(tasks, () => paint(container, navigate)));
+  else container.append(tableView(tasks, () => paint(container, navigate), us, cs));
 }
 
 /* ═════════ لوحة كانبان بالسحب والإفلات ═════════ */
@@ -151,42 +202,200 @@ function taskCard(t, reload, locked) {
   return node;
 }
 
-/* ═════════ عرض الجدول (تعديل سريع كالإكسل) ═════════ */
-function tableView(tasks, reload) {
+/* ═════════ عرض الجدول — تحريرٌ مباشر في الخليّة ═════════
+ *
+ * الجدول هنا ليس عرضاً للقراءة: كل خليّةٍ فيه حقلٌ يُعدَّل في موضعه كما في
+ * الجداول الحسابية. الحالةُ تُضغَط فتنفتح خياراتها، والمكلَّفُ يُبدَّل من
+ * قائمةٍ ذات بحث، والتاريخُ والنسبة تُكتبان مكانهما — بلا نافذةٍ تُفتح ولا
+ * صفحةٍ تُعاد.
+ *
+ * ولا يُعاد بناء الجدول بعد كل حفظ: الخادم يُرجع الصفَّ محدَّثاً، فتُحدَّث
+ * خلايا ذلك الصفّ وحدها. إعادةُ البناء تُفقد المستخدم موضعه في القائمة، وهو
+ * أسوأ ما يقع لمن يُدخل عشرين صفّاً بالتتابع.
+ */
+function tableView(tasks, reload, us, cs) {
   const locked = termIsArchived();
   const editable = !locked && can('tasks.update');
-  return card(null, table([
-    { header: 'المهمة', key: 'title', render: (t) => {
-        const cell = el('div', { style: { minWidth: '180px' } }, [
-          el('div', { text: t.title, style: { fontWeight: '600', cursor: editable ? 'text' : 'pointer' },
-            contenteditable: editable ? 'true' : null,
-            onblur: async (e) => {
-              const v = e.target.textContent.trim();
-              if (v && v !== t.title) { await api.patch(`/api/tasks/${t.id}`, { title: v }); toast('تم حفظ العنوان', 'ok'); t.title = v; }
-              else e.target.textContent = t.title;
-            },
-            onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } } }),
-          t.committee_name ? el('small', { text: t.committee_name, style: { color: 'var(--text-3)', fontSize: '11px' } }) : null
-        ]);
-        return cell;
-      } },
-    { header: 'المكلّف', key: 'assignee_name', render: (t) => t.assignee_name
-        ? el('div.row', { style: { gap: '6px', flexWrap: 'nowrap' } }, [avatar(t.assignee_name, 'sm'), el('span', { text: t.assignee_name.split('—').pop().trim(), style: { fontSize: '12px' } })])
-        : chip('غير مُسند', 'warn') },
-    { header: 'الحالة', key: 'status', render: (t) => editable
-        ? select(STATUSES.map(s => ({ value: s, label: T.taskStatus[s] })), {
-            value: t.status, style: { minWidth: '118px', padding: '5px 8px', minHeight: '30px', fontSize: '12px' },
-            onchange: async (e) => { await api.patch(`/api/tasks/${t.id}`, { status: e.target.value }); toast('تم تحديث الحالة', 'ok'); reload(); }
-          })
-        : chip(T.taskStatus[t.status], T.taskStatusChip[t.status]) },
-    { header: 'الأولوية', key: 'priority', render: (t) => chip(T.priority[t.priority], T.priorityChip[t.priority]) },
-    { header: 'الاستحقاق', key: 'due_date', render: (t) => t.due_date
-        ? el('span', { text: fmtDate(t.due_date, state.calendar, 'short'), style: { color: t.is_overdue ? 'var(--danger)' : '', fontWeight: t.is_overdue ? '600' : '' } })
-        : '—' },
-    { header: 'الإنجاز', key: 'progress', render: (t) => el('div.row', { style: { gap: '7px', flexWrap: 'nowrap', minWidth: '110px' } }, [
-        progressBar(t.progress, t.progress === 100 ? 'ok' : ''), el('span', { text: pct(t.progress), style: { fontSize: '11px' } })]) },
-    { header: '', key: 'act', render: (t) => el('button.btn.sm.ghost', { text: 'تفاصيل', onclick: (e) => { e.stopPropagation(); openTask(t.id, reload); } }) }
-  ], tasks, { cls: 'editable', emptyText: 'لا توجد مهام مطابقة' }), { p0: true });
+  const canAssign = editable && can('tasks.assign');
+  const today = todayISO();
+
+  /* لكل صفٍّ قائمةُ مُحدِّثاتٍ تُستدعى بالمهمة بعد كل حفظ أو تراجع */
+  const painters = new Map();
+  const repaint = (t) => (painters.get(t.id) || []).forEach(fn => fn(t));
+  const onCell = (t, fn) => {
+    if (!painters.has(t.id)) painters.set(t.id, []);
+    painters.get(t.id).push(fn);
+  };
+
+  /** حفظُ خليّة: يُظهر الانشغال، ويومض عند النجاح، ويرجع بالقيمة عند الفشل */
+  const save = async (t, patch, cell) => {
+    cell.classList.add('busy');
+    try {
+      const fresh = await api.patch(`/api/tasks/${t.id}`, patch);
+      Object.assign(t, fresh);
+      t.is_overdue = t.status !== 'done' && !!t.due_date && t.due_date < today;
+      cell.classList.remove('busy');
+      repaint(t);
+      cell.classList.remove('saved');
+      void cell.offsetWidth;              /* إعادة تشغيل الومضة عند التتابع */
+      cell.classList.add('saved');
+      return true;
+    } catch (err) {
+      cell.classList.remove('busy');
+      toast(err.message || 'تعذّر حفظ التعديل', 'err');
+      repaint(t);                          /* رجوعٌ إلى ما في الخادم */
+      return false;
+    }
+  };
+
+  /** خليّة نصّية: تُعرَض نصّاً، وتصير حقلاً عند الضغط */
+  const textCell = (t, key, { bold = false, placeholder = '—', min } = {}) => {
+    const cell = el('button.cellx', { type: 'button',
+      style: { ...(bold ? { fontWeight: '600' } : {}), ...(min ? { minWidth: min } : {}) } });
+    const paint = (task) => {
+      cell.textContent = task[key] || placeholder;
+      cell.classList.toggle('empty-v', !task[key]);
+    };
+    paint(t); onCell(t, paint);
+    if (!editable) { cell.disabled = true; return cell; }
+    cell.onclick = () => {
+      const box = el('input.cellx-input', { value: t[key] || '' });
+      cell.replaceWith(box); box.focus(); box.select();
+      let done = false;
+      const finish = async (commit) => {
+        if (done) return; done = true;
+        const v = box.value.trim();
+        box.replaceWith(cell);
+        if (commit && v && v !== t[key]) await save(t, { [key]: v }, cell);
+      };
+      box.onblur = () => finish(true);
+      box.onkeydown = (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+        if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+      };
+    };
+    return cell;
+  };
+
+  /** خليّة تاريخ: تُعرَض بتقويم المستخدم، وتُحرَّر بمنتقي التاريخ نفسه */
+  const dateCell = (t, key, { warnOverdue = false } = {}) => {
+    const cell = el('button.cellx.cell-num', { type: 'button' });
+    const paint = (task) => {
+      cell.textContent = task[key] ? fmtDate(task[key], state.calendar, 'short') : '—';
+      cell.classList.toggle('empty-v', !task[key]);
+      const late = warnOverdue && task.is_overdue;
+      cell.style.color = late ? 'var(--danger)' : '';
+      cell.style.fontWeight = late ? '600' : '';
+    };
+    paint(t); onCell(t, paint);
+    if (!editable) { cell.disabled = true; return cell; }
+    cell.onclick = () => {
+      const box = el('input.cellx-input', { type: 'date', value: t[key] || '' });
+      cell.replaceWith(box); box.focus(); box.showPicker?.();
+      let done = false;
+      const finish = async (commit) => {
+        if (done) return; done = true;
+        const v = box.value || null;
+        box.replaceWith(cell);
+        if (commit && v !== (t[key] || null)) await save(t, { [key]: v }, cell);
+      };
+      box.onchange = () => finish(true);
+      box.onblur = () => finish(true);
+      box.onkeydown = (e) => { if (e.key === 'Escape') { e.preventDefault(); finish(false); } };
+    };
+    return cell;
+  };
+
+  /** خليّة رقمية محصورة بين حدَّين */
+  const numCell = (t, key, { min = 0, max = 100, step = 1, render }) => {
+    const cell = el('button.cellx.cell-num', { type: 'button' });
+    const paint = (task) => { clear(cell).append(render(task)); };
+    paint(t); onCell(t, paint);
+    if (!editable) { cell.disabled = true; return cell; }
+    cell.onclick = () => {
+      const box = el('input.cellx-input.cell-num', { type: 'number', min, max, step, value: t[key] ?? 0 });
+      cell.replaceWith(box); box.focus(); box.select();
+      let done = false;
+      const finish = async (commit) => {
+        if (done) return; done = true;
+        const v = Math.max(min, Math.min(max, Number(box.value)));
+        box.replaceWith(cell);
+        if (commit && Number.isFinite(v) && v !== Number(t[key])) await save(t, { [key]: v }, cell);
+      };
+      box.onblur = () => finish(true);
+      box.onkeydown = (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+        if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+      };
+    };
+    return cell;
+  };
+
+  /** خليّة اختيار: المنتقي نفسه داخل الخليّة — ضغطةٌ واحدة تفتح الخيارات */
+  const pickCell = (t, key, opts, { allow = editable, placeholder = '—', numeric = false, searchMin = 0 } = {}) => {
+    const p = picker(opts, {
+      value: t[key] ?? '', placeholder, cls: 'cellx-picker', disabled: !allow, searchMin,
+      onchange: async (e) => {
+        const raw = e.target.value;
+        const val = raw === '' ? null : (numeric ? Number(raw) : raw);
+        if (val === (t[key] ?? null)) return;
+        await save(t, { [key]: val }, p.field);
+      }
+    });
+    onCell(t, (task) => { p.value = task[key] ?? ''; });
+    return p;
+  };
+
+  const rows = tasks.map(t => {
+    /* منتقي المكلَّف يتبع لجنة الصفّ: تغيير اللجنة يُعيد بناء قائمته فوراً */
+    const assignee = pickCell(t, 'assignee_id',
+      withNone('— غير مُسند —', assigneeOptions(t.committee_id, us, cs, t.assignee_id)),
+      { allow: canAssign, placeholder: '— غير مُسند —', numeric: true });
+
+    const committee = pickCell(t, 'committee_id',
+      withNone('— بدون لجنة —', cs.map(c => ({ value: c.id, label: c.name, color: c.color }))),
+      { placeholder: '— بدون لجنة —', numeric: true });
+    committee.addEventListener('change', () => {
+      assignee.setOptions(
+        withNone('— غير مُسند —', assigneeOptions(committee.value, us, cs, t.assignee_id)),
+        { value: t.assignee_id ?? '' });
+    });
+
+    return { t, assignee, committee };
+  });
+
+  const cols = [
+    { header: 'المهمة', key: 'title',
+      render: ({ t }) => textCell(t, 'title', { bold: true, min: '200px' }) },
+    { header: 'اللجنة', key: 'committee_id', render: (r) => r.committee },
+    { header: 'المكلّف', key: 'assignee_id', render: (r) => r.assignee },
+    /* الحالة والأولوية قائمتان معدودتان أمام العين — بلا حقل بحث */
+    { header: 'الحالة', key: 'status', render: ({ t }) => pickCell(t, 'status',
+        STATUSES.map(v => ({ value: v, label: T.taskStatus[v] })), { placeholder: 'لم تبدأ', searchMin: 9 }) },
+    { header: 'الأولوية', key: 'priority', render: ({ t }) => pickCell(t, 'priority',
+        PRIORITIES.map(v => ({ value: v, label: T.priority[v] })), { searchMin: 9 }) },
+    { header: 'البداية', key: 'start_date', render: ({ t }) => dateCell(t, 'start_date') },
+    { header: 'الاستحقاق', key: 'due_date', render: ({ t }) => dateCell(t, 'due_date', { warnOverdue: true }) },
+    { header: 'الإنجاز', key: 'progress', render: ({ t }) => numCell(t, 'progress', { max: 100, step: 5,
+        render: (task) => el('div.row', { style: { gap: '7px', flexWrap: 'nowrap', minWidth: '104px' } }, [
+          progressBar(task.progress, task.progress === 100 ? 'ok' : ''),
+          el('span', { text: pct(task.progress), style: { fontSize: '11px' } })]) }) },
+    { header: 'الوزن', key: 'weight', num: true, render: ({ t }) => numCell(t, 'weight', { min: 1, max: 10,
+        render: (task) => el('span', { text: AR_NUM(task.weight) }) }) },
+    { header: '', key: 'act', render: ({ t }) => el('button.btn.sm.ghost', { icon: 'panels-top-left', iconSize: 15,
+        title: 'تفاصيل المهمة', 'aria-label': 'تفاصيل المهمة',
+        onclick: (e) => { e.stopPropagation(); openTask(t.id, reload); } }) }
+  ];
+
+  /* المنتقي في الخليّة يحمل قيمته بنفسه، فالحالة تتغيّر بلا استئذانٍ من الحقل
+     — إلا حين يُقفَل الفصل، فيُعطَّل كل شيء ويبقى الجدول للقراءة. */
+  return el('div.stack', {}, [
+    card(null, [table(cols, rows, { cls: 'sheet', emptyText: 'لا توجد مهام مطابقة' })], { p0: true }),
+    tasks.length ? el('div.hint', { style: { marginTop: '-4px' },
+      text: editable
+        ? 'اضغط على أي خليّة لتعديلها مباشرة — Enter يحفظ، Esc يتراجع.'
+        : 'العرض للقراءة فقط.' }) : null
+  ]);
 }
 
 /* ═════════ مخطط جانت مع الاعتماديات ═════════ */
@@ -264,19 +473,28 @@ export async function openTask(id, reload) {
   ]));
 
   if (!locked && can('tasks.update')) {
+    const [us, cs] = await Promise.all([users(), committees()]);
     const st = select(STATUSES.map(s => ({ value: s, label: T.taskStatus[s] })), { value: t.status });
+    /* المكلَّف يُبدَّل من هنا أيضاً — ومن أعضاء لجنة المهمة وحدهم إن كانت لها لجنة */
+    const asg = picker(withNone('— غير مُسند —', assigneeOptions(t.committee_id, us, cs, t.assignee_id)),
+      { value: t.assignee_id || '', placeholder: '— غير مُسند —', ariaLabel: 'المكلّف',
+        disabled: !can('tasks.assign') });
     const pr = input({ type: 'range', min: 0, max: 100, step: 5, value: t.progress, style: { padding: '0' } });
     const prLabel = el('span', { text: pct(t.progress), style: { fontWeight: '700', minWidth: '42px' } });
     pr.addEventListener('input', () => { prLabel.textContent = pct(pr.value); });
     body.append(card('تحديث سريع', [
       field('الحالة', st),
+      field('المكلّف', asg, { hint: t.committee_name ? `من أعضاء لجنة ${t.committee_name}` : '' }),
       field('نسبة الإنجاز', el('div.row', { style: { flexWrap: 'nowrap' } }, [pr, prLabel])),
       el('button.btn.block', {
         text: 'حفظ التحديث',
         onclick: async (e) => {
           e.target.disabled = true;
           try {
-            await api.patch(`/api/tasks/${t.id}`, { status: st.value, progress: Number(pr.value) });
+            const patch = { status: st.value, progress: Number(pr.value) };
+            /* المكلَّف لا يُرسَل إلا إذا تغيّر: إرساله بلا صلاحية إسنادٍ يردّ الطلب كلَّه */
+            if (String(asg.value || '') !== String(t.assignee_id || '')) patch.assignee_id = asg.value ? Number(asg.value) : null;
+            await api.patch(`/api/tasks/${t.id}`, patch);
             toast('تم حفظ التحديث', 'ok'); reload?.();
           } finally { e.target.disabled = false; }
         }
@@ -361,8 +579,19 @@ export async function openTaskForm(task, reload) {
   const [us, cs] = await Promise.all([users(), committees()]);
   const title = input({ value: task?.title || '', placeholder: 'عنوان المهمة', required: true });
   const desc = textarea({ value: task?.description || '', placeholder: 'وصف تفصيلي للمهمة والمطلوب إنجازه...' });
-  const assignee = select([{ value: '', label: '— غير مُسند —' }, ...us.map(u => ({ value: u.id, label: `${u.name} (${u.role_name})` }))], { value: task?.assignee_id || '' });
-  const committee = select([{ value: '', label: '— بدون لجنة —' }, ...cs.map(c => ({ value: c.id, label: c.name }))], { value: task?.committee_id || '' });
+  const assignee = picker(
+    withNone('— غير مُسند —', assigneeOptions(task?.committee_id, us, cs, task?.assignee_id)),
+    { value: task?.assignee_id || '', placeholder: '— غير مُسند —', ariaLabel: 'المكلّف' });
+  /* اللجنة تحكم قائمة المكلَّفين: تُبدَّل فتنحصر القائمة في أعضائها */
+  const committee = picker(
+    withNone('— بدون لجنة —', cs.map(c => ({ value: c.id, label: c.name, color: c.color }))),
+    { value: task?.committee_id || '', placeholder: '— بدون لجنة —', ariaLabel: 'اللجنة',
+      onchange: (e) => {
+        const opts = assigneeOptions(e.target.value, us, cs, assignee.value);
+        const keep = opts.some(o => String(o.value) === String(assignee.value));
+        assignee.setOptions(withNone('— غير مُسند —', opts), { value: keep ? assignee.value : '' });
+        if (!keep && assignee.value === '') toast('المكلّف السابق ليس عضواً في هذه اللجنة — اختر من أعضائها', 'warn');
+      } });
   const branch = select([{ value: '', label: '— الفرع الافتراضي —' }, ...(state.session.branches).map(b => ({ value: b.id, label: b.name }))], { value: task?.branch_id || '' });
   const priority = select(Object.entries(T.priority).map(([v, l]) => ({ value: v, label: l })), { value: task?.priority || 'medium' });
   const status = select(STATUSES.map(s => ({ value: s, label: T.taskStatus[s] })), { value: task?.status || 'todo' });
@@ -432,17 +661,27 @@ async function openTemplates(reload) {
 
 async function applyTemplate(tpl, cs, parent, reload) {
   const us = await users();
-  const committee = select([{ value: '', label: '— بدون لجنة —' }, ...cs.map(c => ({ value: c.id, label: c.name }))]);
-  const start = input({ type: 'date', value: todayISO() });
   const rows = tpl.items.map((it, i) => {
-    const assignee = select([{ value: '', label: '— غير مُسند —' }, ...us.map(u => ({ value: u.id, label: u.name }))],
-      { style: { minWidth: '150px', minHeight: '32px', padding: '4px 8px', fontSize: '12px' } });
+    const assignee = picker(withNone('— غير مُسند —', userOptions(us)),
+      { placeholder: '— غير مُسند —', ariaLabel: `المكلّف بـ ${it.title}`, style: { minWidth: '170px' } });
     return { it, assignee, node: el('div.check-row', { style: { cursor: 'default' } }, [
       el('input', { type: 'checkbox', checked: true, dataset: { i } }),
       el('div.t', {}, [it.title, el('small', { text: `يبدأ بعد ${it.offset_days || 0} يوم · مدة ${it.duration_days || 3} أيام` })]),
       assignee
     ]) };
   });
+  /* اللجنة تُختار مرّةً فتنحصر قوائم المكلَّفين كلّها في أعضائها */
+  const committee = picker(
+    withNone('— بدون لجنة —', cs.map(c => ({ value: c.id, label: c.name, color: c.color }))),
+    { placeholder: '— بدون لجنة —', ariaLabel: 'اللجنة',
+      onchange: (e) => {
+        for (const r of rows) {
+          const opts = assigneeOptions(e.target.value, us, cs, r.assignee.value);
+          const keep = opts.some(o => String(o.value) === String(r.assignee.value));
+          r.assignee.setOptions(withNone('— غير مُسند —', opts), { value: keep ? r.assignee.value : '' });
+        }
+      } });
+  const start = input({ type: 'date', value: todayISO() });
 
   const body = el('div', {}, [
     el('p', { style: { marginTop: 0, fontSize: '13px', color: 'var(--text-2)' },

@@ -50,22 +50,46 @@ router.delete('/workflows/:id', can('workflows.manage'), h(async (req) => {
 }));
 
 /* ─────────────── الميزانيات ─────────────── */
+/**
+ * اللجنة وعاءُ صرفٍ كالفرع: لها خطّتها وبندها، فتُخصَّص لها ميزانيتها.
+ * الحقلان مستقلّان — بندٌ لفرعٍ بلا لجنة، أو للجنةٍ عابرةٍ للفروع، أو لهما معاً.
+ */
+const budgetCommittee = async (app, ctx, id) => {
+  if (id === null || id === undefined || id === '') return null;
+  const c = await findScoped(app, ctx, 'committees', id, { branchCheck: true });
+  if (!c) throw badRequest('اللجنة غير موجودة ضمن نطاقك');
+  return c.id;
+};
+
 router.get('/budgets', can('budgets.view', 'finance.view'), h(async (req) => {
   const sc = scoped(req.ctx, { alias: 'b' });
-  return req.app.db.all(`SELECT b.*, br.name AS branch_name, t.name AS term_name,
+  let sql = `SELECT b.*, br.name AS branch_name, t.name AS term_name,
+      cm.name AS committee_name, cm.color AS committee_color,
       (b.amount - b.spent) AS remaining,
       CASE WHEN b.amount>0 THEN ROUND(b.spent*100.0/b.amount,1) ELSE 0 END AS usage_pct
-    FROM budgets b LEFT JOIN branches br ON br.id=b.branch_id LEFT JOIN terms t ON t.id=b.term_id
-    WHERE ${sc.where} ORDER BY b.name`, ...sc.params);
+    FROM budgets b
+    LEFT JOIN branches br ON br.id=b.branch_id
+    LEFT JOIN committees cm ON cm.id=b.committee_id
+    LEFT JOIN terms t ON t.id=b.term_id
+    WHERE ${sc.where}`;
+  const params = [...sc.params];
+  /* تصفيةٌ بالمستوى: شاشة اللجنة تطلب بنودها وحدها، والمالية تطلب الكل */
+  if (req.query.committee_id) { sql += ' AND b.committee_id=?'; params.push(Number(req.query.committee_id)); }
+  if (req.query.level === 'committee') sql += ' AND b.committee_id IS NOT NULL';
+  if (req.query.level === 'branch') sql += ' AND b.committee_id IS NULL';
+  sql += ' ORDER BY cm.name IS NULL DESC, cm.name, b.name';
+  return req.app.db.all(sql, ...params);
 }));
 
 router.post('/budgets', can('budgets.manage'), h(async (req) => {
   const app = req.app;
-  const { name, category, amount, branch_id, term_id } = req.body || {};
+  const { name, category, amount, branch_id, committee_id, term_id } = req.body || {};
   if (!name || amount === undefined) throw badRequest('اسم الميزانية ومبلغها إلزاميان');
   const term = term_id || (await currentTerm(app, req.ctx.tenantId))?.id || null;
-  const r = await app.db.run('INSERT INTO budgets(tenant_id,branch_id,term_id,name,category,amount) VALUES(?,?,?,?,?,?)',
-    req.ctx.tenantId, branch_id ? await assertBranch(app, req.ctx, branch_id) : null, term,
+  const cid = await budgetCommittee(app, req.ctx, committee_id);
+  const r = await app.db.run(
+    'INSERT INTO budgets(tenant_id,branch_id,committee_id,term_id,name,category,amount) VALUES(?,?,?,?,?,?,?)',
+    req.ctx.tenantId, branch_id ? await assertBranch(app, req.ctx, branch_id) : null, cid, term,
     String(name).trim(), category || 'عام', Number(amount));
   await audit(req, { action: 'create', entity: 'budget', entityId: r.lastId,
     summary: `إنشاء ميزانية: ${name} بمبلغ ${amount} ر.س` });
@@ -73,12 +97,40 @@ router.post('/budgets', can('budgets.manage'), h(async (req) => {
 }));
 
 router.patch('/budgets/:id', can('budgets.manage'), h(async (req) => {
-  const b = await findScoped(req.app, req.ctx, 'budgets', req.params.id, { branchCheck: true });
+  const app = req.app;
+  const b = await findScoped(app, req.ctx, 'budgets', req.params.id, { branchCheck: true });
   if (!b) throw notFound('الميزانية غير موجودة');
   const p = req.body || {};
-  await req.app.db.run('UPDATE budgets SET name=?,category=?,amount=? WHERE id=? AND tenant_id=?',
-    p.name ?? b.name, p.category ?? b.category, p.amount ?? b.amount, b.id, req.ctx.tenantId);
-  await audit(req, { action: 'update', entity: 'budget', entityId: b.id, summary: `تعديل الميزانية: ${b.name}`, before: b, after: p });
+  /*
+   * المبلغ لا ينزل تحت المنصرف: بندٌ صُرف منه ٩ آلاف لا يُخفَّض إلى ٥،
+   * وإلا ظهر متبقٍّ سالبٌ لا يقابله قرار.
+   */
+  const amount = p.amount === undefined ? b.amount : Number(p.amount);
+  if (!Number.isFinite(amount) || amount < 0) throw badRequest('مبلغ الميزانية غير صالح');
+  if (amount < b.spent) throw badRequest(`المنصرف من هذا البند ${b.spent} ر.س — لا يمكن خفض المعتمد دونه`);
+
+  const branchId = p.branch_id === undefined ? b.branch_id
+    : (p.branch_id ? await assertBranch(app, req.ctx, p.branch_id) : null);
+  const committeeId = p.committee_id === undefined ? b.committee_id
+    : await budgetCommittee(app, req.ctx, p.committee_id);
+
+  await app.db.run('UPDATE budgets SET name=?,category=?,amount=?,branch_id=?,committee_id=? WHERE id=? AND tenant_id=?',
+    p.name ?? b.name, p.category ?? b.category, amount, branchId, committeeId, b.id, req.ctx.tenantId);
+  await audit(req, { action: 'update', entity: 'budget', entityId: b.id, summary: `تعديل الميزانية: ${b.name}`,
+    before: b, after: { ...p, amount, branch_id: branchId, committee_id: committeeId } });
+  return { ok: true };
+}));
+
+router.delete('/budgets/:id', can('budgets.manage'), h(async (req) => {
+  const app = req.app;
+  const b = await findScoped(app, req.ctx, 'budgets', req.params.id, { branchCheck: true });
+  if (!b) throw notFound('الميزانية غير موجودة');
+  /* بندٌ صُرف منه أو ارتبطت به طلبات: يبقى شاهداً على ما جرى ولا يُمحى */
+  if (b.spent > 0) throw conflict('لا يُحذف بندٌ صُرف منه — عدّل مبلغه أو أنشئ بنداً جديداً');
+  const used = await app.db.get('SELECT COUNT(*) AS c FROM finance_requests WHERE budget_id=? AND tenant_id=?', b.id, req.ctx.tenantId);
+  if (used.c) throw conflict(`مرتبط بـ ${used.c} طلباً مالياً — لا يمكن حذفه`);
+  await app.db.run('DELETE FROM budgets WHERE id=? AND tenant_id=?', b.id, req.ctx.tenantId);
+  await audit(req, { action: 'delete', entity: 'budget', entityId: b.id, summary: `حذف بند الميزانية: ${b.name}`, before: b });
   return { ok: true };
 }));
 

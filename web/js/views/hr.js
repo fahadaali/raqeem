@@ -1,7 +1,7 @@
 import api from '../api.js';
 import { state, can, isRole } from '../state.js';
 import {
-  el, clear, card, chip, empty, table, toast, modal, field, input, textarea, select, tabs,
+  el, clear, card, chip, empty, table, toast, modal, field, input, textarea, select, picker, userOptions, tabs,
   T, AR_NUM, pct, money, avatar, clockOf, progressBar, confirmDialog, skeleton, qs
 } from '../util.js';
 import { geoMap, distanceM } from '../map.js';
@@ -147,7 +147,8 @@ async function attendanceTab() {
   const from = input({ type: 'date', value: addDaysISO(todayISO(), -30) });
   const to = input({ type: 'date', value: todayISO() });
   const users = await api.get('/api/org/users').catch(() => []);
-  const userSel = select([{ value: '', label: 'كل المنسوبين' }, ...users.map(u => ({ value: u.id, label: u.name }))]);
+  const userSel = picker([{ value: '', label: 'كل المنسوبين' }, ...userOptions(users)],
+    { placeholder: 'كل المنسوبين', ariaLabel: 'تصفية بالمنسوب', style: { maxWidth: '210px' } });
   const statusSel = select([{ value: '', label: 'كل الحالات' }, ...Object.entries(T.attendance).map(([v, l]) => ({ value: v, label: l }))]);
   const body = el('div');
 

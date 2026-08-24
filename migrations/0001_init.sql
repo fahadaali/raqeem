@@ -342,16 +342,19 @@ CREATE TABLE IF NOT EXISTS workflows (
 );
 
 CREATE TABLE IF NOT EXISTS budgets (
-  id        INTEGER PRIMARY KEY AUTOINCREMENT,
-  tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  branch_id INTEGER,
-  term_id   INTEGER,
-  name      TEXT NOT NULL,
-  category  TEXT,
-  amount    REAL NOT NULL DEFAULT 0,
-  spent     REAL NOT NULL DEFAULT 0,
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  tenant_id    INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  branch_id    INTEGER,
+  committee_id INTEGER REFERENCES committees(id),
+  term_id      INTEGER,
+  name         TEXT NOT NULL,
+  category     TEXT,
+  amount       REAL NOT NULL DEFAULT 0,
+  spent        REAL NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
+
+CREATE INDEX IF NOT EXISTS ix_budgets_scope ON budgets(tenant_id, branch_id, committee_id, term_id);
 
 CREATE TABLE IF NOT EXISTS finance_requests (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,

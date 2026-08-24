@@ -1,7 +1,8 @@
 import api from '../api.js';
 import { can, termIsArchived } from '../state.js';
-import { el, card, chip, empty, toast, modal, field, input, textarea, select, progressBar, AR_NUM, avatar, confirmDialog, token, PALETTE } from '../util.js';
-import { chatBox } from './tasks.js';
+import { el, clear, card, chip, empty, toast, modal, field, input, searchInput, textarea, select, picker,
+  userOptions, progressBar, AR_NUM, avatar, confirmDialog, debounce, token, PALETTE } from '../util.js';
+import { chatBox, forgetTaskCaches } from './tasks.js';
 
 export async function render({ navigate }) {
   const wrap = el('div.stack');
@@ -62,7 +63,8 @@ async function openForm(c, reload, cachedUsers) {
   const name = input({ value: c?.name || '', required: true });
   const desc = textarea({ value: c?.description || '' });
   const branch = select([{ value: '', label: '— على مستوى المجمّع —' }, ...branches.map(b => ({ value: b.id, label: b.name }))], { value: c?.branch_id || '' });
-  const lead = select([{ value: '', label: '— بدون رئيس —' }, ...users.map(u => ({ value: u.id, label: u.name }))], { value: c?.lead_user_id || '' });
+  const lead = picker([{ value: '', label: '— بدون رئيس —' }, ...userOptions(users)],
+    { value: c?.lead_user_id || '', placeholder: '— بدون رئيس —', ariaLabel: 'رئيس اللجنة' });
   /* اللون يبدأ من توكن الهوية، والمقترحات من لوحتها — فلا يدخل لونٌ غريب من
      منتقي النظام إلا باختيارٍ صريح من المستخدم. */
   const color = input({ type: 'color', value: c?.color || token('--primary'),
@@ -73,12 +75,38 @@ async function openForm(c, reload, cachedUsers) {
     onclick: () => { color.value = p.value; }
   })));
 
+  /*
+   * الأعضاء: قائمةٌ طويلة تُبحَث لا تُقلَّب.
+   *
+   * والاختيار يُحفَظ في مجموعةٍ لا في حالة المربّعات، فبحثٌ يُخفي نصف القائمة
+   * لا يُسقط من اختير قبله — وهذا كان يقع لو قُرئت `input:checked` من المعروض.
+   */
   const memberIds = new Set((c?.members || []).map(m => m.user_id));
-  const memberBox = el('div', { style: { maxHeight: '210px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '10px', padding: '7px' } },
-    users.map(u => el('label.check-row', {}, [
-      el('input', { type: 'checkbox', value: u.id, checked: memberIds.has(u.id) }),
-      el('div.t', {}, [u.name, el('small', { text: u.role_name })])
-    ])));
+  const memberSearch = searchInput({ placeholder: 'ابحث عن منسوب بالاسم أو الدور...' });
+  const memberList = el('div', { style: { maxHeight: '210px', overflowY: 'auto',
+    border: '1px solid var(--border)', borderRadius: '10px', padding: '7px' } });
+  const memberCount = el('div.hint', {});
+
+  const paintMembers = () => {
+    const q = memberSearch.field.value.trim().toLowerCase();
+    const hits = users.filter(u => !q
+      || String(u.name || '').toLowerCase().includes(q)
+      || String(u.role_name || '').toLowerCase().includes(q));
+    clear(memberList);
+    if (!hits.length) memberList.append(el('div.hint', { style: { textAlign: 'center', padding: '14px' }, text: 'لا نتائج مطابقة' }));
+    for (const u of hits) {
+      const box = el('input', { type: 'checkbox', value: u.id, checked: memberIds.has(u.id) });
+      box.addEventListener('change', () => {
+        if (box.checked) memberIds.add(u.id); else memberIds.delete(u.id);
+        memberCount.textContent = `${AR_NUM(memberIds.size)} عضواً مختاراً`;
+      });
+      memberList.append(el('label.check-row', {}, [box, el('div.t', {}, [u.name, el('small', { text: u.role_name })])]));
+    }
+    memberCount.textContent = `${AR_NUM(memberIds.size)} عضواً مختاراً`;
+  };
+  memberSearch.field.addEventListener('input', debounce(paintMembers, 160));
+  paintMembers();
+  const memberBox = el('div.stack', { style: { gap: '7px' } }, [memberSearch, memberList, memberCount]);
 
   const m = modal({
     title: c ? 'تعديل اللجنة' : 'لجنة جديدة',
@@ -87,19 +115,22 @@ async function openForm(c, reload, cachedUsers) {
       el('div.grid.g2', {}, [field('الفرع', branch), field('رئيس اللجنة', lead)]),
       field('لون اللجنة', el('div.row', { style: { gap: '10px' } }, [color, swatches]),
         { hint: 'اختر من ألوان الهوية، أو حدّد لوناً من المنتقي' }),
-      field('الأعضاء', memberBox)
+      field('الأعضاء', memberBox, { hint: 'مهامُّ اللجنة لا تُسنَد إلا إلى أعضائها، والمنسوب قد يكون في أكثر من لجنة' })
     ]),
     footer: [
       el('button.btn.ghost', { text: 'إلغاء', onclick: () => m.close() }),
       el('button.btn', { text: 'حفظ', onclick: async (e) => {
         if (!name.value.trim()) return toast('اسم اللجنة إلزامي', 'warn');
         e.target.disabled = true;
-        const member_ids = [...memberBox.querySelectorAll('input:checked')].map(i => Number(i.value));
+        /* رئيس اللجنة عضوٌ فيها بالضرورة — وإلا لم يظهر في قائمة مكلَّفي مهامها */
+        const member_ids = [...new Set([...memberIds, ...(lead.value ? [Number(lead.value)] : [])])];
         const payload = { name: name.value.trim(), description: desc.value, branch_id: branch.value || null,
           lead_user_id: lead.value || null, color: color.value, member_ids };
         try {
           if (c) await api.patch(`/api/tasks/committees/${c.id}`, payload);
           else await api.post('/api/tasks/committees', payload);
+          /* عضويّاتٌ تغيّرت ⇒ قوائم المكلَّفين في شاشة المهام تُقرأ من جديد */
+          forgetTaskCaches();
           toast('تم الحفظ بنجاح', 'ok'); m.close(); reload();
         } finally { e.target.disabled = false; }
       } })

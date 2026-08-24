@@ -1,6 +1,6 @@
 import api from '../api.js';
 import { state, can } from '../state.js';
-import { el, clear, mount, card, chip, empty, table, toast, field, input, select, AR_NUM, skeleton, qs } from '../util.js';
+import { el, clear, mount, card, chip, empty, table, toast, field, input, select, picker, userOptions, AR_NUM, skeleton, qs } from '../util.js';
 import { todayISO, addDaysISO } from '../hijri.js';
 
 export async function render() {
@@ -26,7 +26,8 @@ export async function render() {
     if (f.type === 'branch') return select([{ value: '', label: 'كل الفروع' }, ...state.session.branches.map(b => ({ value: b.id, label: b.name }))]);
     if (f.type === 'term') return select([{ value: '', label: 'كل الفصول' }, ...state.session.terms.map(t => ({ value: t.id, label: t.name }))],
       { value: state.session.current_term?.id || '' });
-    if (f.type === 'user') return select([{ value: '', label: 'كل المستخدمين' }, ...users.map(u => ({ value: u.id, label: u.name }))]);
+    if (f.type === 'user') return picker([{ value: '', label: 'كل المستخدمين' }, ...userOptions(users)],
+      { placeholder: 'كل المستخدمين', ariaLabel: 'تصفية بالمستخدم' });
     if (f.type === 'payroll') return select([{ value: '', label: 'آخر مسير' }, ...payrolls.map(p => ({ value: p.id, label: `${p.month}/${p.year} — ${p.branch_name || 'كل الفروع'}` }))]);
     if (f.type === 'select') return select([{ value: '', label: 'الكل' }, ...f.options], {});
     return input({});

@@ -298,7 +298,13 @@ router.patch('/:id', can('tasks.update'), h(async (req) => {
     p.title ?? t.title, p.description ?? t.description, status, p.priority ?? t.priority,
     p.assignee_id !== undefined ? p.assignee_id : t.assignee_id,
     p.committee_id !== undefined ? p.committee_id : t.committee_id,
-    p.start_date ?? t.start_date, p.due_date ?? t.due_date, progress,
+    /*
+     * التاريخان يُمحيان بإرسال `null` صريح — و`??` كانت تردّه إلى القيمة
+     * القديمة فيتعذّر مسحُ تاريخٍ وُضع خطأً. والفارق بين «لم يُرسَل» و«أُرسل
+     * فارغاً» هو `undefined` لا `null`.
+     */
+    p.start_date !== undefined ? (p.start_date || null) : t.start_date,
+    p.due_date !== undefined ? (p.due_date || null) : t.due_date, progress,
     Number(p.weight) || t.weight, p.order_index ?? t.order_index,
     status === 'done' ? (t.completed_at || nowUTC()) : null, nowUTC(), t.id, req.ctx.tenantId);
 
