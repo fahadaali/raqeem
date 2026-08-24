@@ -798,9 +798,32 @@ router.patch('/admins/:id', h(async (req) => {
     if (live.c < 1) throw badRequest('يجب بقاء حساب ادمن نشط واحد على الأقل');
   }
 
-  await app.db.run('UPDATE platform_admins SET name=?, status=? WHERE id=?',
-    b.name?.trim() || a.name,
+  /*
+   * البريد يُغيَّر كما يُغيَّر الاسم.
+   *
+   * كان مقفولاً على ما أُنشئ به الحساب، فمن أراد تبديله لا سبيل له إلا إنشاء
+   * حسابٍ ثانٍ وحذفُ الأول — وهو التفافٌ يُخلّف سجلَّ دخولٍ مبتوراً ويكسر نسبة
+   * الإجراءات القديمة إلى صاحبها. والبريد مفتاحُ الدخول، فتبديله يُنهي الجلسات
+   * كما يُنهيها تبديلُ كلمة المرور.
+   */
+  let email = a.email;
+  if (b.email !== undefined && String(b.email).trim().toLowerCase() !== String(a.email).toLowerCase()) {
+    email = String(b.email).trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw badRequest('البريد الإلكتروني غير صالح');
+    const taken = await app.db.get(
+      'SELECT id FROM platform_admins WHERE lower(email)=? AND id<>?', email, a.id);
+    if (taken) throw conflict('هذا البريد مستعمل في حسابِ ادمنٍ آخر');
+  }
+
+  await app.db.run('UPDATE platform_admins SET name=?, email=?, status=? WHERE id=?',
+    b.name?.trim() || a.name, email,
     ['active', 'suspended'].includes(b.status) ? b.status : a.status, a.id);
+
+  if (email !== a.email) {
+    await app.db.run('UPDATE admin_sessions SET revoked=1 WHERE admin_id=?', a.id);
+    await plog(req, { action: 'update', entity: 'platform_admin', entityId: a.id,
+      summary: `${req.ctx.adminName} غيّر بريد حساب الادمن «${a.name}» من ${a.email} إلى ${email}` });
+  }
 
   /* إيقاف الحساب يُنهي جلساته القائمة فوراً لا عند انتهاء صلاحيتها */
   if (b.status === 'suspended') {

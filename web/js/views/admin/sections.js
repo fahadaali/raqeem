@@ -1537,7 +1537,7 @@ export async function adminsTab() {
 
 function adminDialog(row, reload) {
   const name = input({ value: row?.name || '' });
-  const email = input({ value: row?.email || '', dir: 'ltr', disabled: !!row });
+  const email = input({ value: row?.email || '', dir: 'ltr', type: 'email' });
   const pass = input({ type: 'password', autocomplete: 'new-password',
     placeholder: row ? 'اتركه فارغاً للإبقاء على كلمة المرور' : '٨ خانات فأكثر' });
   const st = select([{ value: 'active', label: 'نشط' }, { value: 'suspended', label: 'موقوف' }],
@@ -1550,7 +1550,7 @@ function adminDialog(row, reload) {
       field('البريد الإلكتروني', email, { required: !row }),
       field('كلمة المرور', pass, { required: !row }),
       row ? field('الحالة', st) : null,
-      row ? el('div.hint', { text: 'تغيير كلمة المرور أو إيقاف الحساب يُنهي جلساته القائمة فوراً.' }) : null
+      row ? el('div.hint', { text: 'تغيير البريد أو كلمة المرور أو إيقاف الحساب يُنهي جلساته القائمة فوراً — ويُعاد الدخول بالبيانات الجديدة.' }) : null
     ]),
     footer: [
       el('button.btn.ghost', { text: 'إلغاء', onclick: () => m.close() }),
@@ -1559,7 +1559,7 @@ function adminDialog(row, reload) {
         try {
           if (row) {
             await api.patch(`/api/admin/admins/${row.id}`, {
-              name: name.value.trim(), status: st.value,
+              name: name.value.trim(), email: email.value.trim(), status: st.value,
               ...(pass.value ? { password: pass.value } : {}) });
           } else {
             await api.post('/api/admin/admins', {

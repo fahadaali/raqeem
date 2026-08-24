@@ -1995,6 +1995,17 @@ section('٢٣. الشاشة الرئيسية العامة ومحرّرها', asy
   ok('الدرج لا يكتب null في أسفله',
     /mount\(panel,/.test(readFileSync('web/js/util.js', 'utf8')));
 
+  /* بريد الادمن يُغيَّر كما تُغيَّر كلمة مروره — لا بإنشاء حسابٍ بديل */
+  {
+    const ad = readFileSync('server/core/routes/admin.js', 'utf8');
+    ok('بريد الادمن قابل للتغيير', /FROM platform_admins WHERE lower\(email\)=\? AND id<>\?/.test(ad));
+    ok('تغيير البريد يُنهي الجلسات',
+      /if \(email !== a\.email\)[\s\S]{0,200}admin_sessions SET revoked=1/.test(ad));
+    ok('حقل البريد مفتوحٌ في المحرّر',
+      !/value: row\?\.email \|\| '', dir: 'ltr', disabled: !!row/.test(
+        readFileSync('web/js/views/admin/sections.js', 'utf8')));
+  }
+
   /* حدّ الكرون خمسةٌ للحساب كلِّه — وبيئة التجربة لا تزاحم الإنتاج عليه */
   {
     const wr = readFileSync('wrangler.toml', 'utf8');
