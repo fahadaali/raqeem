@@ -267,12 +267,32 @@ CREATE TABLE IF NOT EXISTS attendance (
   is_remote     INTEGER NOT NULL DEFAULT 0,         
   status        TEXT NOT NULL DEFAULT 'present',     
   minutes_worked INTEGER NOT NULL DEFAULT 0,
+  late_minutes  INTEGER NOT NULL DEFAULT 0,          
   note          TEXT,
   created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   UNIQUE (tenant_id, user_id, date)
 );
 
 CREATE INDEX IF NOT EXISTS ix_att_scope ON attendance(tenant_id, branch_id, date);
+
+CREATE TABLE IF NOT EXISTS work_schedules (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  tenant_id   INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  scope       TEXT NOT NULL DEFAULT 'tenant',      
+  branch_id   INTEGER NOT NULL DEFAULT 0,          
+  user_id     INTEGER NOT NULL DEFAULT 0,          
+  
+  days        TEXT NOT NULL DEFAULT '[]',
+  grace_min   INTEGER NOT NULL DEFAULT 15,         
+  note        TEXT,
+  updated_by  INTEGER,
+  updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_wsched ON work_schedules(tenant_id, scope, branch_id, user_id);
+
+CREATE INDEX IF NOT EXISTS ix_wsched_scope ON work_schedules(tenant_id, scope);
 
 CREATE TABLE IF NOT EXISTS leaves (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -490,17 +510,28 @@ CREATE TABLE IF NOT EXISTS conversations (
   context_type TEXT NOT NULL,   
   context_id   INTEGER NOT NULL,
   title        TEXT,
+  description  TEXT,
+  avatar_url   TEXT,
+  created_by   INTEGER,
+  last_at      TEXT,            
   created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   UNIQUE (tenant_id, context_type, context_id)
 );
+
+CREATE INDEX IF NOT EXISTS ix_conv_tenant ON conversations(tenant_id, context_type, last_at);
 
 CREATE TABLE IF NOT EXISTS conversation_members (
   tenant_id       INTEGER NOT NULL,
   conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
   user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   last_read_at    TEXT,
+  role_in         TEXT NOT NULL DEFAULT 'member',   
+  muted           INTEGER NOT NULL DEFAULT 0,
+  joined_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   PRIMARY KEY (conversation_id, user_id)
 );
+
+CREATE INDEX IF NOT EXISTS ix_convmem_user ON conversation_members(tenant_id, user_id);
 
 CREATE TABLE IF NOT EXISTS messages (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -509,6 +540,11 @@ CREATE TABLE IF NOT EXISTS messages (
   user_id         INTEGER NOT NULL REFERENCES users(id),
   body            TEXT NOT NULL,
   attachments     TEXT NOT NULL DEFAULT '[]',
+  kind            TEXT NOT NULL DEFAULT 'text',   
+  reply_to_id     INTEGER,
+  duration_ms     INTEGER NOT NULL DEFAULT 0,     
+  edited_at       TEXT,
+  deleted_at      TEXT,                           
   created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 

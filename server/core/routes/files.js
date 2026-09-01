@@ -10,6 +10,9 @@ const router = new Hono();
 
 const ALLOWED = new Set([
   'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif', 'image/svg+xml',
+  /* الرسائل الصوتية في المحادثات — ما يخرج به مسجّل المتصفح على أجهزة الجميع:
+     ويب-إم على أندرويد وسطح المكتب، وإم-بي-فور على آبل، والباقي احتياطاً */
+  'audio/webm', 'audio/ogg', 'audio/mp4', 'audio/mpeg', 'audio/aac', 'audio/wav', 'audio/x-m4a',
   'application/pdf', 'text/csv', 'text/plain',
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -18,6 +21,14 @@ const ALLOWED = new Set([
 ]);
 
 const asFiles = (value) => (Array.isArray(value) ? value : [value]).filter(f => f && typeof f === 'object' && 'arrayBuffer' in f);
+
+/*
+ * النوع يُقاس بأصله لا بمعاملاته: مسجّل المتصفّح يُخرج
+ * «audio/webm;codecs=opus»
+ * والقائمةُ تعرف «audio/webm» وحدها، فكانت الرسالةُ الصوتية تُرفض عند من
+ * سجّلها بترميزٍ مذكور. والمعاملات لا تغيّر نوع الملف فتُقصّ قبل المطابقة.
+ */
+const baseMime = (t) => String(t || '').split(';')[0].trim().toLowerCase();
 
 router.post('/', h(async (req) => {
   const app = req.app;
@@ -34,17 +45,18 @@ router.post('/', h(async (req) => {
   const out = [];
 
   for (const f of files) {
-    if (!ALLOWED.has(f.type)) throw badRequest(`نوع الملف غير مسموح: ${f.name}`);
+    const mime = baseMime(f.type);
+    if (!ALLOWED.has(mime)) throw badRequest(`نوع الملف غير مسموح: ${f.name}`);
     if (f.size > maxBytes) throw badRequest(`حجم الملف يتجاوز الحد المسموح (${app.cfg.uploadMaxMb} ميجابايت)`);
     const data = new Uint8Array(await f.arrayBuffer());
     const key = buildKey(req.ctx.tenantId, context, f.name);
-    await app.storage.put(key, data, { contentType: f.type });
+    await app.storage.put(key, data, { contentType: mime });
     const r = await app.db.run(
       `INSERT INTO files(tenant_id,branch_id,storage_key,original_name,mime,size,context,uploaded_by)
        VALUES(?,?,?,?,?,?,?,?)`,
       req.ctx.tenantId, req.ctx.activeBranchId || req.ctx.primaryBranchId, key,
-      f.name, f.type, data.length, context, req.ctx.userId);
-    out.push({ id: r.lastId, name: f.name, mime: f.type, size: data.length, url: `/api/files/${r.lastId}` });
+      f.name, mime, data.length, context, req.ctx.userId);
+    out.push({ id: r.lastId, name: f.name, mime, size: data.length, url: `/api/files/${r.lastId}` });
   }
   await audit(req, { action: 'create', entity: 'file', entityId: out.map(o => o.id).join(','),
     summary: `رفع ${out.length} ملف (${context})` });

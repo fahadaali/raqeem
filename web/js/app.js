@@ -27,6 +27,7 @@ const NAV = [
   { path: '/finance', label: 'النظام المالي', icon: 'banknote', view: 'finance', perm: ['finance.view', 'finance.request'] },
 
   { group: 'التواصل' },
+  { path: '/chat', label: 'المحادثات', icon: 'message-square-text', view: 'chat', perm: ['chat.use'], badge: 'chat' },
   { path: '/tickets', label: 'الدعم الفني', icon: 'headset', view: 'tickets', perm: ['tickets.create', 'tickets.view_all'] },
 
   { group: 'الإدارة والحوكمة' },
@@ -56,6 +57,7 @@ const VIEWS = {
   finance: () => import('./views/finance.js'),
   forms: () => import('./views/forms.js'),
   kpi: () => import('./views/kpi.js'),
+  chat: () => import('./views/chat.js'),
   tickets: () => import('./views/tickets.js'),
   reports: () => import('./views/reports.js'),
   imports: () => import('./views/imports.js'),
@@ -72,6 +74,10 @@ const PUBLIC_VIEWS = {
   '/pricing': () => import('./views/pricing.js'),
   '/signup': () => import('./views/signup.js')
 };
+
+/** عدّاد الشارة على عنصر القائمة — الإشعارات جرسٌ، والمحادثات خيوطٌ لم تُقرأ */
+const badgeCount = (item) => (item.badge === 'notifications' ? state.notifications.unread
+  : item.badge === 'chat' ? state.chat.unread : 0);
 
 const allowed = (item) => {
   if (item.platformOnly) return !!state.session?.platform?.is_platform_admin;
@@ -110,8 +116,7 @@ function buildSidebar() {
     }, [
       el('span.ic', { icon: item.icon }),
       el('span', { text: item.label }),
-      item.badge === 'notifications' && state.notifications.unread
-        ? el('span.badge', { text: state.notifications.unread > 99 ? '٩٩+' : AR_NUM(state.notifications.unread) }) : null
+      badgeCount(item) ? el('span.badge', { text: badgeCount(item) > 99 ? '٩٩+' : AR_NUM(badgeCount(item)) }) : null
     ]);
     nav.append(link);
   }
@@ -195,8 +200,7 @@ function buildBottomNav() {
     }, [
       el('span.ic', { icon: item.icon, iconSize: 22 }),
       el('span', { text: item.label }),
-      item.badge === 'notifications' && state.notifications.unread
-        ? el('span.badge', { text: AR_NUM(Math.min(99, state.notifications.unread)) }) : null
+      badgeCount(item) ? el('span.badge', { text: AR_NUM(Math.min(99, badgeCount(item))) }) : null
     ])
   ))]);
 }
@@ -262,6 +266,23 @@ export async function loadNotifications() {
     setState({ notifications: { items: data.items, unread: data.unread } });
     updateBadges();
   } catch { /* دون اتصال */ }
+  loadChatUnread();
+}
+
+/**
+ * عدّاد المحادثات غير المقروءة — خيوطٌ لا رسائل.
+ *
+ * الشارة تقول «كم محادثةً تنتظرك» لا «كم رسالةً وصلت»: من ترك مجموعةً نشِطة
+ * يوماً يجدها رقماً واحداً لا مئة، فيبقى الرقم قابلاً للقراءة ومعناه ثابتاً.
+ * ومن لا يملك صلاحية المحادثات — أو لا تشملها خطّته — يُصفَّر عدّاده صامتاً.
+ */
+export async function loadChatUnread() {
+  if (!can('chat.use')) return;
+  try {
+    const d = await api.get('/api/comms/unread', { silent: true });
+    setState({ chat: { unread: d.threads || 0 } });
+  } catch { setState({ chat: { unread: 0 } }); }
+  updateBadges();
 }
 
 function updateBadges() {
@@ -272,10 +293,12 @@ function updateBadges() {
     if (n) bell.append(el('span.dot', { text: n > 99 ? '٩٩+' : AR_NUM(n) }));
   }
   for (const holder of [qs('#sidebar'), qs('.bottom-nav')]) {
-    const link = holder?.querySelector('[data-path="/notifications"]');
-    if (!link) continue;
-    link.querySelector('.badge')?.remove();
-    if (n) link.append(el('span.badge', { text: n > 99 ? '٩٩+' : AR_NUM(n) }));
+    for (const [path, count] of [['/notifications', n], ['/chat', state.chat.unread]]) {
+      const link = holder?.querySelector(`[data-path="${path}"]`);
+      if (!link) continue;
+      link.querySelector('.badge')?.remove();
+      if (count) link.append(el('span.badge', { text: count > 99 ? '٩٩+' : AR_NUM(count) }));
+    }
   }
   document.title = n ? `(${n}) منصة رقيم` : 'منصة رقيم — الإدارة المتكاملة لمجمعات تحفيظ القرآن';
   if ('setAppBadge' in navigator) navigator.setAppBadge?.(n).catch(() => {});
@@ -468,7 +491,16 @@ rt.on('notification', ({ notification }) => {
   updateBadges();
   toast(notification.body || '', 'info', notification.title);
 });
-rt.on('chat.message', (m) => window.dispatchEvent(new CustomEvent('raqeem:chat', { detail: m })));
+rt.on('chat.message', (m) => {
+  window.dispatchEvent(new CustomEvent('raqeem:chat', { detail: m }));
+  loadChatUnread();
+});
+rt.on('chat.updated', (m) => {
+  window.dispatchEvent(new CustomEvent('raqeem:chat-meta', { detail: m }));
+  loadChatUnread();
+});
+/* الشاشة نفسها تُعلن أنها قرأت خيطاً — فتنزل الشارة بلا انتظار دورةِ استطلاع */
+window.addEventListener('raqeem:chat-unread', () => loadChatUnread());
 rt.on('task.updated', (m) => window.dispatchEvent(new CustomEvent('raqeem:task', { detail: m })));
 
 /* وضع التراجع: إن تعذّرت القناة الدائمة تُحدَّث البيانات بالاستطلاع الدوري */

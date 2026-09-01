@@ -2468,6 +2468,272 @@ section('٢٤. قوالب الفصول الافتراضية وفرضها', async
     readFileSync('web/js/admin-shell.js', 'utf8').includes("'/admin/terms'"));
 });
 
+/* ═════════ ٢٥. جداول الدوام: المجمّع والفرع والموظف ═════════ */
+section('٢٥. أوقات الدوام وأثرها في التأخّر والمسير', async () => {
+  const base = await call('GET', '/api/hr/schedules', { token: S.owner });
+  ok('لوحة الدوام تُرجع المجمّع والفروع والمنسوبين',
+    base.status === 200 && !!base.data.tenant && Array.isArray(base.data.branches) && Array.isArray(base.data.users));
+  ok('الأسبوع سبعة أيام تبدأ بالأحد',
+    base.data.week.length === 7 && base.data.day_names[0] === 'الأحد' && base.data.day_names[5] === 'الجمعة');
+  ok('الجدول الافتراضي مقروء من إعدادات الجهة',
+    base.data.tenant.days.length === 7 && base.data.tenant.days[0].on === 1 && base.data.tenant.days[5].on === 0);
+  ok('كل فرعٍ يرث المجمّع قبل أن يُخصّ بجدول',
+    base.data.branches.every(b => !b.overridden && b.schedule.source !== 'branch'));
+  ok('اللوحة تقول من يملك الضبط', base.data.can_manage === true && base.data.can_manage_tenant === true);
+
+  /* ── دوام الفرع يعلو دوام المجمّع ── */
+  const branch = base.data.branches[1];
+  const evening = [
+    { on: 1, start: '16:00', end: '20:00' }, { on: 1, start: '16:00', end: '20:00' },
+    { on: 1, start: '16:00', end: '20:00' }, { on: 0 }, { on: 0 }, { on: 0 }, { on: 0 }
+  ];
+  const putBranch = await call('PUT', '/api/hr/schedules', {
+    token: S.owner, body: { scope: 'branch', branch_id: branch.id, days: evening, grace_min: 10 } });
+  ok('ضبط دوام فرعٍ بعينه', putBranch.status === 200 && putBranch.data.schedule.weekly_days === 3);
+  eq('حصيلة الأسبوع تُحسب من الجدول', putBranch.data.schedule.weekly_minutes, 720);
+
+  const after = (await call('GET', '/api/hr/schedules', { token: S.owner })).data;
+  const b2 = after.branches.find(b => b.id === branch.id);
+  ok('الفرع صار له جدولٌ خاصّ', b2.overridden && b2.schedule.source === 'branch');
+  ok('بقية الفروع لم تتغيّر',
+    after.branches.filter(b => b.id !== branch.id).every(b => !b.overridden));
+  const heir = after.users.find(u => u.branch_id === branch.id);
+  ok('منسوبو الفرع يرثون جدوله', !heir || (heir.schedule.source === 'branch' && !heir.overridden));
+
+  /* ── وجدول الموظف يعلوهما ── */
+  const target = after.users.find(u => u.branch_id === branch.id) || after.users[0];
+  const part = [
+    { on: 1, start: '08:00', end: '11:00' }, { on: 0 }, { on: 1, start: '08:00', end: '11:00' },
+    { on: 0 }, { on: 0 }, { on: 0 }, { on: 0 }
+  ];
+  const putUser = await call('PUT', '/api/hr/schedules', {
+    token: S.owner, body: { scope: 'user', user_id: target.user_id, days: part, grace_min: 5, note: 'متعاون' } });
+  ok('ضبط دوام منسوبٍ على حدة', putUser.status === 200 && putUser.data.schedule.weekly_days === 2);
+  const after2 = (await call('GET', '/api/hr/schedules', { token: S.owner })).data;
+  const t2 = after2.users.find(u => u.user_id === target.user_id);
+  ok('جدول المنسوب يعلو جدول فرعه', t2.overridden && t2.schedule.source === 'user' && t2.schedule.grace_min === 5);
+
+  /* ── التحقق من المدخلات ── */
+  ok('أسبوعٌ بلا يوم عملٍ مرفوض',
+    (await call('PUT', '/api/hr/schedules', {
+      token: S.owner, body: { scope: 'tenant', days: Array.from({ length: 7 }, () => ({ on: 0 })) } })).status === 400);
+  const flipped = await call('PUT', '/api/hr/schedules', {
+    token: S.owner, body: { scope: 'user', user_id: target.user_id,
+      days: [{ on: 1, start: '10:00', end: '08:00' }, ...part.slice(1)], grace_min: 5 } });
+  ok('نهايةٌ قبل بدايةٍ تُقوَّم لا تُقبل سالبةً',
+    flipped.status === 200 && flipped.data.schedule.days[0].end > flipped.data.schedule.days[0].start);
+  await call('PUT', '/api/hr/schedules', {
+    token: S.owner, body: { scope: 'user', user_id: target.user_id, days: part, grace_min: 5 } });
+
+  /* ── الصلاحيات ── */
+  ok('المعلم يقرأ الجداول', (await call('GET', '/api/hr/schedules', { token: S.teacher })).status === 200);
+  ok('المعلم لا يضبط الجداول',
+    (await call('PUT', '/api/hr/schedules', { token: S.teacher, body: { scope: 'tenant', days: part } })).status === 403);
+  ok('مدير الفرع لا يضبط دوام المجمّع كلّه',
+    (await call('PUT', '/api/hr/schedules', { token: S.branch_manager, body: { scope: 'tenant', days: part } })).status === 403);
+  ok('الموارد البشرية تضبط دوام المجمّع',
+    (await call('PUT', '/api/hr/schedules', {
+      token: S.hr, body: { scope: 'tenant', days: base.data.tenant.days, grace_min: 15 } })).status === 200);
+
+  /* ── حالة التحضير تقرأ الجدول النافذ ── */
+  const today = (await call('GET', '/api/hr/attendance/today', { token: S.teacher })).data;
+  ok('حالة التحضير تُرجع خطّة اليوم', !!today.day && typeof today.day.working === 'boolean');
+  ok('وتُرجع مصدر الجدول وخلاصته', !!today.schedule?.summary && !!today.schedule.source);
+  ok('و`workday` باقٍ لمن يقرؤه', !!today.workday?.start && !!today.workday?.end);
+
+  /* ── المسير يقرأ الجدول: أيام العمل المتوقّعة من جدول كلِّ موظف ── */
+  const now = new Date();
+  const gen = await call('POST', '/api/hr/payroll/generate', {
+    token: S.hr, body: { year: now.getFullYear(), month: now.getMonth() + 1 } });
+  ok('توليد مسيرٍ بعد ضبط الجداول', gen.status === 201);
+  const run = (await call('GET', `/api/hr/payroll/${gen.data.runId}`, { token: S.hr })).data;
+  ok('كل بندٍ يذكر أيام العمل المتوقّعة',
+    run.items.every(i => 'expected_days' in i.details && 'expected_month_days' in i.details));
+  ok('وكل بندٍ يذكر الجدول الذي حُسب به',
+    run.items.every(i => !!i.details.schedule?.summary));
+  const partItem = run.items.find(i => i.user_id === target.user_id);
+  const fullItem = run.items.find(i => i.user_id !== target.user_id && i.details.schedule.source !== 'user');
+  ok('من دوامه يومان في الأسبوع أقلُّ أيامَ عملٍ ممن دوامه خمسة',
+    !partItem || !fullItem || partItem.details.expected_month_days < fullItem.details.expected_month_days,
+    `${partItem?.details.expected_month_days} مقابل ${fullItem?.details.expected_month_days}`);
+  ok('لا راتبَ سالب مهما بلغت الخصومات', run.items.every(i => i.net >= 0));
+  ok('الصافي يطابق المعادلة بعد الحدّ',
+    run.items.every(i => Math.abs(i.net - (i.basic + i.allowances
+      - i.absence_deduction - i.late_deduction - i.advance_deduction)) < 0.02));
+
+  /* ── الحذف رجوعٌ إلى الوراثة لا تعطيلٌ للدوام ── */
+  ok('حذف جدول المنسوب', (await call('DELETE', `/api/hr/schedules/user/${target.user_id}`, { token: S.owner })).status === 200);
+  const after3 = (await call('GET', '/api/hr/schedules', { token: S.owner })).data;
+  const t3 = after3.users.find(u => u.user_id === target.user_id);
+  ok('عاد إلى الجدول الموروث', !t3.overridden && t3.schedule.source !== 'user');
+  ok('حذف ما لا وجود له يردّ ٤٠٤',
+    (await call('DELETE', `/api/hr/schedules/user/${target.user_id}`, { token: S.owner })).status === 404);
+
+  /* ── وتوحيد الفروع يمسح استثناءاتها دفعةً واحدة ── */
+  const unify = await call('PUT', '/api/hr/schedules', {
+    token: S.owner, body: { scope: 'tenant', days: base.data.tenant.days, grace_min: 15, apply_to_branches: true } });
+  ok('توحيد الفروع على دوام المجمّع', unify.status === 200 && unify.data.cleared_branches >= 1);
+  const after4 = (await call('GET', '/api/hr/schedules', { token: S.owner })).data;
+  ok('لم يبقَ فرعٌ باستثناء', after4.branches.every(b => !b.overridden));
+});
+
+/* ═════════ ٢٦. المحادثات المستقلة: خاصّة ومجموعات ═════════ */
+section('٢٦. المحادثات المستقلة والصلاحية المتدرّجة', async () => {
+  const dirOwner = await call('GET', '/api/comms/directory', { token: S.owner });
+  ok('مدير المجمّع يبلغ كل المنسوبين',
+    dirOwner.status === 200 && dirOwner.data.scope === 'all' && dirOwner.data.users.length >= 8);
+  ok('الدليل يحمل تسمية النطاق للشاشة', !!dirOwner.data.scope_label);
+
+  const dirTeacher = (await call('GET', '/api/comms/directory', { token: S.teacher })).data;
+  ok('المعلم يبلغ فروعه ولجانه لا المجمّع كلّه',
+    dirTeacher.scope !== 'all' && dirTeacher.users.length > 0 && dirTeacher.users.length < dirOwner.data.users.length);
+  ok('كل اسمٍ في الدليل يقول من أين بلغه', dirTeacher.users.every(u => !!u.group));
+  ok('المستخدم لا يرى نفسه في دليله', !dirTeacher.users.some(u => u.id === S.u_teacher.id));
+
+  const mate = dirTeacher.users[0];
+  const outsider = dirOwner.data.users.find(u => !dirTeacher.users.some(x => x.id === u.id) && u.id !== S.u_teacher.id);
+
+  /* ── محادثة خاصّة ── */
+  const d1 = await call('POST', '/api/comms/chats', { token: S.teacher, body: { kind: 'direct', user_id: mate.id } });
+  ok('فتح محادثة خاصّة', d1.status === 201 && d1.data.id > 0);
+  const d2 = await call('POST', '/api/comms/chats', { token: S.teacher, body: { kind: 'direct', user_id: mate.id } });
+  ok('المحادثة الخاصّة لا تتكرّر', d2.status === 200 && d2.data.existing && d2.data.id === d1.data.id);
+  if (outsider) ok('لا يُحادَث من هو خارج نطاق الصلاحية',
+    (await call('POST', '/api/comms/chats', { token: S.teacher, body: { kind: 'direct', user_id: outsider.id } })).status === 403);
+
+  const chatId = d1.data.id;
+  const m1 = await call('POST', `/api/comms/chats/${chatId}/messages`, { token: S.teacher, body: { body: 'رسالة تدقيق' } });
+  ok('إرسال رسالة نصّية', m1.status === 201 && m1.data.mine === true && m1.data.kind === 'text');
+  ok('رفض رسالة فارغة',
+    (await call('POST', `/api/comms/chats/${chatId}/messages`, { token: S.teacher, body: { body: '  ' } })).status === 400);
+  ok('غير العضو لا يقرأ المحادثة',
+    (await call('GET', `/api/comms/chats/${chatId}/messages`, { token: S.auditor })).status === 403);
+
+  /* ── مرفقٌ حقيقيّ من مخزن الجهة لا رابطٌ يُرسله المتصفّح ── */
+  const fd = new FormData();
+  fd.append('files', new Blob(['ملف تدقيق'], { type: 'text/plain' }), 'مرفق.txt');
+  fd.append('context', 'chat');
+  const up = await call('POST', '/api/files', { token: S.teacher, body: fd });
+  const fileId = up.data.files[0].id;
+  const att = await call('POST', `/api/comms/chats/${chatId}/messages`, {
+    token: S.teacher, body: { kind: 'file', body: 'الخطة', attachment_ids: [fileId] } });
+  ok('إرسال مرفق', att.status === 201 && att.data.attachments.length === 1 && att.data.attachments[0].id === fileId);
+  const forged = await call('POST', `/api/comms/chats/${chatId}/messages`, {
+    token: S.teacher, body: { body: 'محاولة', attachments: [{ id: 999999, url: 'https://x.example/evil' }] } });
+  ok('مرفقٌ ملفَّقٌ يُسقَط لا يُخزَّن', forged.status === 201 && forged.data.attachments.length === 0);
+
+  /* ── الرسالة الصوتية ── */
+  const vf = new FormData();
+  vf.append('files', new Blob([new Uint8Array([1, 2, 3, 4, 5, 6])], { type: 'audio/webm;codecs=opus' }), 'صوت.webm');
+  vf.append('context', 'chat');
+  const vup = await call('POST', '/api/files', { token: S.teacher, body: vf });
+  ok('قبول صيغة المسجّل الصوتي بمعاملاتها', vup.status === 201 && vup.data.files[0].mime === 'audio/webm');
+  const voice = await call('POST', `/api/comms/chats/${chatId}/messages`, {
+    token: S.teacher, body: { kind: 'voice', attachment_ids: [vup.data.files[0].id], duration_ms: 4200 } });
+  ok('إرسال رسالة صوتية', voice.status === 201 && voice.data.kind === 'voice' && voice.data.duration_ms === 4200);
+  ok('رسالة صوتيةٌ بلا مرفق مرفوضة',
+    (await call('POST', `/api/comms/chats/${chatId}/messages`, { token: S.teacher, body: { kind: 'voice' } })).status === 400);
+
+  /* ── التحرير والحذف والردّ ── */
+  const ed = await call('PATCH', `/api/comms/chats/${chatId}/messages/${m1.data.id}`, {
+    token: S.teacher, body: { body: 'رسالة تدقيق (مُعدَّلة)' } });
+  ok('تعديل نصّ الرسالة', ed.status === 200 && ed.data.body.includes('مُعدَّلة'));
+  ok('لا يُعدِّل المرء رسالة غيره',
+    (await call('PATCH', `/api/comms/chats/${chatId}/messages/${m1.data.id}`, {
+      token: S.owner, body: { body: 'انتحال' } })).status === 403);
+  const rep = await call('POST', `/api/comms/chats/${chatId}/messages`, {
+    token: S.teacher, body: { body: 'ردّ', reply_to_id: m1.data.id } });
+  ok('الردّ يحمل مقتبس أصله', rep.status === 201 && !!rep.data.reply_body && !!rep.data.reply_name);
+  ok('حذف الرسالة', (await call('DELETE', `/api/comms/chats/${chatId}/messages/${voice.data.id}`, { token: S.teacher })).status === 200);
+  const thread = (await call('GET', `/api/comms/chats/${chatId}/messages`, { token: S.teacher })).data;
+  const goneMsg = thread.messages.find(m => m.id === voice.data.id);
+  ok('المحذوفة تبقى موضعاً بلا نصّ', goneMsg?.deleted === true && !goneMsg.body && goneMsg.attachments.length === 0);
+
+  /* ── المجموعات ── */
+  const members = [S.u_finance.id, S.u_support.id, S.u_teacher.id];
+  const g = await call('POST', '/api/comms/chats', {
+    token: S.owner, body: { kind: 'group', title: 'مجموعة تدقيق', description: 'وصف', member_ids: members } });
+  ok('إنشاء مجموعة', g.status === 201 && g.data.id > 0);
+  ok('مجموعةٌ بلا اسمٍ مرفوضة',
+    (await call('POST', '/api/comms/chats', { token: S.owner, body: { kind: 'group', title: '  ' } })).status === 400);
+  const gid = g.data.id;
+  const gd = (await call('GET', `/api/comms/chats/${gid}`, { token: S.owner })).data;
+  ok('المنشئ مشرفٌ على مجموعته', gd.my_role === 'admin' && gd.can_manage === true);
+  eq('الأعضاء = المدعوّون + المنشئ', gd.members.length, members.length + 1);
+  ok('إنشاء المجموعة يُثبَّت رسالةً نظامية',
+    (await call('GET', `/api/comms/chats/${gid}/messages`, { token: S.owner })).data.messages.some(m => m.kind === 'system'));
+
+  const rename = await call('PATCH', `/api/comms/chats/${gid}`, {
+    token: S.owner, body: { title: 'مجموعة تدقيق ٢', description: 'وصفٌ محدَّث' } });
+  ok('تعديل اسم المجموعة ووصفها', rename.status === 200 && rename.data.title === 'مجموعة تدقيق ٢');
+
+  const imgFd = new FormData();
+  imgFd.append('files', new Blob([new Uint8Array([137, 80, 78, 71])], { type: 'image/png' }), 'avatar.png');
+  imgFd.append('context', 'chat');
+  const imgUp = await call('POST', '/api/files', { token: S.owner, body: imgFd });
+  const avatar = await call('PATCH', `/api/comms/chats/${gid}`, { token: S.owner, body: { avatar_file_id: imgUp.data.files[0].id } });
+  ok('صورة العرض تُبنى من ملفٍّ في مخزن الجهة',
+    avatar.status === 200 && avatar.data.avatar_url === `/api/files/${imgUp.data.files[0].id}`);
+  ok('صورةٌ لا وجود لها مرفوضة',
+    (await call('PATCH', `/api/comms/chats/${gid}`, { token: S.owner, body: { avatar_file_id: 999999 } })).status === 400);
+  ok('ملفٌّ ليس صورةً مرفوضٌ لصورة العرض',
+    (await call('PATCH', `/api/comms/chats/${gid}`, { token: S.owner, body: { avatar_file_id: fileId } })).status === 400);
+
+  ok('العضو العاديّ لا يعدّل بيانات المجموعة',
+    (await call('PATCH', `/api/comms/chats/${gid}`, { token: S.finance, body: { title: 'انتحال' } })).status === 403);
+  ok('العضو العاديّ لا يضمّ أحداً',
+    (await call('POST', `/api/comms/chats/${gid}/members`, { token: S.finance, body: { user_ids: [S.u_auditor.id] } })).status === 403);
+
+  /* ── الصلاحية المتدرّجة في الإضافة ── */
+  const tg = await call('POST', '/api/comms/chats', {
+    token: S.teacher, body: { kind: 'group', title: 'حلقة المعلم', member_ids: [mate.id] } });
+  ok('المعلم ينشئ مجموعةً من نطاقه', tg.status === 201);
+  if (outsider) ok('ولا يضمّ إليها من هو خارج نطاقه',
+    (await call('POST', `/api/comms/chats/${tg.data.id}/members`, { token: S.teacher, body: { user_ids: [outsider.id] } })).status === 403);
+  ok('ومدير المجمّع يضمّ الجميع بحكم صلاحيته',
+    (await call('POST', '/api/comms/chats', {
+      token: S.owner, body: { kind: 'group', title: 'كل المجمّع', member_ids: dirOwner.data.users.map(u => u.id) } })).status === 201);
+
+  /* ── الأدوار والمغادرة ── */
+  ok('ترقية عضوٍ مشرفاً',
+    (await call('PATCH', `/api/comms/chats/${gid}/members/${S.u_support.id}`, { token: S.owner, body: { role_in: 'admin' } })).status === 200);
+  ok('إنزال المشرف ما دام غيره باقياً',
+    (await call('PATCH', `/api/comms/chats/${gid}/members/${S.u_support.id}`, { token: S.owner, body: { role_in: 'member' } })).status === 200);
+  ok('لا تبقى المجموعة بلا مشرف',
+    (await call('DELETE', `/api/comms/chats/${gid}/members/${S.u_owner.id}`, { token: S.owner })).status === 400);
+  ok('العضو يغادر المجموعة بنفسه',
+    (await call('DELETE', `/api/comms/chats/${gid}/members/${S.u_support.id}`, { token: S.support })).status === 200);
+  ok('المشرف يُخرج عضواً',
+    (await call('DELETE', `/api/comms/chats/${gid}/members/${S.u_finance.id}`, { token: S.owner })).status === 200);
+  ok('المُخرَج يفقد الوصول',
+    (await call('GET', `/api/comms/chats/${gid}`, { token: S.finance })).status === 403);
+  ok('المغادرة والإخراج يُثبَّتان في الخيط',
+    (await call('GET', `/api/comms/chats/${gid}/messages`, { token: S.owner })).data.messages
+      .filter(m => m.kind === 'system').length >= 3);
+
+  /* ── الصندوق والعدّاد والكتم ── */
+  const inbox = (await call('GET', '/api/comms/chats', { token: S.teacher })).data;
+  ok('الصندوق يجمع الخاصّة والمجموعات والمرتبطة بالعمل',
+    inbox.length >= 2 && inbox.every(c => ['direct', 'group', 'context'].includes(c.kind)));
+  ok('كل خيطٍ يحمل عنوانه وآخر رسالةٍ وعدّاد غير المقروء',
+    inbox.every(c => !!c.title && 'unread' in c && 'members_count' in c));
+  ok('الرسالة الصوتية تُعرض بعنوانها في الصندوق لا بنصٍّ فارغ',
+    inbox.every(c => c.last_message === null || typeof c.last_message === 'string'));
+  const unread = await call('GET', '/api/comms/unread', { token: S.owner });
+  ok('عدّاد الخيوط غير المقروءة', unread.status === 200 && typeof unread.data.threads === 'number');
+  const mute = await call('POST', `/api/comms/chats/${chatId}/mute`, { token: S.teacher, body: { muted: true } });
+  ok('كتم المحادثة تفضيلٌ شخصيّ', mute.status === 200 && mute.data.muted === true);
+  await call('POST', `/api/comms/chats/${chatId}/mute`, { token: S.teacher, body: { muted: false } });
+  ok('تعليم المحادثة مقروءة', (await call('POST', `/api/comms/chats/${chatId}/read`, { token: S.teacher })).status === 200);
+
+  /* ── الصفحة نفسها موصولة بالهيكل ── */
+  const { readFileSync } = await import('node:fs');
+  const appJs = readFileSync('web/js/app.js', 'utf8');
+  ok('شاشة المحادثات في قائمة التطبيق', appJs.includes("path: '/chat'") && appJs.includes("chat: () => import('./views/chat.js')"));
+  ok('شارة المحادثات غير المقروءة في الهيكل', appJs.includes('loadChatUnread') && appJs.includes('/api/comms/unread'));
+  ok('الشاشة مخزَّنة في عامل الخدمة', readFileSync('web/sw.js', 'utf8').includes('/js/views/chat.js'));
+});
+
 /* ═════════ التشغيل ═════════ */
 (async () => {
   console.log(`\n╔═══════════════════════════════════════════════════════════╗`);
