@@ -978,6 +978,24 @@ table.tbl.sheet td:first-child::after,table.tbl.sheet th:first-child::after{
 .mini-map .lbl{position:absolute;inset-block-end:7px;inset-inline-start:7px;background:var(--surface);
   border:1px solid var(--border);border-radius:8px;padding:3px 9px;font-size:11px;font-weight:600}
 
+/* ── كتالوج التقارير ─────────────────────────────────────── */
+/* عنوانُ الوحدة فاصلٌ بصريّ لا سطرُ نصّ: خطٌّ يمتدّ بعده فتُقرأ المجموعة
+   مجموعةً، ولا تسيح البطاقات في شبكةٍ واحدة كلّما أُضيف تقرير. */
+.rep-group{display:flex;align-items:center;gap:9px;font-size:14.5px;font-weight:700;
+  color:var(--text-dark);margin:6px 0 10px}
+.rep-group .lu{color:var(--primary)}
+.rep-group span{font-size:11px;font-weight:500;color:var(--text-3);
+  background:var(--surface-2);border-radius:var(--r-pill);padding:2px 10px}
+.rep-group::after{content:"";flex:1;height:1px;background:var(--border)}
+.rep-card{display:flex;flex-direction:column;gap:6px;text-align:start;cursor:pointer;width:100%;
+  font-family:inherit;color:inherit;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg);padding:15px 16px;box-shadow:var(--shadow-sm);transition:.16s}
+.rep-card:hover{transform:translateY(-2px);box-shadow:var(--shadow);border-color:var(--primary)}
+.rep-card h4{font-size:14px;font-weight:700;margin:0}
+.rep-card .ic{color:var(--text-3);transition:.16s}
+.rep-card:hover .ic{color:var(--primary)}
+.rep-card p{margin:0;font-size:12.5px;color:var(--text-2);line-height:1.75}
+
 /* ── أوقات الدوام ────────────────────────────────────────── */
 /* سبعة أسطر بعرضٍ واحد: اليوم، ثم ساعتاه، ثم مدّته — فتُقرأ الأعمدة رأسياً
    ويُمسك اختلافُ يومٍ عن أخيه بنظرة، ولا تتفرّق الحقول على الشاشة. */

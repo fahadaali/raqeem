@@ -790,8 +790,9 @@ section('١٢. استيراد البيانات الأولية', async () => {
 /* ═════════ ١٣. التقارير والتصدير ═════════ */
 section('١٣. محرك التقارير والتصدير', async () => {
   const reports = (await call('GET', '/api/reports', { token: S.owner })).data;
-  eq('ثمانية تقارير معرّفة', reports.length, 8);
+  eq('ثلاثة عشر تقريراً معرّفاً', reports.length, 13);
   ok('كل تقرير يعلن فلاتره', reports.every(r => Array.isArray(r.filters)));
+  ok('كل تقرير يعلن وحدته فتُصنَّف في الكتالوج', reports.every(r => !!r.module));
 
   for (const r of reports) {
     const run = await call('POST', `/api/reports/${r.key}/run`, { token: S.owner, body: { filters: {} } });
@@ -818,6 +819,77 @@ section('١٣. محرك التقارير والتصدير', async () => {
   ok('منع المعلم من التقارير', (await call('GET', '/api/reports', { token: S.teacher })).status === 403);
   ok('منع تقرير الرواتب عمّن لا يملك صلاحيته',
     (await call('POST', '/api/reports/payroll/run', { token: S.supervisor, body: {} })).status === 400);
+
+  /* ── إنجاز المهام على مستوياته الأربعة ── */
+  const level = async (g, token = S.owner) =>
+    (await call('POST', '/api/reports/tasks_progress/run', { token, body: { filters: { group_by: g } } })).data;
+  const byTenant = await level('tenant');
+  const byBranch = await level('branch');
+  const byCommittee = await level('committee');
+  const byUser = await level('user');
+
+  eq('مستوى المجمّع سطرٌ واحد يجمع الكلّ', byTenant.rows.length, 1);
+  ok('وعمودُ المجموعة يُسمّى بمستواه',
+    byTenant.columns[0].header === 'النطاق' && byBranch.columns[0].header === 'الفرع'
+    && byCommittee.columns[0].header === 'اللجنة' && byUser.columns[0].header === 'المنسوب');
+  ok('الأعمدة واحدةٌ في المستويات كلّها فيُقارَن بينها',
+    [byBranch, byCommittee, byUser].every(d =>
+      d.columns.length === byTenant.columns.length
+      && d.columns.slice(1).every((c, i) => c.key === byTenant.columns[i + 1].key)));
+
+  const totalOf = (d) => d.rows.reduce((s, r) => s + r.total, 0);
+  const counts = [byTenant, byBranch, byCommittee, byUser].map(totalOf);
+  ok('مجموع كل مستوى يساوي مجموع المجمّع', new Set(counts).size === 1, counts.join(' · '));
+  const flat = (await call('POST', '/api/reports/tasks/run', { token: S.owner, body: { filters: {} } })).data;
+  eq('والتجميع يطابق التقرير التفصيلي', totalOf(byTenant), flat.rows.length);
+  eq('والمكتملة تُعدّ كما تُعدّ تفصيلاً',
+    byTenant.rows[0].done, flat.rows.filter(r => r.status === 'مكتملة').length);
+  ok('المتأخرات محسوبة في كل سطر', byBranch.rows.every(r => Number.isInteger(r.overdue)));
+  ok('نسبة الإنجاز موزونة بأوزان المهام لا بعددها',
+    byTenant.rows[0].progress !== byTenant.rows[0].completed || byTenant.rows[0].total === 0);
+  ok('مستوى التقرير يظهر في الفلاتر المطبّقة',
+    byCommittee.applied_filters.some(f => f.value === 'حسب اللجنة'));
+  ok('المستوى غير المعروف يرجع إلى الفرع لا يسقط',
+    (await level('nope')).columns[0].header === 'الفرع');
+
+  /* العزل يسري على التجميع كما يسري على التفصيل */
+  const bmLevels = await level('branch', S.branch_manager);
+  ok('مدير الفرع لا يرى فروعاً خارج نطاقه',
+    bmLevels.rows.length <= byBranch.rows.length && totalOf(bmLevels) <= totalOf(byBranch));
+
+  /* ── المتأخرات ── */
+  const od = async (scope) =>
+    (await call('POST', '/api/reports/tasks_overdue/run', { token: S.owner, body: { filters: { scope } } })).data;
+  const overdue = await od('overdue'), blocked = await od('blocked'), both = await od('both');
+  ok('المتأخرة كلُّها غير مكتملة ولها أيام تأخّر',
+    overdue.rows.every(r => r.status !== 'مكتملة' && r.days_late !== '—'));
+  ok('المتوقفة كلُّها متوقفة', blocked.rows.every(r => r.status === 'متوقفة'));
+  ok('الجمع بينهما لا يقلّ عن أكبرهما ولا يزيد عن مجموعهما',
+    both.rows.length >= Math.max(overdue.rows.length, blocked.rows.length)
+    && both.rows.length <= overdue.rows.length + blocked.rows.length);
+  ok('المتأخرات مرتّبة بالأطول تأخّراً',
+    overdue.rows.every((r, i, a) => i === 0 || Number(a[i - 1].days_late) >= Number(r.days_late)));
+  eq('عدد المتأخرات يطابق ما أعلنه تقرير الإنجاز', overdue.rows.length, byTenant.rows[0].overdue);
+
+  /* ── ملخّص الحضور والإجازات والمنسوبون ── */
+  const attSum = (await call('POST', '/api/reports/attendance_summary/run', { token: S.owner, body: { filters: {} } })).data;
+  ok('ملخّص الحضور سطرٌ لكل منسوب لا لكل يوم',
+    attSum.rows.length > 0 && new Set(attSum.rows.map(r => r.employee)).size === attSum.rows.length);
+  ok('وأيامُ كل سطر مجموع حالاته',
+    attSum.rows.every(r => r.days === r.present + r.late + r.absent + r.on_leave));
+  const leaves = (await call('POST', '/api/reports/leaves/run', { token: S.owner, body: { filters: {} } })).data;
+  ok('تقرير الإجازات يعمل ويعلن أعمدته', Array.isArray(leaves.rows) && leaves.columns.length >= 8);
+  const emps = (await call('POST', '/api/reports/employees/run', { token: S.owner, body: { filters: {} } })).data;
+  ok('كشف المنسوبين يشمل من في نطاق المستخدم', emps.rows.length > 0);
+  ok('ولا يحمل راتباً — للراتب تقريرُه المحروس',
+    !emps.columns.some(c => /راتب|الأساسي|بدلات|آيبان/.test(c.header)));
+
+  /* التصدير يعمل على التقارير المستجدّة كما على القديمة */
+  const px = await call('POST', '/api/reports/tasks_progress/export', { token: S.owner, body: { format: 'xlsx' }, raw: true });
+  ok('تصدير تقرير الإنجاز إلى Excel', px.buf.slice(0, 2).toString() === 'PK');
+  const pc = await call('POST', '/api/reports/tasks_progress/export',
+    { token: S.owner, body: { format: 'csv', filters: { group_by: 'committee' } }, raw: true });
+  ok('وCSV يحمل رأس المستوى المختار', pc.buf.toString('utf8').includes('اللجنة'));
 });
 
 /* ═════════ ١٤. سجل التدقيق ═════════ */

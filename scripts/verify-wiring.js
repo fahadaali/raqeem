@@ -13,6 +13,7 @@ const R = (p) => readFileSync(p, 'utf8');
 const platform  = R('web/js/views/admin/sections.js') + R('web/js/admin-shell.js');
 const chatUI    = R('web/js/views/chat.js');
 const hoursUI   = R('web/js/views/workhours.js') + R('web/js/views/hr.js');
+const reportsUI = R('web/js/views/reports.js');
 const billing   = R('web/js/views/billing.js');
 const settings  = R('web/js/views/settings.js');
 const tickets   = R('web/js/views/tickets.js');
@@ -23,9 +24,9 @@ const landing   = R('web/js/views/landing.js');
 const bRoutes   = R('server/core/routes/billing.js');
 const aRoutes   = R('server/core/routes/auth.js');
 const cRoutes   = R('server/core/routes/comms.js');
-const ALLUI = platform + billing + settings + tickets + login + app + landing + chatUI + hoursUI;
+const ALLUI = platform + billing + settings + tickets + login + app + landing + chatUI + hoursUI + reportsUI;
 const ALLSRV = routes + bRoutes + aRoutes + cRoutes + R('server/core/routes/hr.js') + R('server/core/workhours.js')
-  + R('server/core/http.js') + R('server/core/sql.js')
+  + R('server/core/http.js') + R('server/core/sql.js') + R('server/core/jobs/reports.js')
   + R('server/core/zatca.js') + R('server/core/health.js') + R('server/core/billing.js')
   + R('server/core/coupons.js') + R('server/core/announce.js') + R('server/core/payments.js')
   + R('server/core/features.js') + R('server/core/security.js') + R('server/core/jobs/backup.js')
@@ -143,6 +144,17 @@ check('محادثات', 'الرسائل الصوتية', ["'voice'", 'duration_m
 check('محادثات', 'المرفقات تُبنى من مخزن الجهة', 'resolveAttachments', 'attachment_ids');
 check('محادثات', 'تحرير الرسالة وحذفها', ["router.patch('/chats/:id/messages/:mid'", "router.delete('/chats/:id/messages/:mid'"], 'تعديل الرسالة');
 check('محادثات', 'عدّاد غير المقروء في الهيكل', "router.get('/unread'", ['loadChatUnread', "path: '/chat'"]);
+
+console.log('\n▸ اكتمال التقارير — إنجازُ المهام على مستوياته، وما يكمّله');
+check('تقارير', 'إنجاز المهام تقريرٌ واحد بأربعة مستويات', ['TASK_GROUPS', 'tasks_progress'], "type === 'group'");
+check('تقارير', 'المستويات الأربعة: المجمّع والفرع واللجنة والمنسوب',
+  ['tenant:', 'branch:', 'committee:', 'user:'], null);
+check('تقارير', 'نسبة الإنجاز موزونة بأوزان المهام', 'SUM(t.weight * t.progress)', null);
+check('تقارير', 'المتأخرات تقريرٌ يقول أيَّها ومن يتولّاها', 'tasks_overdue', null);
+check('تقارير', 'ملخّص الحضور سطرٌ لكل منسوب', 'attendance_summary', null);
+check('تقارير', 'الإجازات وكشف المنسوبين', ['leaves: {', 'employees: {'], null);
+check('تقارير', 'الكتالوج مصنَّفٌ بوحداته ويُبحَث فيه', null, ['rep-group', 'paintCatalog']);
+check('تقارير', 'مبدّل المستوى يُعيد التشغيل بمجرّد تبديله', null, "if (f.type === 'group') ctrl.addEventListener");
 
 console.log(`\n  ${fail ? '✘' : '✔'} ${pass} مكتمل · ${fail} ناقص\n`);
 process.exit(fail ? 1 : 0);
