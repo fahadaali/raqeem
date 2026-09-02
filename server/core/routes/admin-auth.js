@@ -41,73 +41,98 @@ async function adminSession(app, ctx) {
   };
 }
 
+/** مفتاح قفل المحاولات لحساب ادمن — يقرؤه الدخول الموحّد أيضاً فلا يتضاعف الرصيد بين بابين */
+export const adminLockKey = (email) => `adm:${String(email).trim().toLowerCase()}`;
+
+/**
+ * التحقّق من حساب ادمن وإصدار جلسته.
+ *
+ * تُنادى من بابين: مسار اللوحة المستقل هنا، والدخولُ الموحّد في `/api/auth/login`.
+ * ولذلك يقع القفل والتسجيل وإصدار الرمز كلُّها هنا لا في المسار، فيتصرّف الحساب
+ * تصرّفاً واحداً أياً كان الباب. الرمز الصادر يحمل `adm:1` بلا `tid`، فلا يفتح
+ * إلا لوحة المنصة مهما كان الباب الذي دخل منه.
+ *
+ * @returns {{ found: boolean, valid: boolean, result?: object }}
+ *   `found` كان للبريد حساب ادمن، `valid` صحّت كلمة مروره، و`result` ما يُردّ
+ *   (جلسة، أو استجابة ٤٠١ تطلب رمز التحقّق). ولا يُرمى خطأٌ إلا لسببٍ في الحساب
+ *   نفسه (موقوف، رمز تحقّق خاطئ) — فالباب الموحّد يقرّر وحده متى يُعلن الفشل.
+ */
+export async function adminLogin(app, req, { email, password, totp }) {
+  const account = adminLockKey(email);
+  if (failureCount(account, LOCK_WINDOW) >= app.cfg.rateLimit.loginAccountMax) {
+    throw tooMany('تم إيقاف المحاولات مؤقتاً بعد عدة محاولات فاشلة — أعد المحاولة بعد ١٥ دقيقة');
+  }
+
+  /* محاولات دخول الادمن تُسجَّل في السجل نفسه بلا جهة — العمود يقبل NULL */
+  const attempt = (success, reason, a = null) => recordLoginAttempt(app, {
+    email, tenantId: null, userId: a?.id ?? null,
+    success, reason, ip: req.ip, userAgent: req.get('user-agent') || ''
+  });
+
+  const admin = await app.db.get(
+    'SELECT * FROM platform_admins WHERE lower(email)=lower(?)', String(email).trim());
+  const valid = admin && await verifyPassword(String(password), admin.password_hash);
+  if (!valid) {
+    recordFailure(account, LOCK_WINDOW);
+    await attempt(false, admin ? 'كلمة مرور خاطئة' : 'حساب ادمن غير موجود', admin);
+    return { found: !!admin, valid: false };
+  }
+  if (admin.status !== 'active') {
+    await attempt(false, 'الحساب موقوف', admin);
+    throw unauthorized('الحساب موقوف');
+  }
+  clearFailures(account);
+
+  if (admin.totp_enabled) {
+    const token = String(totp || '').trim();
+    if (!token) {
+      await attempt(false, 'بانتظار رمز التحقّق بخطوتين', admin);
+      return { found: true, valid: true,
+        result: status(401, { error: { code: 'TOTP_REQUIRED', message: 'أدخل رمز التحقّق بخطوتين' } }) };
+    }
+    try {
+      await assertSecondFactor(app, admin, token, j(admin.totp_backup, []) || [], 'platform_admins');
+    } catch (e) {
+      await attempt(false, 'رمز تحقّق خاطئ', admin);
+      throw e;
+    }
+  }
+  await attempt(true, null, admin);
+
+  if (needsRehash(admin.password_hash)) {
+    await app.db.run('UPDATE platform_admins SET password_hash=? WHERE id=?',
+      await hashPassword(String(password)), admin.id);
+  }
+
+  const ctx = await buildAdminContext(app, admin.id);
+  if (!ctx) throw unauthorized();
+  await app.db.run('UPDATE platform_admins SET last_login_at=? WHERE id=?',
+    new Date().toISOString(), admin.id);
+
+  req.ctx = ctx;
+  await plog(req, { action: 'login', entity: 'platform_admin', entityId: admin.id,
+    summary: `${ctx.adminName} دخل لوحة المنصة` });
+
+  return {
+    found: true, valid: true,
+    result: {
+      kind: 'admin',
+      accessToken: await signAdminAccess(app, ctx),
+      refreshToken: await issueAdminRefresh(app, ctx, req),
+      ...(await adminSession(app, ctx))
+    }
+  };
+}
+
 router.post('/login',
   rateLimit({ windowMs: 60_000, max: (r, c) => c.get('app').cfg.rateLimit.loginIpMax,
     key: (r) => `adminlogin:${r.ip}` }),
   h(async (req) => {
-    const app = req.app;
-    const { email, password } = req.body || {};
+    const { email, password, totp } = req.body || {};
     if (!email || !password) throw badRequest('يرجى إدخال البريد الإلكتروني وكلمة المرور');
-
-    const account = `adm:${String(email).trim().toLowerCase()}`;
-    if (failureCount(account, LOCK_WINDOW) >= app.cfg.rateLimit.loginAccountMax) {
-      throw tooMany('تم إيقاف المحاولات مؤقتاً بعد عدة محاولات فاشلة — أعد المحاولة بعد ١٥ دقيقة');
-    }
-
-    /* محاولات دخول الادمن تُسجَّل في السجل نفسه بلا جهة — العمود يقبل NULL */
-    const attempt = (success, reason, a = null) => recordLoginAttempt(app, {
-      email, tenantId: null, userId: a?.id ?? null,
-      success, reason, ip: req.ip, userAgent: req.get('user-agent') || ''
-    });
-
-    const admin = await app.db.get(
-      'SELECT * FROM platform_admins WHERE lower(email)=lower(?)', String(email).trim());
-    const valid = admin && await verifyPassword(String(password), admin.password_hash);
-    if (!valid) {
-      recordFailure(account, LOCK_WINDOW);
-      await attempt(false, admin ? 'كلمة مرور خاطئة' : 'حساب ادمن غير موجود', admin);
-      throw unauthorized('بيانات الدخول غير صحيحة');
-    }
-    if (admin.status !== 'active') {
-      await attempt(false, 'الحساب موقوف', admin);
-      throw unauthorized('الحساب موقوف');
-    }
-    clearFailures(account);
-
-    if (admin.totp_enabled) {
-      const token = String(req.body?.totp || '').trim();
-      if (!token) {
-        await attempt(false, 'بانتظار رمز التحقّق بخطوتين', admin);
-        return status(401, { error: { code: 'TOTP_REQUIRED', message: 'أدخل رمز التحقّق بخطوتين' } });
-      }
-      try {
-        await assertSecondFactor(app, admin, token, j(admin.totp_backup, []) || [], 'platform_admins');
-      } catch (e) {
-        await attempt(false, 'رمز تحقّق خاطئ', admin);
-        throw e;
-      }
-    }
-    await attempt(true, null, admin);
-
-    if (needsRehash(admin.password_hash)) {
-      await app.db.run('UPDATE platform_admins SET password_hash=? WHERE id=?',
-        await hashPassword(String(password)), admin.id);
-    }
-
-    const ctx = await buildAdminContext(app, admin.id);
-    if (!ctx) throw unauthorized();
-    await app.db.run('UPDATE platform_admins SET last_login_at=? WHERE id=?',
-      new Date().toISOString(), admin.id);
-
-    req.ctx = ctx;
-    await plog(req, { action: 'login', entity: 'platform_admin', entityId: admin.id,
-      summary: `${ctx.adminName} دخل لوحة المنصة` });
-
-    return {
-      accessToken: await signAdminAccess(app, ctx),
-      refreshToken: await issueAdminRefresh(app, ctx, req),
-      ...(await adminSession(app, ctx))
-    };
+    const r = await adminLogin(req.app, req, { email, password, totp });
+    if (!r.valid) throw unauthorized('بيانات الدخول غير صحيحة');
+    return r.result;
   }));
 
 router.post('/refresh', h(async (req) => {

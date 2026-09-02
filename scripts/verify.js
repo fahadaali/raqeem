@@ -1210,6 +1210,35 @@ section('١٩. طبقة الـ SaaS (المرحلة الثانية)', async () =
   S.admin = alog.data.accessToken;
   S.adminRefresh = alog.data.refreshToken;
 
+  /* ── الباب الموحّد: الخادم يحسم النوع، والرمزان لا يعبر أحدهما إلى طبقة الآخر ── */
+  const decode = (t) => JSON.parse(Buffer.from(t.split('.')[1], 'base64url').toString());
+  const uniAdmin = await call('POST', '/api/auth/login', { body: { email: 'admin@raqeem.sa', password: 'Admin@123' } });
+  ok('حساب الادمن يدخل من الباب الرسمي ويُعرَّف نوعه', uniAdmin.status === 200 && uniAdmin.data.kind === 'admin' && !!uniAdmin.data.admin?.id);
+  ok('رمزه رمزُ لوحةٍ لا رمزُ مجمّع', decode(uniAdmin.data.accessToken).adm === 1 && decode(uniAdmin.data.accessToken).tid === undefined);
+  ok('ولا يحمل جهةً ولا فروعاً ولا صلاحيات مجمّع', !uniAdmin.data.tenant && !uniAdmin.data.permissions && !uniAdmin.data.branches);
+  ok('الرمز الصادر من الباب الموحّد يفتح اللوحة',
+    (await call('GET', '/api/admin/auth/me', { token: uniAdmin.data.accessToken })).status === 200);
+  ok('ولا يفتح مسارات المجمّعات', (await call('GET', '/api/auth/me', { token: uniAdmin.data.accessToken })).status === 403);
+  ok('ولا لوحةَ مجمّعٍ ولا مهامَه', (await call('GET', '/api/tasks', { token: uniAdmin.data.accessToken })).status === 403);
+  const uniUser = await call('POST', '/api/auth/login', { body: { email: 'teacher@riyadh-qu.sa', password: 'Teach@123' } });
+  ok('حساب المجمّع يدخل من الباب نفسه ويُعرَّف نوعه', uniUser.status === 200 && uniUser.data.kind === 'user' && !!uniUser.data.tenant?.id);
+  ok('ورمزه لا يفتح اللوحة', decode(uniUser.data.accessToken).adm === undefined
+    && (await call('GET', '/api/admin/overview', { token: uniUser.data.accessToken })).status === 403);
+  const wrongAdmin = await call('POST', '/api/auth/login', { body: { email: 'admin@raqeem.sa', password: 'Wrong@123' } });
+  const unknown = await call('POST', '/api/auth/login', { body: { email: 'nobody@example.sa', password: 'Wrong@123' } });
+  ok('الفشل رسالةٌ واحدة لا تكشف وجود حساب ولا نوعه',
+    wrongAdmin.status === 401 && unknown.status === 401
+      && wrongAdmin.data.error.message === unknown.data.error.message && !('kind' in wrongAdmin.data));
+  ok('تلميح النوع من الواجهة لا أثر له',
+    (await call('POST', '/api/auth/login', { body: { email: 'teacher@riyadh-qu.sa', password: 'Teach@123', kind: 'admin' } })).data.kind === 'user');
+  /* القفل مشترك بين البابين: محاولاتٌ فاشلة من الباب الموحّد تُغلق باب اللوحة أيضاً */
+  const LOCK_MAIL = 'locked-probe@example.sa';
+  for (let i = 0; i < 12; i++) await call('POST', '/api/auth/login', { body: { email: LOCK_MAIL, password: 'x' + i }, expect429: true });
+  ok('القفل من الباب الموحّد يسري على باب اللوحة',
+    (await call('POST', '/api/admin/auth/login', { body: { email: LOCK_MAIL, password: 'Admin@123' }, expect429: true })).status === 429);
+  ok('ويسري على الباب الموحّد نفسه',
+    (await call('POST', '/api/auth/login', { body: { email: LOCK_MAIL, password: 'Admin@123' }, expect429: true })).status === 429);
+
   ok('لوحة المنصة محجوبة عن المعلم',
     (await call('GET', '/api/admin/overview', { token: S.teacher })).status === 403);
   ok('لوحة المنصة محجوبة عن مدير الفرع',

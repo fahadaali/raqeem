@@ -12,6 +12,7 @@ import { platformSettings, tenantSubscription, subscriptionWritable, subscriptio
 import { recordLoginAttempt, assertSecondFactor, needsTotpSetup, generateTotpSecret, totpUri,
   verifyTotp, generateBackupCodes, hashBackupCodes } from '../security.js';
 import { activeBanners } from '../announce.js';
+import { adminLogin } from './admin-auth.js';
 
 const router = new Hono();
 const LOCK_WINDOW = 15 * 60_000;
@@ -75,74 +76,106 @@ export async function sessionPayload(app, ctx) {
   };
 }
 
+const userLockKey = (email) => `pw:${String(email).trim().toLowerCase()}`;
+
 /**
- * شاشة الدخول الموحّدة (SSO) — تتعرف على دور المستخدم وتوجهه للوحته.
- * التقييد بحسب المحاولات الفاشلة لكل حساب، مع سقف واسع لكل عنوان شبكة
- * حتى لا تُحجب جهة كاملة تشترك في عنوان واحد (NAT).
+ * التحقّق من حساب منسوبٍ في مجمّع وإصدار جلسته.
+ * الرمز الصادر يحمل `tid` بلا `adm`، فلا يفتح إلا مسارات المجمّعات.
+ * @returns {{ found: boolean, valid: boolean, result?: object }} على نسق `adminLogin`
+ */
+async function userLogin(app, req, { email, password, totp }) {
+  const account = userLockKey(email);
+  if (failureCount(account, LOCK_WINDOW) >= app.cfg.rateLimit.loginAccountMax) {
+    throw tooMany('تم إيقاف المحاولات مؤقتاً بعد عدة محاولات فاشلة — أعد المحاولة بعد ١٥ دقيقة أو راجع الإدارة');
+  }
+
+  const attempt = (success, reason, u = null) => recordLoginAttempt(app, {
+    email, tenantId: u?.tenant_id ?? null, userId: u?.id ?? null,
+    success, reason, ip: req.ip, userAgent: req.get('user-agent') || ''
+  });
+
+  const user = await app.db.get('SELECT * FROM users WHERE lower(email)=lower(?)', String(email).trim());
+  const valid = user && await verifyPassword(String(password), user.password_hash);
+  if (!valid) {
+    recordFailure(account, LOCK_WINDOW);
+    await attempt(false, user ? 'كلمة مرور خاطئة' : 'حساب غير موجود', user);
+    return { found: !!user, valid: false };
+  }
+  if (user.status !== 'active') {
+    await attempt(false, 'الحساب موقوف', user);
+    throw unauthorized('الحساب موقوف، يرجى مراجعة الإدارة');
+  }
+  clearFailures(account);
+
+  /* التحقّق بخطوتين — إلزامي لمالكي المنصة عند تفعيله في الإعدادات */
+  if (user.totp_enabled) {
+    const token = String(totp || '').trim();
+    if (!token) {
+      await attempt(false, 'بانتظار رمز التحقّق بخطوتين', user);
+      return { found: true, valid: true,
+        result: status(401, { error: { code: 'TOTP_REQUIRED', message: 'أدخل رمز التحقّق بخطوتين' } }) };
+    }
+    try {
+      await assertSecondFactor(app, user, token, j(user.totp_backup, []) || []);
+    } catch (e) {
+      await attempt(false, 'رمز تحقّق خاطئ', user);
+      throw e;
+    }
+  }
+  await attempt(true, null, user);
+
+  // ترقية صامتة لتجزئات كلمات المرور القديمة
+  if (needsRehash(user.password_hash)) {
+    const fresh = await hashPassword(String(password));
+    await app.db.run('UPDATE users SET password_hash=? WHERE id=?', fresh, user.id);
+  }
+
+  const ctx = await buildContext(app, user.id);
+  if (!ctx) throw unauthorized();
+  await app.db.run('UPDATE users SET last_login_at=? WHERE id=?', nowUTC(), user.id);
+
+  const accessToken = await signAccess(app, ctx);
+  const refreshToken = await issueRefresh(app, ctx, req);
+
+  req.ctx = ctx;
+  await audit(req, { action: 'login', entity: 'user', entityId: user.id, summary: `${ctx.userName} سجّل الدخول للمنصة` });
+
+  return { found: true, valid: true,
+    result: { kind: 'user', accessToken, refreshToken, ...(await sessionPayload(app, ctx)) } };
+}
+
+/**
+ * الدخول الموحّد — بابٌ واحد للجميع، والخادمُ وحده يحسم نوع الحساب.
+ *
+ * البريد وكلمة المرور يُقاسان على حسابات المجمّعات أولاً ثم على حسابات إدارة
+ * المنصة، ويُردّ `kind` يقول للواجهة أي لوحةٍ تفتح. ولا يُقبَل من الواجهة أي
+ * تلميحٍ عن النوع: ما يفتح اللوحة هو الرمز الصادر لا ما طلبه المتصفّح، والرمزان
+ * مختلفا الجمهور يرفض كلُّ حارسٍ رمزَ الآخر صراحةً — فلا يرفع البابُ الواحد
+ * صلاحيةَ أحد.
+ *
+ * والفشل رسالةٌ واحدة أياً كان السبب فلا يُستدلّ منها على وجود حساب، والقفلُ
+ * يُحسب على مفتاحَي الطبقتين معاً فلا يضاعف البابُ الموحّد رصيدَ المحاولات
+ * الذي يمنحه بابُ اللوحة وحده. والتقييد بحسب المحاولات الفاشلة لكل حساب، مع
+ * سقف واسع لكل عنوان شبكة حتى لا تُحجب جهة كاملة تشترك في عنوان واحد (NAT).
+ *
+ * وإن صحّت بياناتٌ للطبقتين معاً (بريدٌ واحد بكلمة مرورٍ واحدة في الجدولين)
+ * قُدّم حساب المجمّع — الأقلّ صلاحيةً — ولوحة المنصة تبقى من بابها المستقل.
  */
 router.post('/login',
   rateLimit({ windowMs: 60_000, max: (r, c) => c.get('app').cfg.rateLimit.loginIpMax, key: (r) => `login:${r.ip}` }),
   h(async (req) => {
     const app = req.app;
-    const { email, password } = req.body || {};
+    const { email, password, totp } = req.body || {};
     if (!email || !password) throw badRequest('يرجى إدخال البريد الإلكتروني وكلمة المرور');
 
-    const account = `pw:${String(email).trim().toLowerCase()}`;
-    if (failureCount(account, LOCK_WINDOW) >= app.cfg.rateLimit.loginAccountMax) {
-      throw tooMany('تم إيقاف المحاولات مؤقتاً بعد عدة محاولات فاشلة — أعد المحاولة بعد ١٥ دقيقة أو راجع الإدارة');
-    }
+    const asUser = await userLogin(app, req, { email, password, totp });
+    if (asUser.valid) return asUser.result;
 
-    const attempt = (success, reason, u = null) => recordLoginAttempt(app, {
-      email, tenantId: u?.tenant_id ?? null, userId: u?.id ?? null,
-      success, reason, ip: req.ip, userAgent: req.get('user-agent') || ''
-    });
+    const asAdmin = await adminLogin(app, req, { email, password, totp });
+    if (asAdmin.valid) return asAdmin.result;
 
-    const user = await app.db.get('SELECT * FROM users WHERE lower(email)=lower(?)', String(email).trim());
-    const valid = user && await verifyPassword(String(password), user.password_hash);
-    if (!valid) {
-      recordFailure(account, LOCK_WINDOW);
-      await attempt(false, user ? 'كلمة مرور خاطئة' : 'حساب غير موجود', user);
-      throw unauthorized('بيانات الدخول غير صحيحة');
-    }
-    if (user.status !== 'active') {
-      await attempt(false, 'الحساب موقوف', user);
-      throw unauthorized('الحساب موقوف، يرجى مراجعة الإدارة');
-    }
-    clearFailures(account);
-
-    /* التحقّق بخطوتين — إلزامي لمالكي المنصة عند تفعيله في الإعدادات */
-    if (user.totp_enabled) {
-      const token = String(req.body?.totp || '').trim();
-      if (!token) {
-        await attempt(false, 'بانتظار رمز التحقّق بخطوتين', user);
-        return status(401, { error: { code: 'TOTP_REQUIRED', message: 'أدخل رمز التحقّق بخطوتين' } });
-      }
-      try {
-        await assertSecondFactor(app, user, token, j(user.totp_backup, []) || []);
-      } catch (e) {
-        await attempt(false, 'رمز تحقّق خاطئ', user);
-        throw e;
-      }
-    }
-    await attempt(true, null, user);
-
-    // ترقية صامتة لتجزئات كلمات المرور القديمة
-    if (needsRehash(user.password_hash)) {
-      const fresh = await hashPassword(String(password));
-      await app.db.run('UPDATE users SET password_hash=? WHERE id=?', fresh, user.id);
-    }
-
-    const ctx = await buildContext(app, user.id);
-    if (!ctx) throw unauthorized();
-    await app.db.run('UPDATE users SET last_login_at=? WHERE id=?', nowUTC(), user.id);
-
-    const accessToken = await signAccess(app, ctx);
-    const refreshToken = await issueRefresh(app, ctx, req);
-
-    req.ctx = ctx;
-    await audit(req, { action: 'login', entity: 'user', entityId: user.id, summary: `${ctx.userName} سجّل الدخول للمنصة` });
-
-    return { accessToken, refreshToken, ...(await sessionPayload(app, ctx)) };
+    /* فشل الطبقتين معاً: كلٌّ سجّلت محاولتها على مفتاحها، والردّ لا يميّز بينهما */
+    throw unauthorized('بيانات الدخول غير صحيحة');
   }));
 
 router.post('/refresh', h(async (req) => {

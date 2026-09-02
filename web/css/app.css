@@ -1449,20 +1449,6 @@ body:has(.update-banner) .content{padding-block-end:150px}
 .admin-content{padding:18px;flex:1;min-width:0}
 .admin-back{display:none}
 
-/* شاشة دخول اللوحة */
-.admin-login{min-height:100dvh;display:grid;place-items:center;padding:20px;
-  background-color:var(--brand-ink);background-image:var(--glass-on-ink);background-repeat:repeat}
-.admin-login-card{background:var(--surface);border-radius:var(--r-xl);padding:32px 28px;width:min(420px,100%);
-  box-shadow:var(--shadow-lg)}
-.admin-login-brand{text-align:center;margin-bottom:22px}
-.admin-login-brand img{width:64px;height:64px;border-radius:26%;box-shadow:var(--shadow)}
-.admin-login-brand h1{font-size:24px;margin:12px 0 4px;color:var(--primary-dark)}
-.admin-login-brand p{font-size:12.5px;color:var(--text-light);margin:0}
-.admin-login-back{display:inline-flex;align-items:center;justify-content:center;gap:7px;width:100%;
-  text-align:center;margin-top:14px;font-size:12.5px;color:var(--text-light);padding:11px;
-  border-radius:var(--r-pill);min-height:44px}
-.admin-login-back:hover{background:var(--light);color:var(--primary)}
-
 @media (max-width:900px){
   .admin-shell{grid-template-columns:1fr}
   .admin-side{position:fixed;inset-block:0;inset-inline-start:0;width:264px;z-index:120;

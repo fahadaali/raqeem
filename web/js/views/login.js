@@ -12,7 +12,9 @@ const DEMO = [
   ['معلم', 'teacher@riyadh-qu.sa', 'Teach@123'],
   ['موظف', 'employee@riyadh-qu.sa', 'Emp@1234'],
   ['الدعم الفني', 'support@riyadh-qu.sa', 'Support@123'],
-  ['المدقق', 'auditor@riyadh-qu.sa', 'Audit@123']
+  ['المدقق', 'auditor@riyadh-qu.sa', 'Audit@123'],
+  /* حساب إدارة المنصة يدخل من الباب نفسه ويُساق إلى لوحته */
+  ['مدير المنصة', 'admin@raqeem.sa', 'Admin@123']
 ];
 
 export async function render({ onSuccess, navigate }) {
@@ -46,7 +48,18 @@ export async function render({ onSuccess, navigate }) {
     const original = btn.textContent;
     btn.textContent = ''; btn.append(el('span.spinner'), document.createTextNode(' جارٍ التحقق...'));
     try {
-      await api.login(email.value.trim(), pass.value, totpField.hidden ? undefined : totp.value.trim());
+      const data = await api.login(email.value.trim(), pass.value, totpField.hidden ? undefined : totp.value.trim());
+      /*
+       * الخادم وحده يقول أي لوحةٍ تُفتح — الواجهة لا تخمّن من البريد ولا تطلب
+       * نوعاً. وحساب الادمن يُساق إلى لوحته (أو إلى ما قصده داخلها)، أمّا الرابط
+       * الخارجي فلا يُتبَع: `next` يُقبل داخل اللوحة وحدها.
+       */
+      if (data.kind === 'admin') {
+        toast('مرحباً بك في لوحة المنصة', 'ok');
+        const next = new URLSearchParams(location.search).get('next') || '';
+        navigate?.(/^\/admin(\/[\w\-/]*)?$/.test(next) ? next : '/admin');
+        return;
+      }
       toast('مرحباً بك في منصة رقيم', 'ok');
       await onSuccess();
     } catch (err) {
@@ -65,10 +78,17 @@ export async function render({ onSuccess, navigate }) {
     }
   };
 
+  /* قادمٌ من لوحة المنصة بلا جلسة — يُقال له إلى أين يعود بعد الدخول */
+  const wantsAdmin = /^\/admin/.test(new URLSearchParams(location.search).get('next') || '');
+
   const form = el('form', { onsubmit: submit, novalidate: true }, [
     field('البريد الإلكتروني', email, { required: true }),
     field('كلمة المرور', pass, { required: true }),
-    totpField, btn, msg
+    totpField, btn, msg,
+    el('div.hint', { style: { textAlign: 'center', marginTop: '8px' },
+      text: wantsAdmin
+        ? 'بابٌ واحد للجميع: حساب إدارة المنصة يُفتح على لوحته بعد التحقّق.'
+        : 'بابٌ واحد للجميع: منسوبو المجمّعات وإدارة المنصة، وكلٌّ يُساق إلى لوحته.' })
   ]);
 
   const demoGrid = el('div.demo-grid', {}, DEMO.map(([role, e, p]) =>

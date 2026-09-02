@@ -399,7 +399,14 @@ async function render() {
     return renderAdmin();
   }
 
-  if (!state.session) {
+  /*
+   * قاصدُ لوحة المنصة يُعرَض له الدخول ولو كانت له جلسةُ مجمّع: جلسته تلك لا
+   * تفتح اللوحة، والباب الواحد هو موضع حساب اللوحة — فلا يُساق إلى لوحة مجمّعه.
+   */
+  const wantsAdmin = parseRoute().path === '/login'
+    && /^\/admin/.test(new URLSearchParams(location.search).get('next') || '');
+
+  if (!state.session || wantsAdmin) {
     const path = location.pathname.replace(/\/+$/, '') || '/';
     const pub = PUBLIC_VIEWS[path];
     if (pub) {

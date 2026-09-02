@@ -100,9 +100,21 @@ export const api = {
   put: (url, body, opts) => request('PUT', url, { ...opts, body }),
   del: (url, opts) => request('DELETE', url, opts),
 
+  /**
+   * الدخول الموحّد: الخادم يحسم نوع الحساب ويردّه في `kind`.
+   * جلسة الادمن تُحفَظ في مفاتيحها المستقلة ولا تمسّ جلسة المجمّع — فالرمزان
+   * لطبقتين لا يقبل حارسُ إحداهما رمزَ الأخرى، والخلط هنا لا يفتح باباً بل
+   * يُغلق البابين معاً.
+   */
   async login(email, password, totp) {
     const data = await request('POST', '/api/auth/login', {
       body: { email, password, ...(totp ? { totp } : {}) }, retry: false });
+    if (data.kind === 'admin') {
+      const { admin, saveAdminTokens } = await import('./admin-state.js');
+      saveAdminTokens(data.accessToken, data.refreshToken);
+      admin.session = data;
+      return data;
+    }
     saveTokens(data.accessToken, data.refreshToken);
     state.session = data;
     return data;
