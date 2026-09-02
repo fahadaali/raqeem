@@ -5,7 +5,10 @@ import {
   AR_NUM, avatar, confirmDialog, skeleton, timeAgo, qs
 } from '../util.js';
 import { fmtDateTime } from '../hijri.js';
-import { pushStatus, subscribePush, unsubscribePush, promptInstall, isStandalone, platform, canInstall } from '../push.js';
+import {
+  pushStatus, subscribePush, unsubscribePush, promptInstall, isStandalone, platform, canInstall,
+  currentVersion, checkForUpdate
+} from '../push.js';
 
 export async function render({ navigate }) {
   const items = [
@@ -144,6 +147,7 @@ async function notifTab() {
 async function appTab() {
   const p = platform();
   const installed = isStandalone();
+  const ver = await currentVersion();
   return el('div.stack', {}, [
     card('تثبيت التطبيق على جهازك', [
       el('div.row', { style: { marginBottom: '12px' } }, [
@@ -171,12 +175,25 @@ async function appTab() {
         ).map((t, i) => el('div.check-row', { style: { cursor: 'default' } }, [el('div.avatar.sm', { text: AR_NUM(i + 1) }), el('div.t', { text: t })]))
       ])
     ]),
-    card('الذاكرة المؤقتة والتحديثات', [
-      el('div.hint', { text: 'تحتفظ المنصة بنسخة من الشاشات والبيانات الأخيرة للعمل دون اتصال. امسح الذاكرة إن واجهت مشكلة في التحديث.' }),
+    card('الإصدار والتحديثات', [
+      el('div.row', { style: { marginBottom: '9px' } }, [
+        /* الختم لاتينيٌّ يُعزَل عن اتجاه الجملة كي لا تتقدّم لاحقتُه على رقمه */
+        chip(ver?.version ? `الإصدار ⁦${ver.version}⁩` : 'الإصدار غير معروف بعد', ver?.version ? 'brand' : '', 'rocket'),
+        ver?.builtAt ? chip(`نُشر ${timeAgo(ver.builtAt)}`) : null
+      ]),
+      el('div.hint', { text: 'عند صدور نسخة جديدة تظهر لافتة في أسفل الشاشة، وبالضغط على «تحديث الآن» تُمحى كل الذواكر ويُعاد جلب المنصة كاملةً — دون حذف التطبيق أو إعادة تثبيته. وتحتفظ المنصة بنسخة من الشاشات والبيانات الأخيرة للعمل دون اتصال.' }),
       el('div.row', { style: { marginTop: '11px' } }, [
-        el('button.btn.ghost', { icon: 'refresh-cw', iconSize: 16, text: 'التحقق من التحديثات', onclick: async () => {
-          const reg = await navigator.serviceWorker?.getRegistration();
-          await reg?.update(); toast('تم التحقق من وجود تحديثات', 'info');
+        el('button.btn.ghost', { icon: 'refresh-cw', iconSize: 16, text: 'التحقق من التحديثات', onclick: async (e) => {
+          /* يُمسَك الزرّ قبل الانتظار: `currentTarget` يُمحى بانتهاء توزيع الحدث */
+          const btn = e.currentTarget;
+          btn.disabled = true;
+          try {
+            const r = await checkForUpdate();
+            if (r === 'waiting') toast('يتوفّر إصدار جديد — اضغط «تحديث الآن» في اللافتة أسفل الشاشة', 'ok', 'إصدار جديد');
+            else if (r === 'installing') toast('يُجهَّز إصدار جديد الآن، وستظهر لافتة التحديث بعد لحظات', 'info');
+            else if (r === 'current') toast('أنت على أحدث إصدار من المنصة', 'ok');
+            else toast('المتصفح لا يدعم عامل الخدمة', 'warn');
+          } finally { btn.disabled = false; }
         } }),
         el('button.btn.ghost', { icon: 'eraser', iconSize: 16, text: 'مسح الذاكرة المؤقتة', onclick: async () => {
           if (!await confirmDialog('سيُعاد تحميل التطبيق بعد مسح الذاكرة المؤقتة.')) return;

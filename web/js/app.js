@@ -105,6 +105,9 @@ function parseRoute() {
 function buildSidebar() {
   const nav = el('nav.side-nav');
   const s = state.session;
+  /* الإصدار من عامل الخدمة لا من رقمٍ مكتوب: هو ما يُطابَق به عند طلب المساندة */
+  const foot = el('div.side-foot', { text: `منصة رقيم · ${s.tenant.code}` });
+  pwa.currentVersion().then(v => { if (v?.version) foot.textContent += ` · إصدار ⁦${v.version}⁩`; });
   let pending = null;
   for (const item of NAV) {
     if (item.group) { pending = item.group; continue; }
@@ -129,7 +132,7 @@ function buildSidebar() {
       ])
     ]),
     nav,
-    el('div.side-foot', { text: `منصة رقيم · ${s.tenant.code} · إصدار ١٫٠` })
+    foot
   ]);
 }
 

@@ -4,8 +4,17 @@
    • استراتيجية الشبكة أولاً لواجهات البيانات مع رجوع إلى الذاكرة المؤقتة
    • استقبال إشعارات الدفع (Web Push) على المتصفح والأندرويد والآيفون
    • مزامنة خلفية لإعادة إرسال العمليات التي تمت أثناء انقطاع الشبكة
+   • تحديثٌ شاملٌ عند كل إصدار جديد — بلا حذف التطبيق وإعادة تثبيته
    ═══════════════════════════════════════════════════════════════════════ */
-const VERSION = 'raqeem-v1.10.0';
+
+/*
+ * ختم الإصدار يُستورَد من ملفٍّ مولَّدٍ عند النشر (`npm run gen:version`)، فيختلف
+ * مع كل نشرٍ ولو لم يُمسّ هذا الملفّ. والمتصفّح يقارن الملفّات المستورَدة كما
+ * يقارن العامل نفسه، فيرى الإصدار الجديد ويُثبّته منتظراً — ثم تُعلَم به الصفحة.
+ * وإن غاب الملفّ (خادم تطوير بلا توليد) يبقى العامل يعمل بختم «dev».
+ */
+try { importScripts('/version.js'); } catch { /* بلا ختم — لا يُعطَّل العامل */ }
+const VERSION = `raqeem-${self.RAQEEM_VERSION || 'dev'}`;
 const SHELL_CACHE = `${VERSION}-shell`;
 const DATA_CACHE = `${VERSION}-data`;
 const TILE_CACHE = `${VERSION}-tiles`;
@@ -72,16 +81,28 @@ async function cleanCopy(res) {
   });
 }
 
+/* هيكل التطبيق يُجلَب من الشبكة متجاوزاً ذاكرة المتصفّح — فلا يُخزَّن قديمٌ باسم جديد */
+async function precacheShell() {
+  const c = await caches.open(SHELL_CACHE);
+  await Promise.allSettled(SHELL.map(async (u) => {
+    const res = await fetch(new Request(u, { cache: 'reload' }));
+    if (!res.ok) throw new Error(`${u}: ${res.status}`);
+    await c.put(u, await cleanCopy(res));
+  }));
+}
+
+/*
+ * العامل الجديد لا يستولي على الصفحة من تلقاء نفسه.
+ *
+ * كان `skipWaiting()` هنا يُفعّل الإصدار الجديد في الخلفية بينما الصفحة تعمل
+ * بشيفرة الإصدار القديم، فيجتمع عامل جديد وصفحة قديمة إلى أن يُعاد التحميل
+ * مصادفةً — ولا تعرف الصفحة أن تحديثاً وقع أصلاً. أمّا الانتظار فيجعل الإصدار
+ * الجديد «منتظراً» تراه الصفحة فتعرض لافتة التحديث، وبالضغط عليها يُنفَّذ
+ * التحديث الشامل دفعةً واحدة: مسح الذواكر ثم تسلّم العامل ثم إعادة التحميل.
+ * وفي أول تثبيتٍ لا عامل قبله فلا انتظار أصلاً.
+ */
 self.addEventListener('install', (e) => {
-  e.waitUntil((async () => {
-    const c = await caches.open(SHELL_CACHE);
-    await Promise.allSettled(SHELL.map(async (u) => {
-      const res = await fetch(new Request(u, { cache: 'reload' }));
-      if (!res.ok) throw new Error(`${u}: ${res.status}`);
-      await c.put(u, await cleanCopy(res));
-    }));
-    await self.skipWaiting();
-  })());
+  e.waitUntil(precacheShell());
 });
 
 self.addEventListener('activate', (e) => {
@@ -101,9 +122,30 @@ self.addEventListener('activate', (e) => {
   })());
 });
 
+/*
+ * التحديث الشامل: تُمحى كل الذواكر — القديمة والحالية معاً — ثم يُعاد جلب
+ * هيكل التطبيق طازجاً من الشبكة، ثم يتسلّم العامل الصفحة. فلا يبقى ملفٌّ من
+ * إصدارٍ سابق في أي ذاكرة، وهو ما كان يُضطرّ المستخدم إلى حذف التطبيق لأجله.
+ */
+async function fullUpdate() {
+  try {
+    const keys = await caches.keys();
+    await Promise.all(keys.map(k => caches.delete(k)));
+    await precacheShell();
+  } catch { /* الشبكة أضعف من الجلب الكامل — التسلّم يمضي والجلب يكتمل لاحقاً */ }
+  await self.skipWaiting();
+}
+
 self.addEventListener('message', (e) => {
-  if (e.data?.type === 'SKIP_WAITING') self.skipWaiting();
-  if (e.data?.type === 'CLEAR_CACHE') caches.keys().then(ks => ks.forEach(k => caches.delete(k)));
+  const type = e.data?.type;
+  if (type === 'SKIP_WAITING') self.skipWaiting();
+  if (type === 'FULL_UPDATE') e.waitUntil(fullUpdate());
+  if (type === 'CLEAR_CACHE') caches.keys().then(ks => ks.forEach(k => caches.delete(k)));
+  if (type === 'GET_VERSION') {
+    const reply = { type: 'version', version: self.RAQEEM_VERSION || 'dev', builtAt: self.RAQEEM_BUILT_AT || null };
+    if (e.ports?.[0]) e.ports[0].postMessage(reply);
+    else e.source?.postMessage(reply);
+  }
 });
 
 /* هيكل التطبيق من الذاكرة المؤقتة، منظَّفاً من علَم إعادة التوجيه */
@@ -200,11 +242,16 @@ self.addEventListener('fetch', (event) => {
    * ولا يُصلحه إلا تحديثٌ أو تحديثان — وهو ما كان يبدو أنّ التعديل لم يُنشر.
    *
    * والمهلة تحمي من الشبكة البطيئة: ثانيتان ثم تُخدَم الذاكرة، فلا يقف الإقلاع.
+   *
+   * والجلب يتحقّق من الخادم لا من ذاكرة المتصفّح (`no-cache`): ملفّات الشيفرة
+   * تُقدَّم من الحافة بصلاحية ساعة، فكان «الشبكة أولاً» يعود بنسخةٍ من ذاكرة
+   * المتصفّح عمرها دقائق — بعد نشرٍ جديد وبعد تحديثٍ شامل سواء. والتحقّق
+   * الشرطي يردّ ٣٠٤ حين لا تغيير، فكلفته رأسٌ لا ملفّ.
    */
   const isCode = /\.(?:js|css|webmanifest)$/.test(url.pathname);
   if (isCode) {
     event.respondWith((async () => {
-      const fresh = fetch(request).then(async (res) => {
+      const fresh = fetch(new Request(request, { cache: 'no-cache' })).then(async (res) => {
         if (res.ok) (await caches.open(SHELL_CACHE)).put(request, await cleanCopy(res.clone()));
         return res;
       });

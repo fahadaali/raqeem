@@ -13,6 +13,7 @@ import { periodic } from '../core/jobs/index.js';
 import { runBackup } from './backup.js';
 import { pushEnabled } from '../core/push.js';
 import { ROOT } from './env.js';
+import { buildVersionSource } from '../../scripts/build-version.js';
 
 const container = createNodeContainer();
 const { cfg } = container;
@@ -26,6 +27,16 @@ app.route('/api', createApi(container));
 /* الملفات الثابتة وتوجيه تطبيق الصفحة الواحدة */
 app.get('/sw.js', async (c) => new Response(fs.readFileSync(path.join(WEB, 'sw.js')), {
   headers: { 'Content-Type': 'application/javascript; charset=utf-8', 'Service-Worker-Allowed': '/', 'Cache-Control': 'no-cache' } }));
+
+/*
+ * ختم الإصدار الذي يستورده عامل الخدمة. يُولَّد عند النشر (`npm run gen:version`)،
+ * وإن لم يُولَّد محلياً رُكِّب من لحظة إقلاع الخادم — فكل تشغيلٍ جديدٍ للخادم
+ * إصدارٌ جديد في عين المتصفّح، وهو ما يريده المطوّر وهو يجرّب التحديث.
+ */
+const VERSION_FILE = path.join(WEB, 'version.js');
+const DEV_VERSION = buildVersionSource({ build: `dev-${Date.now().toString(36)}` });
+app.get('/version.js', (c) => new Response(fs.existsSync(VERSION_FILE) ? fs.readFileSync(VERSION_FILE) : DEV_VERSION, {
+  headers: { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache' } }));
 app.use('/*', serveStatic({
   root: path.relative(process.cwd(), WEB) || './web',
   onFound(pathname, c) {

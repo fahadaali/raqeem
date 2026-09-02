@@ -14,3 +14,5 @@ npm-debug.log*
 .dev.vars
 .wrangler/
 .cf-secrets.json
+# ختم الإصدار يُولَّد عند النشر (npm run gen:version)
+web/version.js
