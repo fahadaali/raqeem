@@ -24,8 +24,10 @@ const landing   = R('web/js/views/landing.js');
 const bRoutes   = R('server/core/routes/billing.js');
 const aRoutes   = R('server/core/routes/auth.js');
 const cRoutes   = R('server/core/routes/comms.js');
-const ALLUI = platform + billing + settings + tickets + login + app + landing + chatUI + hoursUI + reportsUI;
+const pwa       = R('web/js/push.js') + R('web/sw.js');
+const ALLUI = platform + billing + settings + tickets + login + app + landing + chatUI + hoursUI + reportsUI + pwa;
 const ALLSRV = routes + bRoutes + aRoutes + cRoutes + R('server/core/routes/hr.js') + R('server/core/workhours.js')
+  + R('scripts/build-version.js') + R('server/node/index.js') + R('server/core/webpush.js') + R('server/core/push.js')
   + R('server/core/http.js') + R('server/core/sql.js') + R('server/core/jobs/reports.js')
   + R('server/core/zatca.js') + R('server/core/health.js') + R('server/core/billing.js')
   + R('server/core/coupons.js') + R('server/core/announce.js') + R('server/core/payments.js')
@@ -155,6 +157,14 @@ check('تقارير', 'ملخّص الحضور سطرٌ لكل منسوب', 'att
 check('تقارير', 'الإجازات وكشف المنسوبين', ['leaves: {', 'employees: {'], null);
 check('تقارير', 'الكتالوج مصنَّفٌ بوحداته ويُبحَث فيه', null, ['rep-group', 'paintCatalog']);
 check('تقارير', 'مبدّل المستوى يُعيد التشغيل بمجرّد تبديله', null, "if (f.type === 'group') ctrl.addEventListener");
+
+console.log('\n▸ اكتمال التحديث الشامل — إصدارٌ يُكتشف ولافتةٌ تطلب وتحديثٌ لا يُبقي قديماً');
+check('تحديث', 'ختم الإصدار يُولَّد عند النشر ويُخدَم على Node', ['buildVersionSource', "app.get('/version.js'"], "importScripts('/version.js')");
+check('تحديث', 'العامل الجديد ينتظر واللافتة تعرضه', null, ['registration.waiting', 'update-banner']);
+check('تحديث', 'التحديث الشامل من الصفحة إلى العامل', null, ["type: 'FULL_UPDATE'", 'async function fullUpdate']);
+check('تحديث', 'التسلّم يُعيد التحميل مرّةً', null, ["'controllerchange'", 'reloadOnce']);
+check('تحديث', 'الإصدار ظاهرٌ في الإعدادات ويُبحث عنه بزرّ', null, ['currentVersion', 'checkForUpdate', 'الإصدار والتحديثات']);
+check('تحديث', 'وسم الدفع مطهَّر ومدّة البقاء يوم', ['safeTopic', 'PUSH_TTL'], null);
 
 console.log(`\n  ${fail ? '✘' : '✔'} ${pass} مكتمل · ${fail} ناقص\n`);
 process.exit(fail ? 1 : 0);

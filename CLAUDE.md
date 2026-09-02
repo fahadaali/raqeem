@@ -39,6 +39,8 @@ BASE=http://localhost:3000 npm run verify   # تدقيق تكاملي (يحتا�
 | `openScheduleEditor()` في `web/js/views/workhours.js` | **كل** تحريرٍ لأيام دوامٍ وساعاته — للمجمّع أو لفرعٍ أو لمنسوب. لا يُبنى محرّر أيامٍ ثانٍ |
 | `effectiveSchedule()`/`schedulesFor()` في `server/core/workhours.js` | قراءة الدوام النافذ. لا يُقرأ `settings.workday` مباشرةً في أي مسار جديد |
 | `reachableUsers()` في `server/core/routes/comms.js` | من يبلغهم المستخدم في المحادثات — مصدرٌ واحد للدليل ولحارس الإضافة معاً |
+| `web/version.js` المولَّد بـ `npm run gen:version` | ختم الإصدار الذي يستورده `web/sw.js`. لا يُكتب رقم إصدارٍ ثابت في العامل، ولا يُودَع الملفّ: يولّده `cf:build` عند النشر ويركّبه خادم Node وحده |
+| `applyUpdate()`/`showUpdateBanner()` في `web/js/push.js` | التحديث الشامل ولافتته السفلية. لا تُبنى لافتة تحديثٍ ثانية ولا يُرسَل `SKIP_WAITING` مباشرةً من شاشة |
 
 ### أين تُضاف أيقونة جديدة
 

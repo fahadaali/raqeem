@@ -30,24 +30,58 @@ const b64ToU8 = (base64) => {
   return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
 };
 
-/* ── تسجيل عامل الخدمة ─────────────────────────────────────────── */
+/* ── تسجيل عامل الخدمة والتحديث الشامل ─────────────────────────── */
+/*
+ * دورة الإصدار الجديد:
+ *   ١) المتصفّح يجد `sw.js` أو ختمَ الإصدار الذي يستورده مختلفاً → يثبّت العامل
+ *      الجديد ويُبقيه «منتظراً» (لا يستولي على الصفحة وحده).
+ *   ٢) الصفحة ترى المنتظر → لافتة سفلية: «يتوفّر إصدار جديد».
+ *   ٣) بالضغط على «تحديث الآن» يُطلَب من المنتظر تحديثٌ شامل: يمحو كل الذواكر،
+ *      يجلب هيكل التطبيق طازجاً، ثم يتسلّم الصفحة → `controllerchange` → إعادة
+ *      تحميلٍ واحدة بشيفرة الإصدار الجديد كاملةً. لا حذف تطبيق ولا إعادة تثبيت.
+ *
+ * والبحث عن الإصدار لا يُترك لدورة المتصفّح اليومية وحدها: يُعاد عند كل عودةٍ
+ * إلى الشاشة وعند عودة الشبكة وكل ساعة — فمن يُبقي التطبيق مفتوحاً أياماً
+ * (شاشة الاستقبال، جهاز التحضير) يرى الإصدار الجديد في ساعته لا في يومه.
+ */
+const UPDATE_CHECK_MS = 60 * 60 * 1000;
+/* صفحةٌ لم يكن لها عاملٌ مسيطر عند فتحها: تسلُّم أول عامل ليس تحديثاً فلا يُعاد تحميلها */
+const hadController = !!navigator.serviceWorker?.controller;
+let updating = false, reloading = false;
+
 export async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return null;
   try {
-    registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+    /* `updateViaCache: 'none'`: ختم الإصدار المستورَد يُجلَب من الخادم لا من ذاكرة المتصفّح */
+    registration = await navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' });
+
+    /* إصدارٌ سبق أن ثُبّت وانتظر — ربّما أُغلقت اللافتة أو فُتحت الصفحة بعده */
+    if (registration.waiting && navigator.serviceWorker.controller) showUpdateBanner();
     registration.addEventListener('updatefound', () => {
       const sw = registration.installing;
       sw?.addEventListener('statechange', () => {
         if (sw.state === 'installed' && navigator.serviceWorker.controller) showUpdateBanner();
       });
     });
+
+    /* تسلُّم العامل الجديد — من هذه النافذة أو من نافذةٍ أخرى ضغطت «تحديث» — إعادةُ تحميلٍ واحدة */
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController && !updating) return;
+      reloadOnce();
+    });
+
     navigator.serviceWorker.addEventListener('message', (e) => {
       const { type, url, payload } = e.data || {};
       if (type === 'navigate' && url) window.dispatchEvent(new CustomEvent('raqeem:navigate', { detail: url }));
       if (type === 'push') window.dispatchEvent(new CustomEvent('raqeem:push', { detail: payload }));
-      if (type === 'resubscribe') subscribePush({ silent: true });
+      if (type === 'resubscribe') subscribePush({ silent: true, ask: false });
       if (type === 'sync') window.dispatchEvent(new CustomEvent('raqeem:sync'));
     });
+
+    const check = () => registration?.update().catch(() => {});
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+    window.addEventListener('online', check);
+    setInterval(check, UPDATE_CHECK_MS);
     return registration;
   } catch (e) {
     console.warn('[sw] فشل التسجيل:', e.message);
@@ -55,16 +89,72 @@ export async function registerServiceWorker() {
   }
 }
 
+function reloadOnce() {
+  if (reloading) return;
+  reloading = true;
+  location.reload();
+}
+
+/** إصدار العامل المسيطر على هذه الصفحة — أو null إن لم يكن عاملٌ بعد */
+export function currentVersion() {
+  const ctl = navigator.serviceWorker?.controller;
+  if (!ctl) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const ch = new MessageChannel();
+    const t = setTimeout(() => resolve(null), 1500);
+    ch.port1.onmessage = (e) => { clearTimeout(t); resolve(e.data || null); };
+    try { ctl.postMessage({ type: 'GET_VERSION' }, [ch.port2]); } catch { clearTimeout(t); resolve(null); }
+  });
+}
+
+/**
+ * بحثٌ فوري عن إصدار جديد — من زرّ الإعدادات.
+ * @returns {'waiting'|'installing'|'current'|'unsupported'}
+ */
+export async function checkForUpdate() {
+  if (!('serviceWorker' in navigator)) return 'unsupported';
+  const reg = registration || await navigator.serviceWorker.getRegistration();
+  if (!reg) return 'unsupported';
+  await reg.update().catch(() => {});
+  if (reg.waiting) { showUpdateBanner(); return 'waiting'; }
+  if (reg.installing) return 'installing';
+  return 'current';
+}
+
+/**
+ * تنفيذ التحديث الشامل على الإصدار المنتظر.
+ * إن لم يكن منتظرٌ (تسلّم في نافذةٍ أخرى مثلاً) كفت إعادةُ التحميل، فالعامل
+ * المسيطر هو الجديد أصلاً. وإن تأخّر التسلّم — شبكةٌ بطيئة تُعيد جلب الهيكل —
+ * تُعاد الصفحة بعد مهلةٍ على كل حال: العامل يكمل الجلب في الخلفية.
+ */
+export async function applyUpdate() {
+  updating = true;
+  const reg = registration || await navigator.serviceWorker?.getRegistration();
+  const target = reg?.waiting || reg?.installing;
+  if (!target) return reloadOnce();
+  target.postMessage({ type: 'FULL_UPDATE' });
+  setTimeout(reloadOnce, 15000);
+}
+
 function showUpdateBanner() {
-  const bar = el('div.install-banner', {}, [
-    el('img', { src: '/assets/brand/monogram-primary.svg', alt: '' }),
-    el('div.tx', {}, [el('b', { text: 'يتوفر تحديث جديد للمنصة' }),
-      el('p', { text: 'أعد التحميل للحصول على آخر التحسينات.' })]),
+  if (document.querySelector('.update-banner')) return;
+  /* لافتة الإصدار أولى من لافتتَي التثبيت والإشعارات — لا تتزاحم اللافتات في أسفل الشاشة */
+  document.querySelectorAll('.install-banner').forEach(b => b.remove());
+  const bar = el('div.install-banner.update-banner', { role: 'status' }, [
+    el('span.ic', { icon: 'refresh-cw', iconSize: 30, style: { flex: '0 0 auto' } }),
+    el('div.tx', {}, [
+      el('b', { text: 'يتوفّر إصدار جديد من المنصة' }),
+      el('p', { text: 'حدّث الآن لتعمل بأحدث نسخة كاملةً — دون حذف التطبيق أو إعادة تثبيته.' })
+    ]),
     el('button.btn.sm', {
-      text: 'تحديث',
-      onclick: () => { registration?.waiting?.postMessage({ type: 'SKIP_WAITING' }); location.reload(); }
+      text: 'تحديث الآن',
+      onclick: (e) => {
+        bar.classList.add('busy');
+        e.currentTarget.textContent = 'جارٍ التحديث...';
+        applyUpdate();
+      }
     }),
-    el('button.icon-btn', { icon: 'x', iconSize: 16, 'aria-label': 'إخفاء', onclick: () => bar.remove() })
+    el('button.icon-btn', { icon: 'x', iconSize: 16, 'aria-label': 'لاحقاً', onclick: () => bar.remove() })
   ]);
   document.body.append(bar);
 }
@@ -137,7 +227,9 @@ export async function pushStatus() {
 /** إعادة الاشتراك تلقائياً عند الدخول إن سبق تفعيله على هذا الجهاز */
 export async function autoResubscribe() {
   if (localStorage.getItem('raqeem_push') !== '1') return;
-  if (Notification?.permission !== 'granted') return;
+  /* `Notification` غير معرَّفة أصلاً في سفاري iOS خارج التطبيق المثبَّت — والوصول
+     إلى معرِّفٍ غير معرَّف يرمي خطأً لا يمنعه `?.`، فيُقرأ من `globalThis` */
+  if (globalThis.Notification?.permission !== 'granted') return;
   await subscribePush({ silent: true, ask: false }).catch(() => {});
 }
 
@@ -151,7 +243,9 @@ window.addEventListener('appinstalled', () => {
   deferredPrompt = null;
   localStorage.setItem('raqeem_installed', '1');
   toast('تم تثبيت منصة رقيم على جهازك بنجاح', 'ok', 'تم التثبيت');
-  setTimeout(() => subscribePush({ silent: true }), 1800);
+  /* بلا طلب إذن: طلبُ الإذن خارج نقرةِ المستخدم يُرفَض صامتاً على سفاري ويُدفن
+     على كروم — فيُكتفى بمن سبق أن أذِن، ويُسأل الباقون من لافتة الإشعارات بنقرتهم */
+  setTimeout(() => subscribePush({ silent: true, ask: false }), 1800);
 });
 
 export const canInstall = () => !!deferredPrompt;

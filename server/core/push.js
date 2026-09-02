@@ -5,6 +5,14 @@ import { nowUTC } from './sql.js';
 export const pushEnabled = (cfg) => !!(cfg.vapid.publicKey && cfg.vapid.privateKey);
 export const publicKey = (cfg) => cfg.vapid.publicKey;
 
+/*
+ * مدّة بقاء الإشعار عند خدمة الدفع حين يكون الجهاز مغلقاً أو بلا شبكة.
+ * كانت ساعةً واحدة، فمن أُسند إليه عملٌ صباحاً وجواله في الدرج حتى العصر لم
+ * يصله شيء. يومٌ كامل يُبقي الإشعار حتى يعود الجهاز، والوسم (Topic) يضمن أن
+ * الأحدث يحلّ محلّ الأقدم من النوع نفسه فلا تتراكم.
+ */
+const PUSH_TTL = 24 * 3600;
+
 /**
  * إرسال إشعار دفع لمستخدمين محددين
  * (متصفحات سطح المكتب، أندرويد، وآيفون بعد تثبيت التطبيق)
@@ -26,7 +34,7 @@ export async function sendPush(app, tenantId, userIds, payload) {
     try {
       const r = await sendWebPush(
         { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-        payload, vapid, { ttl: 3600, urgency: payload.urgency || 'normal', topic: payload.tag });
+        payload, vapid, { ttl: PUSH_TTL, urgency: payload.urgency || 'normal', topic: payload.tag });
       if (r.ok) { sent++; touch.push(s.id); }
       else if (r.gone) { drop.push(s.id); removed++; }
       else if (s.failed_count >= 5) { drop.push(s.id); removed++; }

@@ -969,6 +969,26 @@ section('١٥. نظام الإشعارات المتكامل', async () => {
   eq('تعليم الكل كمقروء', (await call('POST', '/api/notifications/read', { token: S.teacher })).data.unread, 0);
   await call('POST', '/api/notifications/unsubscribe', { token: S.teacher, body: {} });
   ok('إلغاء اشتراك الجهاز', (await call('GET', '/api/notifications/devices', { token: S.teacher })).data.length === 0);
+
+  /* ─── طبقة الدفع نفسها: ما يصل خدمات الدفع على الأجهزة المختلفة ─── */
+  const { readFileSync } = await import('node:fs');
+  const { safeTopic, encryptPayload, vapidHeaders, generateVAPIDKeys } = await import('../server/core/webpush.js');
+  eq('وسم الإشعار يُطهَّر إلى أبجدية base64url', safeTopic('finance.request.approved-12'), 'finance-request-approved-12');
+  ok('والوسم لا يتجاوز ٣٢ محرفاً', safeTopic('task.due.soon.reminder-' + '9'.repeat(40)).length === 32);
+  ok('ووسمٌ فارغ لا يُرسَل رأساً', safeTopic('') === null && safeTopic('...') === null);
+  const keys = await generateVAPIDKeys();
+  const auth = await vapidHeaders('https://web.push.apple.com/QW1', { ...keys, subject: 'mailto:admin@example.com' });
+  const jwt = auth.Authorization.match(/^vapid t=([^,]+), k=(.+)$/);
+  ok('رأس التفويض VAPID بصيغة RFC 8292', !!jwt && jwt[2] === keys.publicKey && jwt[1].split('.').length === 3);
+  const claims = JSON.parse(Buffer.from(jwt[1].split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString());
+  ok('الجمهور أصلُ خدمة الدفع والصلاحية دون يوم — كما تشترط Apple',
+    claims.aud === 'https://web.push.apple.com' && claims.exp - Math.floor(Date.now() / 1000) <= 24 * 3600 && claims.sub.startsWith('mailto:'));
+  const ua = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+  const p256dh = Buffer.from(await crypto.subtle.exportKey('raw', ua.publicKey)).toString('base64url');
+  const enc = await encryptPayload(JSON.stringify({ title: 'اختبار' }), { p256dh, auth: Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString('base64url') });
+  ok('الحمولة مشفّرة بترويسة aes128gcm صحيحة', enc.length > 86 && new DataView(enc.buffer, enc.byteOffset).getUint32(16) === 4096 && enc[20] === 65);
+  ok('مدّة البقاء عند خدمة الدفع يومٌ كامل لا ساعة',
+    /PUSH_TTL = 24 \* 3600/.test(readFileSync('server/core/push.js', 'utf8')));
 });
 
 /* ═════════ ١٦. الملفات والتخزين المعزول ═════════ */
@@ -1132,6 +1152,42 @@ section('١٨. الواجهة وتطبيق PWA', async () => {
     ['billing.js', 'pricing.js', 'signup.js'].every(v => sw.includes(`/js/views/${v}`)));
   ok('عامل الخدمة يدعم العمل دون اتصال', sw.includes('offline.html'));
   ok('عامل الخدمة يعالج تغيّر الاشتراك', sw.includes('pushsubscriptionchange'));
+
+  /* ─── التحديث الشامل: إصدارٌ يُكتشف، ولافتةٌ تطلب، وتحديثٌ يمحو كل قديم ─── */
+  const { readFileSync } = await import('node:fs');
+  const ver = await call('GET', '/version.js', { raw: true });
+  ok('ختم الإصدار يُخدَم شيفرةً لا يُخزَّن',
+    ver.status === 200 && /RAQEEM_VERSION\s*=\s*"[^"]+"/.test(ver.buf.toString())
+      && (ver.res.headers.get('content-type') || '').includes('javascript')
+      && /no-cache/.test(ver.res.headers.get('cache-control') || ''));
+  ok('عامل الخدمة يستورد ختم الإصدار فيتغيّر مع كل نشر',
+    /importScripts\('\/version\.js'\)/.test(sw) && /RAQEEM_VERSION/.test(sw));
+  const installBlock = sw.slice(sw.indexOf("addEventListener('install'"), sw.indexOf("addEventListener('activate'"));
+  ok('العامل الجديد ينتظر ولا يستولي على الصفحة وحده',
+    installBlock.length > 0 && !/skipWaiting/.test(installBlock));
+  ok('التحديث الشامل يمحو كل الذواكر ويعيد جلب الهيكل ثم يتسلّم',
+    /FULL_UPDATE/.test(sw) && /async function fullUpdate/.test(sw)
+      && /keys\.map\(k => caches\.delete\(k\)\)/.test(sw) && /await precacheShell\(\)/.test(sw)
+      && /await self\.skipWaiting\(\)/.test(sw));
+  ok('العامل يجيب عن إصداره', /GET_VERSION/.test(sw) && /type: 'version'/.test(sw));
+  ok('شيفرة التطبيق تُجلَب متحقَّقةً من الخادم لا من ذاكرة المتصفّح',
+    /new Request\(request, \{ cache: 'no-cache' \}\)/.test(sw));
+  const pushJs = readFileSync('web/js/push.js', 'utf8');
+  ok('الصفحة ترى الإصدار المنتظر عند فتحها وعند اكتشافه',
+    /registration\.waiting && navigator\.serviceWorker\.controller\) showUpdateBanner/.test(pushJs)
+      && /'updatefound'/.test(pushJs));
+  ok('لافتة الإصدار سفلية بنصّها وزرّها وبلا رمز تعبيري',
+    /update-banner/.test(pushJs) && pushJs.includes('يتوفّر إصدار جديد من المنصة') && pushJs.includes('تحديث الآن')
+      && /icon: 'refresh-cw'/.test(pushJs));
+  ok('التسلّم يُعيد التحميل مرّةً واحدة — ولا يُعيدها أول تثبيت',
+    /'controllerchange'/.test(pushJs) && /hadController/.test(pushJs) && /function reloadOnce/.test(pushJs));
+  ok('البحث عن إصدارٍ جديد عند العودة إلى الشاشة وعودة الشبكة ودورياً',
+    /updateViaCache: 'none'/.test(pushJs) && /'visibilitychange'/.test(pushJs)
+      && /addEventListener\('online', check\)/.test(pushJs) && /setInterval\(check, UPDATE_CHECK_MS\)/.test(pushJs));
+  ok('لا يُطلَب إذن الإشعارات خارج نقرة المستخدم',
+    /subscribePush\(\{ silent: true, ask: false \}\), 1800\)/.test(pushJs)
+      && /if \(type === 'resubscribe'\) subscribePush\(\{ silent: true, ask: false \}\)/.test(pushJs)
+      && /globalThis\.Notification\?\.permission/.test(pushJs));
 
   for (const size of [192, 512]) {
     const ic = await call('GET', `/assets/icons/icon-${size}.png`, { raw: true });

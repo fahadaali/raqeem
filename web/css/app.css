@@ -1246,6 +1246,15 @@ table.tbl.sheet td:first-child::after,table.tbl.sheet th:first-child::after{
 .install-banner .tx{flex:1;min-width:0}
 .install-banner b{display:block;font-size:13.5px}
 .install-banner p{margin:1px 0 0;font-size:11.5px;color:var(--text-2);line-height:1.6}
+/* لافتة الإصدار الجديد: حدٌّ بلون العلامة يميّزها عن لافتة التثبيت، وتعلو التنبيهات
+   العابرة لأنها تنتظر قراراً. والأيقونة تدور ما دام التحديث جارياً. */
+.update-banner{border-color:var(--primary);z-index:160}
+/* اللافتة ثابتةٌ فوق أسفل المحتوى — فيُفسَح له ما تحتها كي يبلغ آخرُه العين والإصبع */
+body:has(.update-banner) .content{padding-block-end:150px}
+.update-banner>.ic{color:var(--primary)}
+.update-banner.busy>.ic{animation:spin 1s linear infinite}
+.update-banner.busy .btn{opacity:.7;pointer-events:none}
+@keyframes spin{to{transform:rotate(360deg)}}
 
 .bottom-nav{display:none;position:fixed;inset-inline:0;inset-block-end:0;background:var(--surface);
   border-top:1px solid var(--border);z-index:70;padding-bottom:var(--safe-b);box-shadow:var(--shadow)}

@@ -18,6 +18,7 @@
     "gen:icons": "node scripts/gen-icons.js",
     "gen:pattern": "node scripts/gen-pattern.js",
     "gen:screens": "node scripts/gen-screens.js",
+    "gen:version": "node scripts/build-version.js",
     "backup": "node scripts/backup.js",
     "setup": "npm run migrate && npm run seed && npm run gen:icons",
     "verify": "node scripts/verify.js",
@@ -32,7 +33,7 @@
     "cf:bootstrap": "node scripts/cf-bootstrap.js",
     "cf:secrets": "node scripts/cf-secrets.js",
     "cf:build:headers": "node scripts/build-headers.js",
-    "cf:build": "npm run cf:build:migrations && npm run cf:build:headers",
+    "cf:build": "npm run cf:build:migrations && npm run cf:build:headers && npm run gen:version",
     "verify:realtime": "node scripts/verify-realtime.js",
     "verify:identity": "node scripts/verify-identity.js",
     "verify:all": "npm run verify:wiring && npm run verify && npm run verify:realtime && npm run verify:identity"

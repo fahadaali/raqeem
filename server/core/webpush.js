@@ -86,6 +86,18 @@ export async function encryptPayload(plaintext, keys) {
 }
 
 /**
+ * رأس `Topic` وفق RFC 8030: اثنان وثلاثون محرفاً على الأكثر من أبجدية base64url.
+ *
+ * كانت الوسوم تمرّ كما هي — `finance.request.approved-12` — والنقطة ليست من
+ * الأبجدية، فترفضها بعض خدمات الدفع بـ٤٠٠ ويسقط الإشعار على ذلك الجهاز وحده
+ * دون أثرٍ يدلّ عليه. فيُطهَّر الوسم هنا حيث يُكتب الرأس، لا في كل مُرسِل.
+ */
+export const safeTopic = (topic) => {
+  const t = String(topic || '').replace(/[^A-Za-z0-9_-]/g, '-').replace(/^-+|-+$/g, '').slice(0, 32);
+  return t || null;
+};
+
+/**
  * إرسال إشعار دفع واحد.
  * @returns {{ok:boolean, status:number, gone:boolean}}
  */
@@ -99,7 +111,8 @@ export async function sendWebPush(subscription, payload, vapid, { ttl = 3600, ur
     TTL: String(ttl),
     Urgency: urgency
   };
-  if (topic) headers.Topic = topic;
+  const safe = safeTopic(topic);
+  if (safe) headers.Topic = safe;
 
   const res = await fetch(subscription.endpoint, { method: 'POST', headers, body: encrypted });
   return { ok: res.ok, status: res.status, gone: res.status === 404 || res.status === 410 };
@@ -113,4 +126,4 @@ export async function generateVAPIDKeys() {
   return { publicKey: b64uEncode(pub), privateKey: jwk.d };
 }
 
-export default { sendWebPush, encryptPayload, vapidHeaders, generateVAPIDKeys };
+export default { sendWebPush, encryptPayload, vapidHeaders, generateVAPIDKeys, safeTopic };
