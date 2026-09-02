@@ -25,8 +25,10 @@ const bRoutes   = R('server/core/routes/billing.js');
 const aRoutes   = R('server/core/routes/auth.js');
 const cRoutes   = R('server/core/routes/comms.js');
 const pwa       = R('web/js/push.js') + R('web/sw.js');
-const ALLUI = platform + billing + settings + tickets + login + app + landing + chatUI + hoursUI + reportsUI + pwa;
+const session   = R('web/js/api.js') + R('web/js/admin-state.js');
+const ALLUI = platform + billing + settings + tickets + login + app + landing + chatUI + hoursUI + reportsUI + pwa + session;
 const ALLSRV = routes + bRoutes + aRoutes + cRoutes + R('server/core/routes/hr.js') + R('server/core/workhours.js')
+  + R('server/core/routes/admin-auth.js') + R('server/core/middleware/auth.js') + R('server/core/middleware/admin-auth.js')
   + R('scripts/build-version.js') + R('server/node/index.js') + R('server/core/webpush.js') + R('server/core/push.js')
   + R('server/core/http.js') + R('server/core/sql.js') + R('server/core/jobs/reports.js')
   + R('server/core/zatca.js') + R('server/core/health.js') + R('server/core/billing.js')
@@ -165,6 +167,14 @@ check('تحديث', 'التحديث الشامل من الصفحة إلى الع
 check('تحديث', 'التسلّم يُعيد التحميل مرّةً', null, ["'controllerchange'", 'reloadOnce']);
 check('تحديث', 'الإصدار ظاهرٌ في الإعدادات ويُبحث عنه بزرّ', null, ['currentVersion', 'checkForUpdate', 'الإصدار والتحديثات']);
 check('تحديث', 'وسم الدفع مطهَّر ومدّة البقاء يوم', ['safeTopic', 'PUSH_TTL'], null);
+
+console.log('\n▸ اكتمال الدخول الموحّد — بابٌ واحد والخادمُ يحسم النوع');
+check('دخول', 'الخادم يقيس البيانات على الطبقتين ويردّ النوع', ['const asUser = await userLogin', 'const asAdmin = await adminLogin', "kind: 'user'"], "data.kind === 'admin'");
+check('دخول', 'الرمزان بجمهورين متبادلَي الرفض', ['payload.adm !== 1 || payload.tid !== undefined', 'if (payload.adm) throw forbidden'], null);
+check('دخول', 'القفل مشترك بين البابين', ['adminLockKey', 'userLockKey'], null);
+check('دخول', 'جلسة الادمن في مفاتيحها لا في مفاتيح المجمّع', null, ['saveAdminTokens(data.accessToken, data.refreshToken)', 'raqeem_admin_at']);
+check('دخول', 'اللوحة تحيل إلى الباب الواحد ولا تبني شاشة دخولٍ ثانية', null, ['toUnifiedLogin', '/login?next=']);
+check('دخول', 'وما بعد الدخول لا يُتبَع خارج اللوحة', null, "/^\\/admin(\\/[\\w\\-/]*)?$/.test(next)");
 
 console.log(`\n  ${fail ? '✘' : '✔'} ${pass} مكتمل · ${fail} ناقص\n`);
 process.exit(fail ? 1 : 0);

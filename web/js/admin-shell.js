@@ -1,6 +1,6 @@
 import api from './admin-api.js';
 import { admin, clearAdminSession } from './admin-state.js';
-import { el, clear, qs, toast, field, input, skeleton, empty } from './util.js';
+import { el, clear, qs, toast, skeleton, empty } from './util.js';
 import * as S from './views/admin/sections.js';
 
 /**
@@ -56,50 +56,18 @@ function parse() {
   return { path, query: Object.fromEntries(new URLSearchParams(location.search)) };
 }
 
-/* ═══════════════ شاشة الدخول ═══════════════ */
-function loginScreen() {
-  const email = input({ type: 'email', autocomplete: 'username', placeholder: 'admin@raqeem.sa' });
-  const pass = input({ type: 'password', autocomplete: 'current-password' });
-  const totp = input({ inputmode: 'numeric', autocomplete: 'one-time-code', placeholder: '••••••' });
-  const totpField = field('رمز التحقّق بخطوتين', totp);
-  totpField.hidden = true;
-  const msg = el('div.hint', { style: { color: 'var(--danger)', minHeight: '20px' } });
-  const btn = el('button.btn.gold.block', { type: 'submit', text: 'دخول لوحة المنصة' });
-
-  const submit = async (e) => {
-    e?.preventDefault();
-    if (!email.value.trim() || !pass.value) { msg.textContent = 'أدخل البريد وكلمة المرور'; return; }
-    btn.disabled = true; btn.textContent = 'جارٍ التحقّق…'; msg.textContent = '';
-    try {
-      await api.login(email.value.trim(), pass.value, totp.value.trim() || undefined);
-      await renderAdmin();
-    } catch (err) {
-      if (err.code === 'TOTP_REQUIRED') {
-        totpField.hidden = false; totp.focus();
-      } else {
-        msg.textContent = err.message || 'تعذّر الدخول';
-        pass.value = '';
-      }
-      btn.disabled = false; btn.textContent = 'دخول لوحة المنصة';
-    }
-  };
-
-  return el('div.admin-login', {}, [
-    el('form.admin-login-card', { onsubmit: submit, novalidate: true }, [
-      el('div.admin-login-brand', {}, [
-        el('img', { src: '/assets/brand/monogram-primary.svg', alt: '', width: 64, height: 64 }),
-        el('h1', { text: 'لوحة منصة رقيم' }),
-        el('p', { text: 'الدخول مقصور على حسابات إدارة المنصة' })
-      ]),
-      field('البريد الإلكتروني', email, { required: true }),
-      field('كلمة المرور', pass, { required: true }),
-      totpField,
-      btn,
-      msg,
-      /* «العودة» في RTL تشير يميناً — اتجاه القراءة (دليل الهوية · البند ٨) */
-      el('a.admin-login-back', { href: '/', icon: 'arrow-right', iconSize: 16, text: 'العودة إلى المنصة' })
-    ])
-  ]);
+/* ═══════════════ الدخول ═══════════════ */
+/*
+ * لا شاشة دخولٍ ثانية: بابُ المنصة الرسمي `/login` يخدم الطبقتين، والخادمُ يحسم
+ * نوع الحساب ويردّ رمزاً بجمهوره. فمن قصد اللوحة بلا جلسة يُحال إلى الباب
+ * الواحد ويُخبَر إلى أين يعود، ولا يُتبَع من `next` إلا ما كان داخل اللوحة.
+ */
+function toUnifiedLogin() {
+  document.documentElement.classList.remove('admin-mode');
+  const here = location.pathname.replace(/\/+$/, '') || '/admin';
+  const target = `/login?next=${encodeURIComponent(here)}`;
+  if (typeof window.navigate === 'function') window.navigate(target, true);
+  else location.replace(target);
 }
 
 /* ═══════════════ الهيكل ═══════════════ */
@@ -149,17 +117,11 @@ export async function renderAdmin() {
   const app = qs('#app');
   document.documentElement.classList.add('admin-mode');
 
-  if (!admin.accessToken) {
-    clear(app).append(loginScreen());
-    app.hidden = false;
-    document.getElementById('boot')?.remove();
-    return;
-  }
+  if (!admin.accessToken) return toUnifiedLogin();
 
   if (!admin.session) {
     try { await api.me(); }
-    catch { clearAdminSession(); clear(app).append(loginScreen()); app.hidden = false;
-      document.getElementById('boot')?.remove(); return; }
+    catch { clearAdminSession(); return toUnifiedLogin(); }
   }
 
   const route = parse();
