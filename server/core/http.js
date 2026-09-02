@@ -3,6 +3,7 @@
  * حتى تبقى شيفرة المسارات واحدة على Node و Cloudflare Workers.
  */
 import { AppError } from './errors.js';
+import { isMissingSchema } from './sql.js';
 
 /** يبني كائن طلب موحّد الشكل من سياق Hono */
 export async function buildRequest(c) {
@@ -74,6 +75,18 @@ export function errorHandler(err, c) {
   }
   if (msg.includes('UNIQUE constraint failed') || msg.includes('D1_ERROR: UNIQUE')) {
     return c.json({ error: { code: 'CONFLICT', message: 'القيمة مستخدمة مسبقاً' } }, 409);
+  }
+  /*
+   * جدولٌ أو عمودٌ مستجدٌّ لم يصل قاعدةَ التشغيل بعد.
+   *
+   * نشرُ الشيفرة وتطبيقُ المخطط خطوتان منفصلتان عن قصد، وبينهما نافذةٌ تعمل
+   * فيها شيفرةٌ جديدة على مخطَّطٍ قديم. وما استطاع أن يتنحّى إلى سلوكه السابق
+   * فعل (انظر `workhours.js`)، وما لم يستطع يقول سببَه صراحةً — فيعرف مديرُ
+   * المنصة أنّ عليه تشغيل التهيئة، ولا يرى المستخدمُ «خطأ غير متوقع».
+   */
+  if (isMissingSchema(err)) {
+    return c.json({ error: { code: 'SCHEMA_PENDING',
+      message: 'هذه الشاشة تحتاج تحديث مخطط قاعدة البيانات — يطبّقه مدير المنصة من التهيئة' } }, 503);
   }
   const dev = c.get('app')?.cfg?.env !== 'production';
   console.error('[error]', err?.stack || err);

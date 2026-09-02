@@ -25,6 +25,7 @@ const aRoutes   = R('server/core/routes/auth.js');
 const cRoutes   = R('server/core/routes/comms.js');
 const ALLUI = platform + billing + settings + tickets + login + app + landing + chatUI + hoursUI;
 const ALLSRV = routes + bRoutes + aRoutes + cRoutes + R('server/core/routes/hr.js') + R('server/core/workhours.js')
+  + R('server/core/http.js') + R('server/core/sql.js')
   + R('server/core/zatca.js') + R('server/core/health.js') + R('server/core/billing.js')
   + R('server/core/coupons.js') + R('server/core/announce.js') + R('server/core/payments.js')
   + R('server/core/features.js') + R('server/core/security.js') + R('server/core/jobs/backup.js')
@@ -126,6 +127,10 @@ check('دوام', 'الرجوع إلى الجدول الموروث', "router.del
 check('دوام', 'التأخّر يُقاس بجدول صاحبه', ['lateMinutes(schedule', 'late_minutes'], 'late_minutes');
 check('دوام', 'المسير يبني الغياب على أيام الجدول', ['workingDaysBetween', 'expected_month_days'], 'expected_days');
 check('دوام', 'لوحة الدوام في شاشة الموارد البشرية', null, ["'أوقات الدوام'", 'schedulesTab']);
+/* نشرُ الشيفرة قبل الترحيلة نافذةٌ حقيقية — والتحضير أوّلُ ما يسقط فيها إن لم يتنحَّ */
+check('دوام', 'قراءة الجداول تتنحّى قبل تطبيق الترحيلة', ['isMissingSchema', 'readOrNull'], null);
+check('دوام', 'والتحضير يُكتب بلا عمود الدقائق إن غاب', 'INSERT INTO attendance(${COLS}) VALUES', null);
+check('دوام', 'وما لا يتنحّى يقول سببه لا «خطأ غير متوقع»', "code: 'SCHEMA_PENDING'", null);
 
 console.log('\n▸ اكتمال المحادثات المستقلة — خاصّة ومجموعات');
 check('محادثات', 'صندوق المحادثات', "router.get('/chats'", '/api/comms/chats');

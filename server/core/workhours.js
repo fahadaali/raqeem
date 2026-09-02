@@ -1,4 +1,4 @@
-import { j } from './sql.js';
+import { j, isMissingSchema } from './sql.js';
 
 /**
  * جداول الدوام — أيام العمل وساعاته، وعليها يُقاس التأخّر ويُبنى مسير الرواتب.
@@ -122,20 +122,36 @@ export const scheduleFromRow = (row, settings = {}) => ({
   updated_at: row.updated_at || null
 });
 
+/** الجدول الموروث من إعدادات الجهة — أساسٌ لا يحتاج جدولاً في القاعدة */
+const fallbackSchedule = (settings = {}) => ({
+  id: null, scope: 'tenant', branch_id: null, user_id: null,
+  days: defaultDays(settings),
+  grace_min: Number(settings?.late_after_minutes ?? 15),
+  note: null, updated_at: null, source: 'default'
+});
+
+/**
+ * قراءةٌ من `work_schedules` تتنحّى إن لم يُطبَّق المخطط بعد.
+ *
+ * بين نشرِ الشيفرة وتطبيقِ المخطط نافذةٌ لا يوجد فيها الجدول (انظر
+ * `isMissingSchema`). ولو سقط التحضيرُ فيها لتعطّل أكثرُ ما تُستعمل شاشةٍ في
+ * المنصة على كل منسوب — فيرجع الدوامُ إلى ما كان عليه قبل الجداول: إعدادُ
+ * الجهة. ولا شيء يُكتب في هذه النافذة، والقراءةُ وحدها هي التي تتسامح.
+ */
+const readOrNull = async (fn) => {
+  try { return await fn(); }
+  catch (e) { if (isMissingSchema(e)) return null; throw e; }
+};
+
 /**
  * جدولُ المجمّع نفسه — صفُّ `tenant` إن وُجد، وإلا افتراضُ إعدادات الجهة.
  * `source` تقول من أين جاء، فتعرف الشاشةُ أهو موضوعٌ أم موروث.
  */
 export async function tenantSchedule(app, tenantId, settings = {}) {
-  const row = await app.db.get(
-    `SELECT * FROM work_schedules WHERE tenant_id=? AND scope='tenant'`, tenantId);
+  const row = await readOrNull(() => app.db.get(
+    `SELECT * FROM work_schedules WHERE tenant_id=? AND scope='tenant'`, tenantId));
   if (row) return { ...scheduleFromRow(row, settings), source: 'tenant' };
-  return {
-    id: null, scope: 'tenant', branch_id: null, user_id: null,
-    days: defaultDays(settings),
-    grace_min: Number(settings?.late_after_minutes ?? 15),
-    note: null, updated_at: null, source: 'default'
-  };
+  return fallbackSchedule(settings);
 }
 
 /**
@@ -146,13 +162,13 @@ export async function tenantSchedule(app, tenantId, settings = {}) {
  */
 export async function effectiveSchedule(app, tenantId, { userId = null, branchId = null, settings = {} } = {}) {
   if (userId) {
-    const own = await app.db.get(
-      `SELECT * FROM work_schedules WHERE tenant_id=? AND scope='user' AND user_id=?`, tenantId, userId);
+    const own = await readOrNull(() => app.db.get(
+      `SELECT * FROM work_schedules WHERE tenant_id=? AND scope='user' AND user_id=?`, tenantId, userId));
     if (own) return { ...scheduleFromRow(own, settings), source: 'user' };
   }
   if (branchId) {
-    const br = await app.db.get(
-      `SELECT * FROM work_schedules WHERE tenant_id=? AND scope='branch' AND branch_id=?`, tenantId, branchId);
+    const br = await readOrNull(() => app.db.get(
+      `SELECT * FROM work_schedules WHERE tenant_id=? AND scope='branch' AND branch_id=?`, tenantId, branchId));
     if (br) return { ...scheduleFromRow(br, settings), source: 'branch' };
   }
   return tenantSchedule(app, tenantId, settings);
@@ -167,8 +183,8 @@ export async function effectiveSchedule(app, tenantId, { userId = null, branchId
  */
 export async function schedulesFor(app, tenantId, people = [], settings = {}) {
   const base = await tenantSchedule(app, tenantId, settings);
-  const rows = await app.db.all(
-    `SELECT * FROM work_schedules WHERE tenant_id=? AND scope IN ('branch','user')`, tenantId);
+  const rows = await readOrNull(() => app.db.all(
+    `SELECT * FROM work_schedules WHERE tenant_id=? AND scope IN ('branch','user')`, tenantId)) || [];
   const byUser = new Map(), byBranch = new Map();
   for (const r of rows) {
     if (r.scope === 'user' && r.user_id) byUser.set(r.user_id, scheduleFromRow(r, settings));

@@ -16,6 +16,18 @@
 /** الطابع الزمني الموحّد UTC (البند ١١) */
 export const nowUTC = () => new Date().toISOString();
 
+/**
+ * خطأُ مخطَّطٍ لم يُطبَّق بعد — جدولٌ أو عمودٌ مستجدٌّ لم يصل قاعدةَ التشغيل.
+ *
+ * نشرُ الشيفرة وتطبيقُ المخطط خطوتان منفصلتان عن قصد (انظر تعليق
+ * `.github/workflows/deploy.yml`): تغييرُ مخطَّطِ قاعدةٍ فيها بيانات قرارٌ
+ * يُتَّخذ بعينين مفتوحتين لا أثراً جانبياً لدفعةِ شيفرة. وبين الخطوتين نافذةٌ
+ * تعمل فيها الشيفرةُ الجديدة على مخطَّطٍ قديم — فما بُني على عمودٍ مستجدّ
+ * يتنحّى فيها إلى سلوكه السابق بدل أن يردّ المستخدمَ بخطأٍ لا حيلة له فيه.
+ */
+export const isMissingSchema = (e) =>
+  /no such table|no such column|has no column/i.test(String(e?.message || ''));
+
 /** قراءة حقل JSON بأمان */
 export function j(value, fallback = null) {
   if (value === null || value === undefined) return fallback;

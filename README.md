@@ -489,7 +489,7 @@ Durable Objects للبثّ اللحظي، Cron Triggers للوظائف المج�
 
 ```bash
 npm run setup            # نسخة نظيفة أولاً — التدقيق يفترض بيانات ابتدائية
-npm run verify:wiring    # ٨٢ فحص توصيل: كل قدرة لها مسار خادم *وواجهة* تستدعيه
+npm run verify:wiring    # ٨٥ فحص توصيل: كل قدرة لها مسار خادم *وواجهة* تستدعيه
 npm run verify           # ٩٤٥ فحصاً وظيفياً في ٢٦ قسماً
 npm run verify:realtime  # ٩ فحوص للقناة اللحظية (+٧ للوظائف المجدولة على Cloudflare)
 ```

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { nowUTC, j } from '../sql.js';
+import { nowUTC, j, isMissingSchema } from '../sql.js';
 import { h, created } from '../http.js';
 import { badRequest, notFound, forbidden, locked, outOfRange, alreadyDone } from '../errors.js';
 import { can, has } from '../middleware/rbac.js';
@@ -186,11 +186,23 @@ router.post('/attendance/check', can('hr.attendance.self'), h(async (req) => {
   if (!existing) {
     const lateMin = lateMinutes(schedule, date, localMinutes());
     const late = lateMin > 0;
-    const r = await app.db.run(
-      `INSERT INTO attendance(tenant_id,branch_id,term_id,user_id,date,check_in_at,in_lat,in_lng,in_distance,is_remote,status,late_minutes)
-       VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
-      req.ctx.tenantId, branch?.id || null, term?.id || null, req.ctx.userId, date, nowUTC(),
-      Number(lat), Number(lng), distance, remote ? 1 : 0, late ? 'late' : 'present', lateMin);
+    /*
+     * `late_minutes` عمودٌ مستجدّ. وبين نشر الشيفرة وتطبيق المخطط نافذةٌ لا
+     * وجود له فيها — ولا يصحّ أن يُردَّ المُحضِّر أمام فرعه لأجل عمودٍ إحصائيّ.
+     * فيُكتب الصفُّ بدونه، والحالةُ (متأخّر/حاضر) محفوظةٌ كما كانت قبل الجداول.
+     */
+    const COLS = 'tenant_id,branch_id,term_id,user_id,date,check_in_at,in_lat,in_lng,in_distance,is_remote,status';
+    const vals = [req.ctx.tenantId, branch?.id || null, term?.id || null, req.ctx.userId, date, nowUTC(),
+      Number(lat), Number(lng), distance, remote ? 1 : 0, late ? 'late' : 'present'];
+    let r;
+    try {
+      r = await app.db.run(
+        `INSERT INTO attendance(${COLS},late_minutes) VALUES(${'?,'.repeat(vals.length)}?)`, ...vals, lateMin);
+    } catch (e) {
+      if (!isMissingSchema(e)) throw e;
+      r = await app.db.run(
+        `INSERT INTO attendance(${COLS}) VALUES(${'?,'.repeat(vals.length - 1)}?)`, ...vals);
+    }
     await audit(req, { action: 'create', entity: 'attendance', entityId: r.lastId, branchId: branch?.id || null,
       summary: `${req.ctx.userName} سجّل الحضور ${place}`
         + (late ? ` — متأخراً ${m(lateMin)} دقيقة عن ${plan.start}` : '') });
@@ -247,11 +259,18 @@ router.patch('/attendance/:id', can('hr.attendance.manage'), h(async (req) => {
   const late = p.late_minutes !== undefined
     ? Math.max(0, Number(p.late_minutes) || 0)
     : (status === 'late' ? (a.late_minutes || 0) : 0);
-  await app.db.run(
-    `UPDATE attendance SET status=?, note=?, check_in_at=?, check_out_at=?, minutes_worked=?, late_minutes=?
-      WHERE id=? AND tenant_id=?`,
-    status, p.note ?? a.note, p.check_in_at ?? a.check_in_at,
-    p.check_out_at ?? a.check_out_at, p.minutes_worked ?? a.minutes_worked, late, a.id, req.ctx.tenantId);
+  const head = [status, p.note ?? a.note, p.check_in_at ?? a.check_in_at,
+    p.check_out_at ?? a.check_out_at, p.minutes_worked ?? a.minutes_worked];
+  try {
+    await app.db.run(
+      `UPDATE attendance SET status=?, note=?, check_in_at=?, check_out_at=?, minutes_worked=?, late_minutes=?
+        WHERE id=? AND tenant_id=?`, ...head, late, a.id, req.ctx.tenantId);
+  } catch (e) {
+    if (!isMissingSchema(e)) throw e;
+    await app.db.run(
+      `UPDATE attendance SET status=?, note=?, check_in_at=?, check_out_at=?, minutes_worked=?
+        WHERE id=? AND tenant_id=?`, ...head, a.id, req.ctx.tenantId);
+  }
   await audit(req, { action: 'update', entity: 'attendance', entityId: a.id,
     summary: `تعديل يدوي لسجل حضور بتاريخ ${a.date}`, before: a, after: p });
   return { ok: true };
@@ -840,10 +859,17 @@ router.post('/payroll/generate', can('hr.payroll.manage'), h(async (req) => {
     const monthFinish = e.contract_end && e.contract_end < monthEnd ? e.contract_end : monthEnd;
     const expectedMonth = monthFinish >= start ? countWorkingDays(sc, start, monthFinish) : 0;
 
+    /* عمود الدقائق مستجدّ — وقبل الترحيلة يُبنى المسير بلا خصم تأخيرٍ لا بخطأ */
     const att = await app.db.all(
       `SELECT date, status, COALESCE(late_minutes,0) AS late_minutes, minutes_worked FROM attendance
        WHERE tenant_id=? AND user_id=? AND date BETWEEN ? AND ?`,
-      req.ctx.tenantId, e.user_id, start, finish);
+      req.ctx.tenantId, e.user_id, start, finish).catch(async (err) => {
+      if (!isMissingSchema(err)) throw err;
+      return (await app.db.all(
+        `SELECT date, status, minutes_worked FROM attendance
+         WHERE tenant_id=? AND user_id=? AND date BETWEEN ? AND ?`,
+        req.ctx.tenantId, e.user_id, start, finish)).map(r => ({ ...r, late_minutes: 0 }));
+    });
     const workingSet = new Set(expectedDays);
     const attended = new Set();
     let lateDays = 0, lateMin = 0, workedMinutes = 0, offDays = 0;
