@@ -11,6 +11,7 @@ export const state = {
   theme: localStorage.getItem('raqeem_theme') || 'auto',
   route: { path: '/', query: {} },
   notifications: { items: [], unread: 0 },
+  chat: { unread: 0 },          // خيوط محادثةٍ فيها جديدٌ لم يُقرأ
   online: navigator.onLine
 };
 
@@ -32,6 +33,7 @@ export function clearSession() {
   saveTokens(null, null);
   state.session = null;
   state.notifications = { items: [], unread: 0 };
+  state.chat = { unread: 0 };
 }
 export const setPref = (key, value) => {
   state[key] = value;

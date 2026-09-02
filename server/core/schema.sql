@@ -266,11 +266,40 @@ CREATE TABLE IF NOT EXISTS attendance (
   is_remote     INTEGER NOT NULL DEFAULT 0,         -- حضورٌ عن بُعد — بلا نطاق
   status        TEXT NOT NULL DEFAULT 'present',     -- present|late|absent|leave
   minutes_worked INTEGER NOT NULL DEFAULT 0,
+  late_minutes  INTEGER NOT NULL DEFAULT 0,          -- كم تأخّر فعلاً عن بداية دوامه
   note          TEXT,
   created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   UNIQUE (tenant_id, user_id, date)
 );
 CREATE INDEX IF NOT EXISTS ix_att_scope ON attendance(tenant_id, branch_id, date);
+
+-- جداول الدوام: أيام العمل وساعاته على ثلاث طبقات يرث بعضُها بعضاً.
+--
+-- كان الدوام رقماً واحداً في `tenants.settings` — بدايةٌ ونهايةٌ للمجمّع كلّه —
+-- فالفرع الذي يفتح حلقاته بعد العصر يُحسب منسوبوه متأخّرين كلَّ يوم، ومن دوامه
+-- ثلاثة أيام يُحسب غائباً في الأربعة الباقية ويُخصم من راتبه ما لم يجب عليه.
+--
+-- فصارت ثلاث طبقات: المجمّع أساساً، والفرع يخصّه، والموظف يخصّ نفسه. ويُقرأ
+-- الأخصُّ فالأعمّ: جدولُ الموظف إن كان، وإلا جدولُ فرعه، وإلا جدولُ المجمّع.
+--
+-- و`branch_id`/`user_id` صفرٌ لا NULL: القيمة الفارغة في SQLite لا تتساوى مع
+-- نفسها فلا يمنع الفهرسُ الفريد تكرارَ صفِّ المجمّع.
+CREATE TABLE IF NOT EXISTS work_schedules (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  tenant_id   INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  scope       TEXT NOT NULL DEFAULT 'tenant',      -- tenant | branch | user
+  branch_id   INTEGER NOT NULL DEFAULT 0,          -- ٠ = لا ينطبق
+  user_id     INTEGER NOT NULL DEFAULT 0,          -- ٠ = لا ينطبق
+  -- سبعة أيام بترتيب الأحد ← السبت: [{on,start,end}]
+  days        TEXT NOT NULL DEFAULT '[]',
+  grace_min   INTEGER NOT NULL DEFAULT 15,         -- سماح التأخير بالدقائق
+  note        TEXT,
+  updated_by  INTEGER,
+  updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_wsched ON work_schedules(tenant_id, scope, branch_id, user_id);
+CREATE INDEX IF NOT EXISTS ix_wsched_scope ON work_schedules(tenant_id, scope);
 
 CREATE TABLE IF NOT EXISTS leaves (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -484,24 +513,36 @@ CREATE TABLE IF NOT EXISTS kpis (
 );
 
 -- ─────────────────────────── ١١. التواصل السياقي والتذاكر ───────────────────
+-- المحادثة نوعان: سياقيّةٌ تولد مع عنصرها (مهمة، طلب مالي، تذكرة، لجنة)،
+-- ومستقلّةٌ ينشئها المنسوبون: خاصّةً بين اثنين أو مجموعةً لها اسمٌ ووصفٌ وصورة.
+-- والمستقلّة تحمل `context_id` = معرّفها هي، فيبقى الفهرس الفريد صالحاً لهما معاً.
 CREATE TABLE IF NOT EXISTS conversations (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   tenant_id    INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   branch_id    INTEGER,
-  context_type TEXT NOT NULL,   -- task|finance_request|invoice|ticket|committee|direct
+  context_type TEXT NOT NULL,   -- task|finance_request|invoice|ticket|committee|direct|group
   context_id   INTEGER NOT NULL,
   title        TEXT,
+  description  TEXT,
+  avatar_url   TEXT,
+  created_by   INTEGER,
+  last_at      TEXT,            -- وقت آخر رسالة — يُرتَّب به الصندوق بلا مسح الرسائل
   created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   UNIQUE (tenant_id, context_type, context_id)
 );
+CREATE INDEX IF NOT EXISTS ix_conv_tenant ON conversations(tenant_id, context_type, last_at);
 
 CREATE TABLE IF NOT EXISTS conversation_members (
   tenant_id       INTEGER NOT NULL,
   conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
   user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   last_read_at    TEXT,
+  role_in         TEXT NOT NULL DEFAULT 'member',   -- admin | member
+  muted           INTEGER NOT NULL DEFAULT 0,
+  joined_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   PRIMARY KEY (conversation_id, user_id)
 );
+CREATE INDEX IF NOT EXISTS ix_convmem_user ON conversation_members(tenant_id, user_id);
 
 CREATE TABLE IF NOT EXISTS messages (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -510,6 +551,11 @@ CREATE TABLE IF NOT EXISTS messages (
   user_id         INTEGER NOT NULL REFERENCES users(id),
   body            TEXT NOT NULL,
   attachments     TEXT NOT NULL DEFAULT '[]',
+  kind            TEXT NOT NULL DEFAULT 'text',   -- text|voice|file|system
+  reply_to_id     INTEGER,
+  duration_ms     INTEGER NOT NULL DEFAULT 0,     -- طول الرسالة الصوتية
+  edited_at       TEXT,
+  deleted_at      TEXT,                           -- تُحذف نصّاً ويبقى موضعها في الخيط
   created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE INDEX IF NOT EXISTS ix_msg_conv ON messages(tenant_id, conversation_id, id);

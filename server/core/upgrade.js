@@ -88,7 +88,24 @@ const ADDITIONS = [
   ['platform_settings', 'landing',            "TEXT NOT NULL DEFAULT '{}'"],
   /* ── مفاتيح الخرائط تُضبط من لوحة المنصة بلا إعادة نشر ── */
   ['platform_settings', 'maps_google_key',    'TEXT'],
-  ['platform_settings', 'maps_geoapify_key',  'TEXT']
+  ['platform_settings', 'maps_geoapify_key',  'TEXT'],
+
+  /* ── جداول الدوام: التأخير يُقاس بدقائقه لا بعلامةٍ فقط ── */
+  ['attendance', 'late_minutes', 'INTEGER NOT NULL DEFAULT 0'],
+
+  /* ── المحادثات المستقلة: خاصّة ومجموعات ── */
+  ['conversations', 'description', 'TEXT'],
+  ['conversations', 'avatar_url',  'TEXT'],
+  ['conversations', 'created_by',  'INTEGER'],
+  ['conversations', 'last_at',     'TEXT'],
+  ['conversation_members', 'role_in', "TEXT NOT NULL DEFAULT 'member'"],
+  ['conversation_members', 'muted',   'INTEGER NOT NULL DEFAULT 0'],
+  ['conversation_members', 'joined_at', 'TEXT'],
+  ['messages', 'kind',        "TEXT NOT NULL DEFAULT 'text'"],
+  ['messages', 'reply_to_id', 'INTEGER'],
+  ['messages', 'duration_ms', 'INTEGER NOT NULL DEFAULT 0'],
+  ['messages', 'edited_at',   'TEXT'],
+  ['messages', 'deleted_at',  'TEXT']
 ];
 
 export async function reconcileColumns(app) {
@@ -116,7 +133,11 @@ export async function reconcileIndexes(app) {
     'CREATE INDEX IF NOT EXISTS ix_tickets_vendor ON tickets(vendor_escalated, vendor_status)',
     'CREATE INDEX IF NOT EXISTS ix_subinv_doctype ON subscription_invoices(doc_type, tenant_id)',
     'CREATE INDEX IF NOT EXISTS ix_budgets_scope ON budgets(tenant_id, branch_id, committee_id, term_id)',
-    'CREATE INDEX IF NOT EXISTS ix_empdocs_user ON employee_documents(tenant_id, user_id)'
+    'CREATE INDEX IF NOT EXISTS ix_empdocs_user ON employee_documents(tenant_id, user_id)',
+    'CREATE UNIQUE INDEX IF NOT EXISTS ux_wsched ON work_schedules(tenant_id, scope, branch_id, user_id)',
+    'CREATE INDEX IF NOT EXISTS ix_wsched_scope ON work_schedules(tenant_id, scope)',
+    'CREATE INDEX IF NOT EXISTS ix_conv_tenant ON conversations(tenant_id, context_type, last_at)',
+    'CREATE INDEX IF NOT EXISTS ix_convmem_user ON conversation_members(tenant_id, user_id)'
   ];
   for (const sql of stmts) { try { await app.db.run(sql); } catch { /* موجود مسبقاً */ } }
 }

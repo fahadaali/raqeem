@@ -11,6 +11,8 @@ import { readFileSync } from 'node:fs';
 const R = (p) => readFileSync(p, 'utf8');
 
 const platform  = R('web/js/views/admin/sections.js') + R('web/js/admin-shell.js');
+const chatUI    = R('web/js/views/chat.js');
+const hoursUI   = R('web/js/views/workhours.js') + R('web/js/views/hr.js');
 const billing   = R('web/js/views/billing.js');
 const settings  = R('web/js/views/settings.js');
 const tickets   = R('web/js/views/tickets.js');
@@ -21,8 +23,8 @@ const landing   = R('web/js/views/landing.js');
 const bRoutes   = R('server/core/routes/billing.js');
 const aRoutes   = R('server/core/routes/auth.js');
 const cRoutes   = R('server/core/routes/comms.js');
-const ALLUI = platform + billing + settings + tickets + login + app + landing;
-const ALLSRV = routes + bRoutes + aRoutes + cRoutes
+const ALLUI = platform + billing + settings + tickets + login + app + landing + chatUI + hoursUI;
+const ALLSRV = routes + bRoutes + aRoutes + cRoutes + R('server/core/routes/hr.js') + R('server/core/workhours.js')
   + R('server/core/zatca.js') + R('server/core/health.js') + R('server/core/billing.js')
   + R('server/core/coupons.js') + R('server/core/announce.js') + R('server/core/payments.js')
   + R('server/core/features.js') + R('server/core/security.js') + R('server/core/jobs/backup.js')
@@ -113,6 +115,29 @@ check('٤', 'الإنشاء يقرأ القوالب لا فصلاً مكتوبا
 check('٤', 'المعاينة تُقرأ من الخادم', 'preview: expandTemplate', 'r.preview.start_date');
 check('٤', 'فصول المجمّع ظاهرة في اللوحة', 'terms: terms.map', 'الفصول الدراسية');
 check('٤', 'شاشة القوالب في قائمة اللوحة', null, "'/admin/terms'");
+
+console.log('\n▸ اكتمال أوقات الدوام — أيامٌ وساعاتٌ يُقاس عليها التأخّر والمسير');
+check('دوام', 'ثلاث طبقاتٍ ترث بعضها', ['effectiveSchedule', "scope='user'", "scope='branch'"], null);
+check('دوام', 'اللوحة تقرأ الجداول الثلاثة', "router.get('/schedules'", '/api/hr/schedules');
+check('دوام', 'ضبط دوام المجمّع أو فرعٍ أو منسوب', "router.put('/schedules'", "scope: 'branch'");
+check('دوام', 'تعديل جدول كل موظف على حدة', 'assertUserInScope', "scope: 'user'");
+check('دوام', 'توحيد كل الفروع من لوحةٍ واحدة', 'apply_to_branches', 'apply_to_branches');
+check('دوام', 'الرجوع إلى الجدول الموروث', "router.delete('/schedules/:scope/:id'", 'إعادة إلى الموروث');
+check('دوام', 'التأخّر يُقاس بجدول صاحبه', ['lateMinutes(schedule', 'late_minutes'], 'late_minutes');
+check('دوام', 'المسير يبني الغياب على أيام الجدول', ['workingDaysBetween', 'expected_month_days'], 'expected_days');
+check('دوام', 'لوحة الدوام في شاشة الموارد البشرية', null, ["'أوقات الدوام'", 'schedulesTab']);
+
+console.log('\n▸ اكتمال المحادثات المستقلة — خاصّة ومجموعات');
+check('محادثات', 'صندوق المحادثات', "router.get('/chats'", '/api/comms/chats');
+check('محادثات', 'محادثة خاصّة ومجموعة', ["kind === 'direct'", "'group'"], "kind: 'group'");
+check('محادثات', 'الدليل يحكمه تدرّج الصلاحية', ['reachableUsers', 'assertReachable'], '/api/comms/directory');
+check('محادثات', 'تعديل الاسم والوصف وصورة العرض', ["router.patch('/chats/:id'", 'resolveAvatar'], 'avatar_file_id');
+check('محادثات', 'إدارة الأعضاء وأدوارهم', ["router.post('/chats/:id/members'", "router.patch('/chats/:id/members/:uid'"], 'members');
+check('محادثات', 'المغادرة والإخراج', "router.delete('/chats/:id/members/:uid'", 'مغادرة المجموعة');
+check('محادثات', 'الرسائل الصوتية', ["'voice'", 'duration_ms'], ['MediaRecorder', "kind: 'voice'"]);
+check('محادثات', 'المرفقات تُبنى من مخزن الجهة', 'resolveAttachments', 'attachment_ids');
+check('محادثات', 'تحرير الرسالة وحذفها', ["router.patch('/chats/:id/messages/:mid'", "router.delete('/chats/:id/messages/:mid'"], 'تعديل الرسالة');
+check('محادثات', 'عدّاد غير المقروء في الهيكل', "router.get('/unread'", ['loadChatUnread', "path: '/chat'"]);
 
 console.log(`\n  ${fail ? '✘' : '✔'} ${pass} مكتمل · ${fail} ناقص\n`);
 process.exit(fail ? 1 : 0);

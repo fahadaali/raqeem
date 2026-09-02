@@ -36,6 +36,9 @@ BASE=http://localhost:3000 npm run verify   # تدقيق تكاملي (يحتا�
 | `picker()` في `web/js/util.js` | **كل** قائمة يُختار منها شخص — فيها حقل بحث. بديلٌ مباشر لـ `select` (`.value` و`onchange`) |
 | `userOptions(list, { group })` | تحويل منسوبين إلى خيارات المنتقي — الاسم سطراً والدور تحته |
 | `.tbl.sheet` + `.cellx` | جدولٌ يُحرَّر في مكانه. ولا تُسمَّ حالةُ جدولٍ `.grid`: الكلاس يضع `display:grid` فيكسر الجدول |
+| `openScheduleEditor()` في `web/js/views/workhours.js` | **كل** تحريرٍ لأيام دوامٍ وساعاته — للمجمّع أو لفرعٍ أو لمنسوب. لا يُبنى محرّر أيامٍ ثانٍ |
+| `effectiveSchedule()`/`schedulesFor()` في `server/core/workhours.js` | قراءة الدوام النافذ. لا يُقرأ `settings.workday` مباشرةً في أي مسار جديد |
+| `reachableUsers()` في `server/core/routes/comms.js` | من يبلغهم المستخدم في المحادثات — مصدرٌ واحد للدليل ولحارس الإضافة معاً |
 
 ### أين تُضاف أيقونة جديدة
 
@@ -58,6 +61,8 @@ el('span.ic', { icon: 'inbox', iconSize: 'card' })
 | نظام التصميم | `web/css/app.css` |
 | نظام الأيقونات | `web/js/icons.js` |
 | أصول الهوية | `web/assets/brand/` |
+| المحادثات (خاصة ومجموعات) | `web/js/views/chat.js` + `server/core/routes/comms.js` |
+| أوقات الدوام (المجمّع ← الفرع ← الموظف) | `web/js/views/workhours.js` + `server/core/workhours.js` |
 | منطق العمل المشترك (Node + Workers) | `server/core/` |
 | مشغّل الخادم الذاتي | `server/node/` |
 | مشغّل Cloudflare | `server/worker/` |

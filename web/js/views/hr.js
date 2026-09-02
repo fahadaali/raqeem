@@ -6,12 +6,15 @@ import {
 } from '../util.js';
 import { geoMap, distanceM } from '../map.js';
 import { fmtDate, todayISO, dayName, addDaysISO } from '../hijri.js';
+import { schedulesTab, hoursText } from './workhours.js';
 
 export async function render({ sub, navigate }) {
   if (sub === 'checkin') return checkinScreen();
   const items = [];
   if (can('hr.attendance.self')) items.push({ label: 'حضوري', icon: 'map-pin', build: () => checkinScreen() });
   if (can('hr.attendance.view')) items.push({ label: 'سجل الحضور', icon: 'calendar-range', build: attendanceTab });
+  /* الجداول قبل الملفات: التأخّر والغياب في السجلّ قبلها لا يُفهمان بلا معرفة الدوام */
+  if (can('hr.attendance.view')) items.push({ label: 'أوقات الدوام', icon: 'alarm-clock', build: schedulesTab });
   if (can('hr.employees.view')) items.push({ label: 'ملفات الموظفين', icon: 'users', build: employeesTab });
   items.push({ label: 'الإجازات', icon: 'tree-palm', build: leavesTab });
   if (can('hr.payroll.view')) items.push({ label: 'مسير الرواتب', icon: 'banknote', build: payrollTab });
@@ -166,7 +169,9 @@ async function checkinScreen() {
           r?.check_in_at ? chip('الحضور: ' + clockOf(r.check_in_at), 'ok', 'log-out') : chip('لم تسجّل الحضور بعد', 'warn', 'hourglass'),
           r?.check_out_at ? chip('الانصراف: ' + clockOf(r.check_out_at), 'danger', 'flag') : null,
           r?.is_remote ? chip('عن بُعد', 'info', 'laptop') : null,
-          r?.status === 'late' ? chip('مسجّل كتأخير', 'warn') : null,
+          r?.status === 'late'
+            ? chip('مسجّل كتأخير' + (r.late_minutes ? ` ${AR_NUM(r.late_minutes)} دقيقة` : ''), 'warn') : null,
+          d.day && !d.day.working ? chip('يوم راحة', 'info', 'tree-palm') : null,
           r?.minutes_worked ? chip(`${AR_NUM(Math.floor(r.minutes_worked / 60))}س ${AR_NUM(r.minutes_worked % 60)}د`, 'info', 'timer') : null
         ]),
         el('div.hint', { style: { maxWidth: '380px' }, text: [
@@ -176,7 +181,10 @@ async function checkinScreen() {
             : spots.length > 1
               ? `أنت معيَّنٌ على ${AR_NUM(spots.length)} فروع، ويُقبل تسجيلك داخل نطاق أيّها كنت — والخريطة تتبع أقربها إليك.`
               : `ويتحقق النظام من موقعك بمعادلة هافرساين، ويقبل التسجيل فقط داخل نطاق ${AR_NUM(shown ? radiusOf(shown) : d.geofence_radius)} متراً من إحداثيات الفرع.`,
-          `دوام اليوم: ${d.workday.start} — ${d.workday.end}`
+          d.day && !d.day.working
+            ? `و${d.day.day_name} يومُ راحةٍ في جدولك، فحضورك اليوم لا يُحسب تأخيراً.`
+            : `دوام اليوم: ${d.workday.start} — ${d.workday.end} (${hoursText(d.day?.minutes ?? 0)})،`
+              + ` وسماح التأخير ${AR_NUM(d.schedule?.grace_min ?? 15)} دقيقة.`
         ].join(' ') })
       ])
     ]));
@@ -222,6 +230,8 @@ async function attendanceTab() {
         { header: 'الحالة', key: 'status', render: r => chip(T.attendance[r.status], T.attendanceChip[r.status]) },
         { header: 'الحضور', key: 'in', render: r => clockOf(r.check_in_at) },
         { header: 'الانصراف', key: 'out', render: r => clockOf(r.check_out_at) },
+        { header: 'التأخير', key: 'late', num: true,
+          render: r => (r.late_minutes ? `${AR_NUM(r.late_minutes)} د` : '—') },
         { header: 'المسافة', key: 'dist', num: true,
           render: r => (r.is_remote ? '—' : (r.in_distance != null ? `${AR_NUM(r.in_distance)} م` : '—')) }
       ], rows, { emptyText: 'لا توجد سجلات ضمن الفترة المحددة' }), { p0: true })
@@ -307,6 +317,19 @@ function fileBody(d, userId, reload) {
         infoRow('الآيبان', e.bank_iban || '—')
       ] : [])
     ])),
+    d.schedule ? card('أوقات الدوام', el('div', {}, [
+      el('div.row', {}, [
+        chip(d.schedule.summary, 'brand', 'alarm-clock'),
+        chip(hoursText(d.schedule.weekly_minutes) + ' أسبوعياً', 'info', 'timer'),
+        chip(`سماح ${AR_NUM(d.schedule.grace_min)} دقيقة`, '', 'hourglass'),
+        chip({ user: 'جدول خاصّ به', branch: 'موروث من فرعه', tenant: 'موروث من المجمّع',
+          default: 'الجدول الافتراضي' }[d.schedule.source] || 'موروث', '', 'arrow-down')
+      ]),
+      can('hr.attendance.manage') || can('settings.manage')
+        ? el('div.hint', { style: { marginTop: '9px' },
+          text: 'يُضبط من تبويب «أوقات الدوام» — وعليه يُحسب تأخّره وغيابه في مسير الرواتب.' })
+        : null
+    ]), { icon: 'alarm-clock' }) : null,
     documentsCard(d.documents || [], userId, reload),
     d.leaves.length ? card('الإجازات', table([
       { header: 'من', key: 'start_date', render: r => fmtDate(r.start_date, state.calendar, 'short') },
@@ -664,6 +687,9 @@ async function openPayroll(id, reload) {
         { header: 'الرقم', key: 'employee_no' },
         { header: 'الأساسي', key: 'basic', num: true, render: r => money(r.basic) },
         { header: 'البدلات', key: 'allowances', num: true, render: r => money(r.allowances) },
+        { header: 'أيام العمل', key: 'exp', num: true,
+          render: r => `${AR_NUM(r.details?.present ?? 0)}/${AR_NUM(r.details?.expected_days ?? 0)}` },
+        { header: 'دقائق التأخير', key: 'lm', num: true, render: r => AR_NUM(r.details?.late_minutes || 0) },
         { header: 'خصم غياب', key: 'absence_deduction', num: true, render: r => money(r.absence_deduction) },
         { header: 'خصم تأخير', key: 'late_deduction', num: true, render: r => money(r.late_deduction) },
         { header: 'خصم سلف', key: 'advance_deduction', num: true, render: r => money(r.advance_deduction) },
